@@ -1,0 +1,36 @@
+{
+  "name": "stellar-impulse",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24.19.0 <25"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,web \"pnpm --filter @impulso/server dev\" \"pnpm --filter @impulso/web dev\"",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:public": "node scripts/check-public.mjs",
+    "check": "pnpm check:boundaries && pnpm check:public && pnpm typecheck && pnpm test && pnpm build",
+    "contracts:test": "node scripts/contracts.mjs test",
+    "contracts:check": "node scripts/contracts.mjs check",
+    "contracts:build": "node scripts/contracts.mjs build",
+    "contracts:fmt": "node scripts/contracts.mjs fmt",
+    "chain:probe": "tsx scripts/probe-testnet.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.10.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "concurrently": "10.0.5",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.0.1"
+  }
+}
