@@ -11,12 +11,22 @@ contra replay. No se implementa ni se declara conformidad con SEP-10 en esta ent
 La red y la cuenta se deberán volver a validar antes de cualquier firma futura,
 porque el usuario puede cambiarlas después de conectar.
 
-El contrato `Cosmetics` expone únicamente `version() -> u32`, que devuelve `1`.
-Su test registra el contrato en el host Soroban y llama la interfaz generada.
-Sirve para validar el toolchain. No existe todavía inventario, creación de clases,
-compra, otorgamiento, transferencia, pagos, privilegios administrativos ni
-almacenamiento persistente. No hay contratos desplegados ni direcciones de
-despliegue publicadas.
+El contrato `Cosmetics` (versión 2) registra cada pieza como un NFT de una clase
+(librea, estela o emblema). Roles separados: `admin` crea clases y precios, `minter`
+(servidor) otorga premios, `treasury` recibe ventas primarias.
+
+| Función | Uso |
+| --- | --- |
+| `create_class`, `set_price` | Admin: familia, ranura, transferibilidad, cupo, precio y URI |
+| `buy` | Compra primaria firmada por el jugador; paga en el token configurado |
+| `grant` | Premio del servidor; `reward_id` impide acuñar dos veces |
+| `balance`, `owner_of`, `token_uri`, `transfer` | Interfaz NFT estándar |
+| `approve`, `approve_for_all`, `transfer_from` | Base para un marketplace externo |
+| `tokens_of`, `has_class`, `get_class` | Inventario del hangar y verificación de equipamiento |
+
+Mérito y veteranía son intransferibles y no pueden aprobarse, por lo que nunca se
+listan en un mercado. Mérito no se vende. El marketplace y su comisión quedan en un
+contrato separado. No hay contratos desplegados ni direcciones de despliegue publicadas.
 
 Validación inicial (22 de septiembre de 2026): un test de host Soroban y build
 WASM ejecutados en WSL/Linux; diez tests TypeScript y typecheck correctos;
