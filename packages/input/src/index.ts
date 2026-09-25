@@ -30,3 +30,5 @@ export function parseCommand(value: unknown): ParseResult {
   if (typeof y !== 'number' || !Number.isSafeInteger(y)) return invalid;
   return { ok: true, command: { seq, type, squadId, x, y } };
 }
+
+export * from './protocol.js';
