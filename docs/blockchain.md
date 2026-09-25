@@ -103,6 +103,18 @@ La conexión real de la extensión requiere la intervención del usuario en su n
 Testnet puede reiniciarse y borrar cuentas, contratos e inventarios. El juego de
 práctica debe seguir disponible si la wallet o la red están caídas.
 
+## Decisión D05 (25 de septiembre de 2026)
+
+Tomada por Orlando, responsable de D05.
+
+| Tema | Decisión |
+| --- | --- |
+| Matriz de versiones | Protocolo 28 (testnet desde el 27 de agosto y mainnet desde el 16 de septiembre): Rust 1.98.1, soroban-sdk 28.0.0, stellar-cli 28.0.0, `@stellar/stellar-sdk` 17.1.0 y `@stellar/freighter-api` 6.0.1. Esta combinación compila y pasa CI. stellar-core 29 ya corre en la red: antes de una votación del protocolo 29, se actualizan los SDK en una rama y se repite CI. |
+| Permisos de emisión | `admin` configura clases y precios. `minter` es la cuenta del servidor y la única que otorga premios. `treasury` solo recibe pagos. Las tres direcciones son distintas y cada cambio de rol se hace en dos pasos (`propose_role` y `accept_role`). La clave del `minter` vive solo en el servidor, como variable de entorno; nunca en el cliente ni en el repositorio. |
+| Autenticación | SEP-10 completo. El servidor de juego publica `/.well-known/stellar.toml` con `WEB_AUTH_ENDPOINT` y `SIGNING_KEY`, y genera el desafío con `buildChallengeTx` del módulo `webauth` de `@stellar/stellar-sdk`. El jugador firma con Freighter (`signTransaction`). El servidor valida con `readChallengeTx` y `verifyChallengeTxSigners` y entrega un token de sesión ligado a esa dirección. La clave que firma los desafíos es propia y distinta de los tres roles del contrato. Una dirección conectada sin desafío firmado nunca es una identidad. Se implementa en la tarjeta O07 (3–5 oct). |
+| Token de pago de prueba | XLM nativo, a través de su Stellar Asset Contract en testnet (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`). No requiere trustline y los fondos salen de Friendbot. Los precios se expresan en stroops (1 XLM = 10.000.000). |
+| Despliegue | Después de fusionar el contrato v3 (tarjeta O04). Se registran en este documento la red, el contrato, el hash WASM, la transacción, el commit y la fecha. |
+
 ## Plan del contrato de cosméticos para el MVP
 
 El MVP debe permitir crear clases, comprar, otorgar, consultar propiedad y
