@@ -11,9 +11,10 @@ contra replay. No se implementa ni se declara conformidad con SEP-10 en esta ent
 La red y la cuenta se deberán volver a validar antes de cualquier firma futura,
 porque el usuario puede cambiarlas después de conectar.
 
-El contrato `Cosmetics` (versión 2) registra cada pieza como un NFT de una clase
+El contrato `Cosmetics` (versión 3) registra cada pieza como un NFT de una clase
 (librea, estela o emblema). Roles separados: `admin` crea clases y precios, `minter`
-(servidor) otorga premios, `treasury` recibe ventas primarias.
+(servidor) otorga premios, `treasury` recibe ventas primarias. El constructor rechaza
+que dos roles usen la misma dirección (`InvalidConfiguration`).
 
 | Función | Uso |
 | --- | --- |
@@ -23,10 +24,16 @@ El contrato `Cosmetics` (versión 2) registra cada pieza como un NFT de una clas
 | `balance`, `owner_of`, `token_uri`, `transfer` | Interfaz NFT estándar |
 | `approve`, `approve_for_all`, `transfer_from` | Base para un marketplace externo |
 | `tokens_of`, `has_class`, `get_class` | Inventario del hangar y verificación de equipamiento |
+| `propose_role`, `accept_role`, `role` | Cambio de rol en dos pasos: el admin propone y el candidato acepta con su firma; emite `RoleChanged` |
 
 Mérito y veteranía son intransferibles y no pueden aprobarse, por lo que nunca se
 listan en un mercado. Mérito no se vende. El marketplace y su comisión quedan en un
 contrato separado. No hay contratos desplegados ni direcciones de despliegue publicadas.
+
+Cada dueño tiene dos inventarios con tope de 200 piezas cada uno: uno para piezas
+transferibles y otro para piezas ligadas (mérito y veteranía). Como `transfer` no pide
+permiso al receptor, alguien podría llenar el inventario transferible de otra persona,
+pero eso nunca bloquea un premio: los premios ligados van a su propio inventario.
 
 Validación inicial (22 de septiembre de 2026): un test de host Soroban y build
 WASM ejecutados en WSL/Linux; diez tests TypeScript y typecheck correctos;

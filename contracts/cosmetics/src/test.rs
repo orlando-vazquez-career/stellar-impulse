@@ -1,10 +1,12 @@
 extern crate std;
 
-use super::{Cosmetics, CosmeticsClient, Error, Family, Slot};
+use super::{
+    Cosmetics, CosmeticsClient, Error, Family, Role, RoleChanged, Slot, MAX_TOKENS_PER_OWNER,
+};
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{Address as _, Events as _, Ledger},
     token::{StellarAssetClient, TokenClient},
-    Address, BytesN, Env, String,
+    Address, BytesN, Env, Event, String,
 };
 
 const LIVERY: u32 = 1; // collection, transferable, sold
@@ -310,5 +312,129 @@ fn metadata_and_version() {
         String::from_str(&s.env, "Impulso Cosmetics")
     );
     assert_eq!(s.client.symbol(), String::from_str(&s.env, "IMPC"));
-    assert_eq!(s.client.version(), 2);
+    assert_eq!(s.client.version(), 3);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #16)")]
+fn constructor_rejects_repeated_roles() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+    env.register(
+        Cosmetics,
+        (
+            admin.clone(),
+            admin,
+            treasury,
+            token,
+            String::from_str(&env, "Impulso Cosmetics"),
+            String::from_str(&env, "IMPC"),
+        ),
+    );
+}
+
+#[test]
+fn role_rotation_waits_for_the_new_holder() {
+    let s = setup();
+    let next_minter = Address::generate(&s.env);
+    s.client.propose_role(&Role::Minter, &next_minter);
+    assert_eq!(s.client.role(&Role::Minter), s.minter);
+
+    s.client.accept_role(&Role::Minter);
+    // Events and auths belong to the last invocation: read them before calling the contract again.
+    assert_eq!(s.env.auths()[0].0, next_minter);
+    assert_eq!(
+        s.env.events().all().filter_by_contract(&s.client.address),
+        [RoleChanged {
+            role: Role::Minter,
+            previous: s.minter.clone(),
+            current: next_minter.clone(),
+        }
+        .to_xdr(&s.env, &s.client.address)]
+    );
+    assert_eq!(s.client.role(&Role::Minter), next_minter);
+}
+
+#[test]
+fn roles_stay_separate_and_need_a_proposal() {
+    let s = setup();
+    assert_eq!(
+        s.client.try_propose_role(&Role::Minter, &s.treasury),
+        Err(Ok(Error::InvalidConfiguration.into()))
+    );
+    assert_eq!(
+        s.client.try_propose_role(&Role::Admin, &s.minter),
+        Err(Ok(Error::InvalidConfiguration.into()))
+    );
+    assert_eq!(
+        s.client.try_accept_role(&Role::Treasury),
+        Err(Ok(Error::NotAuthorized.into()))
+    );
+}
+
+#[test]
+#[should_panic]
+fn proposing_a_role_requires_the_admin() {
+    let s = setup();
+    s.env.set_auths(&[]);
+    s.client
+        .propose_role(&Role::Treasury, &Address::generate(&s.env));
+}
+
+#[test]
+#[should_panic]
+fn accepting_a_role_requires_the_candidate() {
+    let s = setup();
+    s.client
+        .propose_role(&Role::Treasury, &Address::generate(&s.env));
+    s.env.set_auths(&[]);
+    s.client.accept_role(&Role::Treasury);
+}
+
+#[test]
+fn transferred_spam_cannot_block_merit_rewards() {
+    let s = setup();
+    let attacker = Address::generate(&s.env);
+    StellarAssetClient::new(&s.env, &s.token.address)
+        .mint(&attacker, &(PRICE * MAX_TOKENS_PER_OWNER as i128));
+    for _ in 0..MAX_TOKENS_PER_OWNER {
+        let id = s.client.buy(&attacker, &LIVERY);
+        s.client.transfer(&attacker, &s.player, &id);
+    }
+    assert_eq!(
+        s.client.try_buy(&s.player, &LIVERY),
+        Err(Ok(Error::InventoryFull.into()))
+    );
+
+    let merit = s
+        .client
+        .grant(&s.player, &EMBLEM_FIRST_WIN, &reward(&s.env, 9));
+    assert!(s.client.has_class(&s.player, &EMBLEM_FIRST_WIN));
+    assert!(s.client.tokens_of(&s.player).contains(merit));
+    assert_eq!(s.client.balance(&s.player), MAX_TOKENS_PER_OWNER + 1);
+}
+
+#[test]
+fn grant_on_an_exhausted_class_keeps_the_reward_unclaimed() {
+    let s = setup();
+    let explorer = 4;
+    s.client.create_class(
+        &explorer,
+        &Slot::Emblem,
+        &Family::Merit,
+        &false,
+        &1,
+        &0,
+        &String::from_str(&s.env, "ipfs://exploracion"),
+    );
+    s.client.grant(&s.player, &explorer, &reward(&s.env, 1));
+    assert_eq!(
+        s.client.try_grant(&s.player, &explorer, &reward(&s.env, 2)),
+        Err(Ok(Error::SupplyExhausted.into()))
+    );
+    assert!(!s.client.is_reward_claimed(&reward(&s.env, 2)));
 }
