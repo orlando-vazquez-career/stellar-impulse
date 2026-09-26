@@ -9,6 +9,7 @@
 7. [Stellar y contratos](blockchain.md): toolchain, alcance y modelo de amenazas.
 8. [Pruebas y demo](testing.md): aceptación del bootstrap y del MVP.
 9. [Estado](status.md): evidencia y pendientes, sin confundir plan con implementación.
+10. [Protocolo de la sala de campaña](protocol.md): conexión, mensajes, fases y reconexión.
 
 El repositorio contiene todas las instrucciones necesarias para colaborar. No requiere
 extensiones de editor, herramientas de agentes ni servicios privados de un integrante.

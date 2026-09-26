@@ -7,8 +7,15 @@ Fecha: 22 de septiembre de 2026. Versión: 0.1.0.
 Monorepo pnpm, cliente React/Vite, renderer Canvas, sala Colyseus efímera,
 entrenamiento de un sector a10Hz, escuadrones Interceptor, guardianes, nodo Metal,
 captura de núcleo con tiempos reducidos, parser y proyección por jugador.
-Consulta real de testnet, adapter Freighter y contrato Soroban que devuelve su versión.
+Consulta real de testnet, adapter Freighter y contrato Soroban `cosmetics` v2 (NFT con compra,
+premios idempotentes y aprobaciones), todavía sin desplegar.
 Plan de producto, arquitectura, estrategia y táctica en español; licencia MIT.
+
+Desde el 25 de septiembre: sala `campaign` en el servidor, con lobby de dos asientos, «listo»,
+cuenta atrás, tres sectores con reinicio, transiciones con elección de tecnología, resultados,
+protocolo versionado y reconexión con pausa de 60 s. Está probada con tests unitarios y de
+integración contra un servidor real ([protocolo](protocol.md)). El cliente web todavía usa la
+sala de entrenamiento, y los sectores usan el mundo de entrenamiento hasta que existan sus plantillas.
 
 ## Límites
 
