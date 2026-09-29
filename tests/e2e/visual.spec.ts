@@ -112,6 +112,18 @@ test.describe('visual interface foundation', () => {
     await expect(camera).toBeVisible();
     expect(Number(await camera.getAttribute('width'))).toBeLessThan(90);
     const initialCameraX = await camera.getAttribute('x');
+    const initialCameraY = await camera.getAttribute('y');
+
+    // Loading the canvas must not count as pointer input at the top-left edge.
+    const idlePositions = await camera.evaluate(async (element) => {
+      const positions = new Set<string>();
+      for (let frame = 0; frame < 12; frame += 1) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        positions.add(`${element.getAttribute('x')},${element.getAttribute('y')}`);
+      }
+      return [...positions];
+    });
+    expect(idlePositions).toEqual([`${initialCameraX},${initialCameraY}`]);
 
     const box = await field.boundingBox();
     if (!box) throw new Error('Phaser canvas is not visible');
@@ -121,6 +133,7 @@ test.describe('visual interface foundation', () => {
     await page.getByRole('button', { name: 'Mover cámara desde el minimapa' }).click({ position: { x: 150, y: 80 } });
     await page.getByRole('button', { name: 'Restablecer cámara' }).click();
     await expect.poll(() => camera.getAttribute('x')).toBe(initialCameraX);
+    await expect.poll(() => camera.getAttribute('y')).toBe(initialCameraY);
     await expect(page.locator('.vi-phaser canvas')).toHaveCount(1);
   });
 

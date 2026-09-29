@@ -65,6 +65,9 @@ export class MainScene extends Phaser.Scene {
     if (!this.mapWidth || !this.input.manager.isOver) return;
 
     const pointer = this.input.activePointer;
+    // Phaser starts at (0, 0) with isOver=true before receiving pointer input.
+    // Do not mistake that initial state for hovering over the top-left edge.
+    if (!pointer.event) return;
     const { width, height } = this.scale;
     const x = pointer.x;
     const y = pointer.y;
