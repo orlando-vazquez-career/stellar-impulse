@@ -155,6 +155,22 @@ despliega un contrato nuevo, crea las cuatro clases y reescribe el registro. Las
 secretas nunca se escriben en el repositorio. Para producción, la clave del `minter`
 se entrega al servidor como variable de entorno.
 
+## Cliente TypeScript de cosméticos
+
+`@impulso/chain` expone el contrato desplegado para el cliente y el servidor:
+
+| Función | Uso |
+| --- | --- |
+| `ownedCosmetics(dirección)` | Piezas de una dirección (`tokens_of` + `class_of`), para el hangar. Solo lectura, sin wallet |
+| `ownsCosmeticClass(dirección, clase)` | Verificación de equipamiento (`has_class`) |
+| `buyCosmetic(dirección, clase)` | Compra primaria: prepara, pide la firma en Freighter, envía y espera confirmación |
+| `DEMO_COSMETICS`, `COSMETICS_TESTNET` | Catálogo de la demo e id del contrato, verificados contra `contracts/deployments/testnet.json` en tests |
+
+Las lecturas se hacen por simulación y nunca firman ni envían. Validado en testnet el
+29 de septiembre de 2026: lectura del inventario del jugador de prueba y una compra de
+Aurora Andina (token 3, tx `1338ea91…1607`) firmada con la cuenta de prueba en lugar de
+Freighter. La firma con la extensión real sigue pendiente de prueba manual.
+
 ## Plan del contrato de cosméticos para el MVP
 
 El MVP debe permitir crear clases, comprar, otorgar, consultar propiedad y
