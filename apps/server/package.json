@@ -10,12 +10,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@colyseus/core": "0.18.15",
+    "@colyseus/ws-transport": "0.18.2",
     "@impulso/input": "workspace:*",
     "@impulso/sim": "workspace:*",
     "@impulso/state": "workspace:*",
-    "@colyseus/core": "0.18.15",
-    "@colyseus/ws-transport": "0.18.2",
-    "tsx": "4.23.15",
-    "express": "5.2.1"
+    "express": "5.2.1",
+    "tsx": "4.23.15"
+  },
+  "devDependencies": {
+    "@colyseus/sdk": "0.18.3"
   }
 }

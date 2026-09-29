@@ -51,6 +51,6 @@ de apreciación o disponibilidad perpetua.
 | D02 | 36 h por integrante, presupuesto y fecha oficial | Hans + equipo / 23 sep |
 | D03 | Captura, empate, ingreso mínimo, energía y límite de flota | Diego + Yamil / 25 sep |
 | D04 | Canvas como baseline, renderer final, rutas, tick y portátil objetivo | Yamil + Ismael / 25 sep |
-| D05 | Permisos, SEP-10 y activo de pago testnet | Orlando / 25 sep |
+| D05 | Permisos, SEP-10 y activo de pago testnet. **Decidida el 25 sep:** SEP-10 completo y XLM nativo ([detalle](blockchain.md#decisión-d05-25-de-septiembre-de-2026)) | Orlando / 25 sep |
 | D06 | Reset, reroll y catálogo de tecnologías | Diego / 28 sep |
 | D07 | Retención de invitados y reclamación idempotente | Orlando + Hans / 2 oct |
