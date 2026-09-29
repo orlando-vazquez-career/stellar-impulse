@@ -1,0 +1,69 @@
+import { useMemo, useState, type CSSProperties } from 'react';
+import { useI18n } from '../i18n';
+import { Brand } from '../shared/Brand';
+import { LanguageToggle } from '../shared/LanguageToggle';
+import { cosmeticCatalog, itemsForCategory, type HangarCategory } from './catalog';
+import { loadCosmeticLoadout, saveCosmeticLoadout, type CosmeticLoadout } from './loadout';
+import './hangar.css';
+
+export function HangarScreen({ onBack }: { onBack(): void }) {
+  const { locale, t } = useI18n();
+  const [category, setCategory] = useState<HangarCategory>('hull');
+  const [loadout, setLoadout] = useState<CosmeticLoadout>(loadCosmeticLoadout);
+  const [saved, setSaved] = useState(false);
+
+  const equippedItems = useMemo(() => ({
+    hull: cosmeticCatalog.find((item) => item.id === loadout.hull)!,
+    trail: cosmeticCatalog.find((item) => item.id === loadout.trail)!,
+    insignia: cosmeticCatalog.find((item) => item.id === loadout.insignia)!,
+  }), [loadout]);
+  const categoryLabels: Record<HangarCategory, string> = { hull: t('hullFinish'), trail: t('engineTrail'), insignia: t('insignia') };
+  const previewStyle = {
+    '--hangar-hull': equippedItems.hull.tone,
+    '--hangar-trail': equippedItems.trail.tone,
+    '--hangar-insignia': equippedItems.insignia.tone,
+  } as CSSProperties;
+
+  const equip = (itemId: string) => {
+    setLoadout({ ...loadout, [category]: itemId });
+    setSaved(false);
+  };
+  const save = () => {
+    saveCosmeticLoadout(loadout);
+    setSaved(true);
+  };
+
+  return <main className="vi-hangar vi-screen">
+    <header className="vi-screen__header"><Brand /><div className="vi-header-actions"><LanguageToggle /><button className="vi-text-button" onClick={onBack}>← {t('backToCommand')}</button></div></header>
+    <section className="vi-hangar__content">
+      <div className="vi-hangar__heading"><div><p className="vi-eyebrow">{t('hangarEyebrow')}</p><h1>{t('hangarTitle')}</h1></div><div><p>{t('hangarBody')}</p><span><i />{t('cosmeticOnly')}</span></div></div>
+
+      <div className="vi-hangar__workspace">
+        <section className="vi-ship-preview" aria-labelledby="ship-preview-title" style={previewStyle}>
+          <header><div><span>{t('shipPreview')}</span><h2 id="ship-preview-title">{t('interceptorFrame')}</h2></div><b>AX-7</b></header>
+          <div className="vi-ship-stage" aria-hidden="true">
+            <div className="vi-ship-trail vi-ship-trail--left" /><div className="vi-ship-trail vi-ship-trail--right" />
+            <div className="vi-ship-model"><i className="vi-ship-model__wing vi-ship-model__wing--left" /><i className="vi-ship-model__body" /><i className="vi-ship-model__wing vi-ship-model__wing--right" /><span>△</span></div>
+            <div className="vi-ship-orbit" />
+          </div>
+          <div className="vi-loadout-summary"><strong>{t('currentLoadout')}</strong><div>{(['hull', 'trail', 'insignia'] as HangarCategory[]).map((slot) => <span key={slot}><small>{categoryLabels[slot]}</small><b>{equippedItems[slot].name[locale]}</b></span>)}</div><p>{t('previewHint')}</p></div>
+        </section>
+
+        <section className="vi-collection" aria-labelledby="collection-title">
+          <header><div><span>02</span><h2 id="collection-title">{t('collection')}</h2></div><small>{t('cosmeticOnly')}</small></header>
+          <nav aria-label={t('collection')}>{(['hull', 'trail', 'insignia'] as HangarCategory[]).map((item) => <button key={item} className={category === item ? 'is-active' : ''} onClick={() => setCategory(item)} aria-pressed={category === item}>{categoryLabels[item]}</button>)}</nav>
+          <div className="vi-cosmetic-grid">
+            {itemsForCategory(category).map((item) => {
+              const equipped = loadout[category] === item.id;
+              return <button key={item.id} className={`${equipped ? 'is-equipped' : ''} ${!item.unlocked ? 'is-locked' : ''}`} disabled={!item.unlocked} onClick={() => equip(item.id)}>
+                <i style={{ background: item.tone }} /><span><strong>{item.name[locale]}</strong><small>{item.description[locale]}</small></span><em>{!item.unlocked ? t('comingSoon') : equipped ? t('equipped') : t('available')}</em>
+              </button>;
+            })}
+          </div>
+          <div className="vi-collection__footer"><p>{t('cosmeticDisclaimer')}</p><div>{saved && <output>{t('loadoutSaved')}</output>}<button onClick={save}>{t('saveLoadout')}<span>→</span></button></div></div>
+        </section>
+      </div>
+    </section>
+    <footer className="vi-screen__footer"><span>IMPULSO // {t('hangar').toUpperCase()}</span><span>{t('cosmeticOnly').toUpperCase()}</span></footer>
+  </main>;
+}
