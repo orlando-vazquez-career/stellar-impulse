@@ -1,0 +1,52 @@
+import { useEffect, useState } from 'react';
+import { AccessScreen } from './access/AccessScreen';
+import { GameplayScreen } from './game/GameplayScreen';
+import { HangarScreen } from './hangar/HangarScreen';
+import { LanguageProvider, useI18n } from './i18n';
+import { PreparationLobby, type LobbyMode } from './lobby/PreparationLobby';
+import { CommandCenter } from './menu/CommandCenter';
+import { loadVisualPreferences, saveVisualPreferences } from './settings/preferences';
+import { SettingsScreen } from './settings/SettingsScreen';
+import { Brand } from './shared/Brand';
+import '@fontsource/inter/latin-400.css';
+import '@fontsource/inter/latin-600.css';
+import '@fontsource/rajdhani/latin-500.css';
+import '@fontsource/rajdhani/latin-600.css';
+import '@fontsource/rajdhani/latin-700.css';
+import './visual.css';
+
+type Screen = 'access' | 'command' | 'lobby' | 'hangar' | 'settings' | 'gameplay';
+
+function VisualPrototypeContent() {
+  const { t } = useI18n();
+  const [screen, setScreen] = useState<Screen>('access');
+  const [alias, setAlias] = useState('');
+  const [lobbyMode, setLobbyMode] = useState<LobbyMode>('create');
+  const [preferences, setPreferences] = useState(loadVisualPreferences);
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = 'Impulso Stellar · Interfaz visual';
+    return () => { document.title = previousTitle; };
+  }, []);
+
+  const accessibilityClasses = [
+    preferences.accessibility.highContrast && 'is-high-contrast',
+    preferences.accessibility.reducedMotion && 'is-reduced-motion',
+    preferences.accessibility.largeText && 'is-large-text',
+  ].filter(Boolean).join(' ');
+
+  return <div className={`visual-app ${accessibilityClasses}`} data-color-profile={preferences.accessibility.colorProfile}>
+    {screen === 'access' && <AccessScreen onContinue={(value) => { setAlias(value); setScreen('command'); }} />}
+    {screen === 'command' && <CommandCenter alias={alias} onCreateRoom={() => { setLobbyMode('create'); setScreen('lobby'); }} onJoinRoom={() => { setLobbyMode('join'); setScreen('lobby'); }} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => { setAlias(''); setScreen('access'); }} />}
+    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} onBack={() => setScreen('command')} onDeploy={() => setScreen('gameplay')} />}
+    {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} />}
+    {screen === 'settings' && <SettingsScreen preferences={preferences} onBack={() => setScreen('command')} onSave={(nextPreferences) => { saveVisualPreferences(nextPreferences); setPreferences(nextPreferences); }} />}
+    {screen === 'gameplay' && <GameplayScreen preferences={preferences} onLeave={() => setScreen('command')} />}
+    <div className="vi-resolution-warning" role="alert"><div><Brand /><h1>{t('resolutionWarningTitle')}</h1><p>{t('resolutionWarningBody')}</p></div></div>
+  </div>;
+}
+
+export default function VisualPrototypeApp() {
+  return <LanguageProvider><VisualPrototypeContent /></LanguageProvider>;
+}

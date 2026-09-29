@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState } from 'react';
+import { lazy, StrictMode, Suspense, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Client, type Room } from '@colyseus/sdk';
 import type { PlayerView } from '@impulso/state';
@@ -6,7 +6,9 @@ import { drawArena, pickCell } from '@impulso/render-2d';
 import { Status } from '@impulso/ui';
 import './style.css';
 
-function App() {
+const VisualPrototypeApp = lazy(() => import('./visual/VisualPrototypeApp'));
+
+function TrainingApp() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const room = useRef<Room | null>(null);
   const sequence = useRef(0);
@@ -99,4 +101,7 @@ function App() {
     </main><footer><span>Impulso Stellar · Base inicial v0.1</span><span>Cosméticos sin ventajas. Estrategia sin atajos.</span></footer>
   </div>;
 }
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
+const visualRoute = window.location.pathname === '/visual' || window.location.pathname.startsWith('/visual/');
+createRoot(document.getElementById('root')!).render(<StrictMode>{visualRoute
+  ? <Suspense fallback={<div className="visual-loading">Preparando centro de mando…</div>}><VisualPrototypeApp /></Suspense>
+  : <TrainingApp />}</StrictMode>);
