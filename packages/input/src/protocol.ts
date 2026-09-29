@@ -1,5 +1,6 @@
-/** Campaign protocol. Every client message travels in a versioned envelope; the server rejects other versions. */
+/** Versioned message envelopes; campaign uses v2 while v1 remains available to legacy consumers. */
 export const PROTOCOL_VERSION = 1;
+export const CAMPAIGN_PROTOCOL_VERSION = 2;
 
 export type EnvelopeResult =
   | { ok: true; body: unknown }
@@ -30,24 +31,40 @@ function plainFields(value: unknown): Record<string, unknown> | null {
 const onlyKeys = (fields: Record<string, unknown>, allowed: string[]): boolean =>
   Object.keys(fields).every((key) => allowed.includes(key));
 
-export function openEnvelope(value: unknown): EnvelopeResult {
+function openVersionedEnvelope(value: unknown, expectedVersion: number): EnvelopeResult {
   const fields = plainFields(value);
   if (!fields || !onlyKeys(fields, ['protocolVersion', 'body']) || !('body' in fields)) return { ok: false, reason: 'invalid_envelope' };
   const version = fields.protocolVersion;
   if (typeof version !== 'number' || !Number.isSafeInteger(version)) return { ok: false, reason: 'invalid_envelope' };
-  if (version !== PROTOCOL_VERSION) return { ok: false, reason: 'unsupported_version' };
+  if (version !== expectedVersion) return { ok: false, reason: 'unsupported_version' };
   return { ok: true, body: fields.body };
 }
 
-export function parseJoinOptions(value: unknown): JoinResult {
+export function openEnvelope(value: unknown): EnvelopeResult {
+  return openVersionedEnvelope(value, PROTOCOL_VERSION);
+}
+
+export function openCampaignEnvelope(value: unknown): EnvelopeResult {
+  return openVersionedEnvelope(value, CAMPAIGN_PROTOCOL_VERSION);
+}
+
+function parseVersionedJoinOptions(value: unknown, expectedVersion: number): JoinResult {
   const fields = plainFields(value);
   if (!fields) return { ok: false, reason: 'invalid_join' };
-  if (fields.protocolVersion !== PROTOCOL_VERSION) return { ok: false, reason: 'unsupported_version' };
+  if (fields.protocolVersion !== expectedVersion) return { ok: false, reason: 'unsupported_version' };
   if (!onlyKeys(fields, ['protocolVersion', 'name'])) return { ok: false, reason: 'invalid_join' };
   if (fields.name === undefined) return { ok: true, name: DEFAULT_NAME };
   if (typeof fields.name !== 'string') return { ok: false, reason: 'invalid_join' };
   const name = fields.name.trim();
   return NAME.test(name) ? { ok: true, name } : { ok: false, reason: 'invalid_join' };
+}
+
+export function parseJoinOptions(value: unknown): JoinResult {
+  return parseVersionedJoinOptions(value, PROTOCOL_VERSION);
+}
+
+export function parseCampaignJoinOptions(value: unknown): JoinResult {
+  return parseVersionedJoinOptions(value, CAMPAIGN_PROTOCOL_VERSION);
 }
 
 export function parseReady(body: unknown): boolean {
