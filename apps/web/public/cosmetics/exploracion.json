@@ -1,0 +1,16 @@
+{
+  "classId": 4,
+  "key": "exploracion",
+  "slot": "Emblem",
+  "family": "Merit",
+  "name": {
+    "es": "Exploración",
+    "en": "Exploration"
+  },
+  "description": {
+    "es": "Emblema de mérito por explorar un sector completo.",
+    "en": "Merit emblem for exploring a full sector."
+  },
+  "image": null,
+  "cosmeticOnly": true
+}

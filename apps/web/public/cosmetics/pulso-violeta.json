@@ -1,0 +1,16 @@
+{
+  "classId": 2,
+  "key": "pulso-violeta",
+  "slot": "Trail",
+  "family": "Collection",
+  "name": {
+    "es": "Pulso violeta",
+    "en": "Violet Pulse"
+  },
+  "description": {
+    "es": "Estela de colección con destellos violetas.",
+    "en": "Collection trail with violet flashes."
+  },
+  "image": null,
+  "cosmeticOnly": true
+}

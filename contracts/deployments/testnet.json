@@ -1,0 +1,69 @@
+{
+  "network": "testnet",
+  "passphrase": "Test SDF Network ; September 2015",
+  "contractId": "CCLRN6UTKQ7NLZTDSBDSPCEKQ5JBVEUYQUDF3FDBCXMWJ6E7HXYNHEKD",
+  "contractVersion": 3,
+  "wasmSha256": "bbc8102924c36d3f24e6bbf6c084084affc4ebe48cf9fa86c089b130019e175a",
+  "deployTx": "504e4b4b8c64771a1a264bf75a590f1f79611b6e5c47b7e55705d87430b3785b",
+  "commit": "844432208ca63b9548a904016458a426b0564026",
+  "deployedAt": "2026-09-29T20:45:41.118Z",
+  "paymentToken": {
+    "asset": "native XLM",
+    "sac": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+  },
+  "roles": {
+    "admin": "GBKNU5OIKQ4F6GYBSHLFYFXBVJ57BU5G7MSRP2UKWM3R5WSKB6Z3M5GQ",
+    "minter": "GAXANJBIBYU24Q6OJXXOK4XMB2UN7OSTKQNCQ3YORNUNDFFWKYUSRFLZ",
+    "treasury": "GBYQV67XYIRS4XLLEH5I7X6SOFQGHSDXTPQ4UHBUNYOVKEOVA3NTQ7GR"
+  },
+  "classes": [
+    {
+      "id": 1,
+      "key": "aurora-andina",
+      "slot": "Livery",
+      "family": "Collection",
+      "transferable": true,
+      "supplyCap": 0,
+      "priceStroops": "50000000"
+    },
+    {
+      "id": 2,
+      "key": "pulso-violeta",
+      "slot": "Trail",
+      "family": "Collection",
+      "transferable": true,
+      "supplyCap": 0,
+      "priceStroops": "30000000"
+    },
+    {
+      "id": 3,
+      "key": "primera-victoria",
+      "slot": "Emblem",
+      "family": "Merit",
+      "transferable": false,
+      "supplyCap": 0,
+      "priceStroops": "0"
+    },
+    {
+      "id": 4,
+      "key": "exploracion",
+      "slot": "Emblem",
+      "family": "Merit",
+      "transferable": false,
+      "supplyCap": 0,
+      "priceStroops": "0"
+    }
+  ],
+  "smoke": {
+    "player": "GDTADSZTQTR75MTDR5CNXSE2AAJFFLAZVYEIXGOJXIQLUV4DHCTBMR65",
+    "boughtToken": 1,
+    "grantedToken": 2,
+    "duplicateGrantRejected": true,
+    "tokensOf": [
+      2,
+      1
+    ],
+    "hasClass2": true
+  },
+  "explorer": "https://stellar.expert/explorer/testnet/contract/CCLRN6UTKQ7NLZTDSBDSPCEKQ5JBVEUYQUDF3FDBCXMWJ6E7HXYNHEKD"
+}

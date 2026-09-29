@@ -21,7 +21,8 @@
     "contracts:check": "node scripts/contracts.mjs check",
     "contracts:build": "node scripts/contracts.mjs build",
     "contracts:fmt": "node scripts/contracts.mjs fmt",
-    "chain:probe": "tsx scripts/probe-testnet.ts"
+    "chain:probe": "tsx scripts/probe-testnet.ts",
+    "contracts:deploy:testnet": "node scripts/deploy-testnet.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

@@ -113,7 +113,47 @@ Tomada por Orlando, responsable de D05.
 | Permisos de emisión | `admin` configura clases y precios. `minter` es la cuenta del servidor y la única que otorga premios. `treasury` solo recibe pagos. Las tres direcciones son distintas y cada cambio de rol se hace en dos pasos (`propose_role` y `accept_role`). La clave del `minter` vive solo en el servidor, como variable de entorno; nunca en el cliente ni en el repositorio. |
 | Autenticación | SEP-10 completo. El servidor de juego publica `/.well-known/stellar.toml` con `WEB_AUTH_ENDPOINT` y `SIGNING_KEY`, y genera el desafío con `buildChallengeTx` del módulo `webauth` de `@stellar/stellar-sdk`. El jugador firma con Freighter (`signTransaction`). El servidor valida con `readChallengeTx` y `verifyChallengeTxSigners` y entrega un token de sesión ligado a esa dirección. La clave que firma los desafíos es propia y distinta de los tres roles del contrato. Una dirección conectada sin desafío firmado nunca es una identidad. Se implementa en la tarjeta O07 (3–5 oct). |
 | Token de pago de prueba | XLM nativo, a través de su Stellar Asset Contract en testnet (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`). No requiere trustline y los fondos salen de Friendbot. Los precios se expresan en stroops (1 XLM = 10.000.000). |
-| Despliegue | Después de fusionar el contrato v3 (tarjeta O04). Se registran en este documento la red, el contrato, el hash WASM, la transacción, el commit y la fecha. |
+| Despliegue | Contrato v3 desplegado en testnet el 29 de septiembre de 2026 (tarjeta O04). Ver [Registro de despliegue](#registro-de-despliegue). |
+
+## Registro de despliegue
+
+| Campo | Valor |
+| --- | --- |
+| Red | Stellar Testnet (`Test SDF Network ; September 2015`) |
+| Contrato | [`CCLRN6UTKQ7NLZTDSBDSPCEKQ5JBVEUYQUDF3FDBCXMWJ6E7HXYNHEKD`](https://stellar.expert/explorer/testnet/contract/CCLRN6UTKQ7NLZTDSBDSPCEKQ5JBVEUYQUDF3FDBCXMWJ6E7HXYNHEKD) |
+| Versión | `version() = 3` |
+| WASM SHA-256 | `bbc8102924c36d3f24e6bbf6c084084affc4ebe48cf9fa86c089b130019e175a` (14.143 bytes) |
+| Commit | `8444322` |
+| Fecha | 29 de septiembre de 2026 |
+| Token de pago | XLM nativo vía SAC `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
+
+Catálogo de la demo creado en el despliegue (metadatos en `apps/web/public/cosmetics/`):
+
+| Clase | Pieza | Ranura | Familia | Precio |
+| --- | --- | --- | --- | --- |
+| 1 | Aurora Andina | Librea | Colección | 5 XLM |
+| 2 | Pulso violeta | Estela | Colección | 3 XLM |
+| 3 | Primera Victoria | Emblema | Mérito | Solo premio |
+| 4 | Exploración | Emblema | Mérito | Solo premio |
+
+Prueba en red (`--smoke`): una cuenta de jugador compró Pulso violeta (el treasury
+recibió 3 XLM), el minter otorgó Primera Victoria, un segundo `grant` con el mismo
+`reward_id` fue rechazado y una cuenta sin rol no pudo otorgar premios.
+El registro completo, con las direcciones públicas de los roles, está en
+`contracts/deployments/testnet.json`.
+
+Redespliegue (por ejemplo, tras un reinicio de testnet), con Stellar CLI 28.0.0:
+
+```bash
+pnpm contracts:build
+pnpm contracts:deploy:testnet -- --smoke
+```
+
+El script crea o reutiliza las identidades `impulso-admin`, `impulso-minter` y
+`impulso-treasury` en el almacén de claves local de Stellar CLI (fondeadas con Friendbot),
+despliega un contrato nuevo, crea las cuatro clases y reescribe el registro. Las claves
+secretas nunca se escriben en el repositorio. Para producción, la clave del `minter`
+se entrega al servidor como variable de entorno.
 
 ## Plan del contrato de cosméticos para el MVP
 
