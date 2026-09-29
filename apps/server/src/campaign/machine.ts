@@ -1,4 +1,8 @@
-import { applyCommand, createWorld, stepWorld, type CommandRejection, type PlayerId, type World } from '@impulso/sim';
+import {
+  applyBattlefieldCommand, createBattlefieldWorld, stepBattlefieldWorld,
+  type BattlefieldRejection, type BattlefieldWorld, type PlayerId,
+} from '@impulso/sim';
+import { campaignMapForSector } from '../map-catalog.js';
 
 /**
  * Campaign lifecycle: lobby → countdown → sector 1..N (with transitions) → results → closed.
@@ -19,10 +23,10 @@ export interface CampaignConfig {
   maxCampaignMs: number;
   /** Options offered after sector n are `techOffers[n - 1]`; the first one is the visible default. */
   techOffers: readonly (readonly string[])[];
-  createSector: (sector: number) => World;
+  createSector: (sector: number) => BattlefieldWorld;
 }
 
-/** The training world and these technology ids are placeholders until the sector templates and D06 land. */
+/** Technology ids remain placeholders until the sector templates and D06 land. */
 export const DEFAULT_CONFIG: Readonly<CampaignConfig> = Object.freeze({
   sectors: 3,
   countdownMs: 5_000,
@@ -34,7 +38,7 @@ export const DEFAULT_CONFIG: Readonly<CampaignConfig> = Object.freeze({
   sectorLimitTicks: 8 * 60 * 10,
   maxCampaignMs: 30 * 60_000,
   techOffers: [['interceptor-speed', 'frigate-shield', 'bomber-siege'], ['vision-range', 'field-repair', 'node-activation']],
-  createSector: () => createWorld(),
+  createSector: (sector: number) => createBattlefieldWorld(campaignMapForSector(sector)),
 });
 
 export interface Seat { name: string; ready: boolean; connected: boolean; pausesUsed: number; droppedAt: number | null }
@@ -46,7 +50,7 @@ export interface Campaign {
   sector: number;
   phaseEndsAt: number | null;
   seats: Record<PlayerId, Seat | null>;
-  world: World | null;
+  world: BattlefieldWorld | null;
   sectorResults: SectorResult[];
   techChoices: Record<PlayerId, string[]>;
   pendingTech: Record<PlayerId, string | null>;
@@ -105,14 +109,15 @@ export function ready(campaign: Campaign, player: PlayerId, now: number): void {
   }
 }
 
-export function command(campaign: Campaign, player: PlayerId, raw: unknown):
-  { accepted: true } | { accepted: false; reason: CommandRejection | 'not_in_sector' | 'paused' } {
-  if (campaign.phase !== 'sector' || !campaign.world) return { accepted: false, reason: 'not_in_sector' };
-  if (campaign.pause || campaign.resumeAt !== null) return { accepted: false, reason: 'paused' };
-  const result = applyCommand(campaign.world, player, raw);
-  if (!result.accepted) return { accepted: false, reason: result.reason };
+export function command(campaign: Campaign, player: PlayerId, raw: unknown, remainingExpansions = 32768):
+  { accepted: true; expansions: number } |
+  { accepted: false; reason: BattlefieldRejection | 'not_in_sector' | 'paused'; expansions: number } {
+  if (campaign.phase !== 'sector' || !campaign.world) return { accepted: false, reason: 'not_in_sector', expansions: 0 };
+  if (campaign.pause || campaign.resumeAt !== null) return { accepted: false, reason: 'paused', expansions: 0 };
+  const result = applyBattlefieldCommand(campaign.world, player, raw, remainingExpansions);
+  if (!result.accepted) return { accepted: false, reason: result.reason, expansions: result.expansions };
   campaign.world = result.world;
-  return { accepted: true };
+  return { accepted: true, expansions: result.expansions };
 }
 
 export function chooseTech(campaign: Campaign, player: PlayerId, techId: string):
@@ -130,18 +135,24 @@ export function tick(campaign: Campaign, now: number): void {
   }
   switch (campaign.phase) {
     case 'countdown':
-      if (now >= campaign.phaseEndsAt!) { campaign.startedAt = now; startSector(campaign, 1); }
+      if (now >= campaign.phaseEndsAt!) { campaign.startedAt = now; startSector(campaign, 1, now); }
       return;
     case 'sector': {
+      const expired = PLAYERS.find((player) => {
+        const seat = campaign.seats[player];
+        return seat && !seat.connected && seat.droppedAt !== null
+          && now >= seat.droppedAt + campaign.config.reconnectWindowMs;
+      });
+      if (expired) { forfeit(campaign, expired, now); return; }
       if (campaign.pause) { if (now >= campaign.pause.until) forfeit(campaign, campaign.pause.by, now); return; }
       if (campaign.resumeAt !== null) { if (now < campaign.resumeAt) return; campaign.resumeAt = null; }
-      const world = stepWorld(campaign.world!);
+      const world = stepBattlefieldWorld(campaign.world!);
       campaign.world = world;
       if (world.winner !== null || world.tick >= campaign.config.sectorLimitTicks) endSector(campaign, world.winner, now);
       return;
     }
     case 'transition':
-      if (now >= campaign.phaseEndsAt!) { commitTechnologies(campaign); startSector(campaign, campaign.sector + 1); }
+      if (now >= campaign.phaseEndsAt!) { commitTechnologies(campaign); startSector(campaign, campaign.sector + 1, now); }
       return;
     case 'results':
       if (now >= campaign.phaseEndsAt!) { campaign.phase = 'closed'; campaign.phaseEndsAt = null; }
@@ -158,19 +169,31 @@ export function drop(campaign: Campaign, player: PlayerId, now: number): void {
   seat.droppedAt = now;
   if (campaign.phase === 'countdown') { backToLobby(campaign); return; }
   if (campaign.phase === 'lobby') { seat.ready = false; return; }
-  if (campaign.phase === 'sector' && !campaign.pause) pauseFor(campaign, player, now);
+  if (campaign.phase === 'sector' && !campaign.pause) pauseFor(campaign, player, now, now);
 }
 
 export function reconnect(campaign: Campaign, player: PlayerId, now: number): void {
   const seat = campaign.seats[player];
   if (!seat) return;
+  if (!seat.connected && seat.droppedAt !== null && inCampaign(campaign)
+    && now >= seat.droppedAt + campaign.config.reconnectWindowMs) {
+    forfeit(campaign, player, now);
+    return;
+  }
   seat.connected = true;
   seat.droppedAt = null;
   if (campaign.pause?.by !== player) return;
   campaign.pause = null;
   const rival = rivalOf(player);
   const rivalSeat = campaign.seats[rival];
-  if (rivalSeat && !rivalSeat.connected && pauseFor(campaign, rival, rivalSeat.droppedAt ?? now)) return;
+  if (rivalSeat && !rivalSeat.connected) {
+    const droppedAt = rivalSeat.droppedAt ?? now;
+    if (now >= droppedAt + campaign.config.reconnectWindowMs) {
+      forfeit(campaign, rival, now);
+      return;
+    }
+    if (pauseFor(campaign, rival, droppedAt, now)) return;
+  }
   campaign.resumeAt = now + campaign.config.resumeCountdownMs;
 }
 
@@ -206,9 +229,10 @@ export function phaseView(campaign: Campaign, player: PlayerId, now: number): Ph
   };
 }
 
-function pauseFor(campaign: Campaign, player: PlayerId, droppedAt: number): boolean {
+function pauseFor(campaign: Campaign, player: PlayerId, droppedAt: number, now: number): boolean {
   const seat = campaign.seats[player]!;
-  if (seat.pausesUsed >= campaign.config.maxPausesPerPlayer) return false;
+  if (seat.pausesUsed >= campaign.config.maxPausesPerPlayer
+    || now >= droppedAt + campaign.config.reconnectWindowMs) return false;
   seat.pausesUsed += 1;
   campaign.pause = { by: player, until: droppedAt + campaign.config.reconnectWindowMs };
   campaign.resumeAt = null;
@@ -221,13 +245,22 @@ function backToLobby(campaign: Campaign): void {
   for (const player of PLAYERS) { const seat = campaign.seats[player]; if (seat) seat.ready = false; }
 }
 
-function startSector(campaign: Campaign, sector: number): void {
+function startSector(campaign: Campaign, sector: number, now: number): void {
   campaign.phase = 'sector';
   campaign.sector = sector;
   campaign.phaseEndsAt = null;
   campaign.world = campaign.config.createSector(sector);
   campaign.pendingTech = { p1: null, p2: null };
   campaign.resumeAt = null;
+  const absent = PLAYERS.filter((player) => campaign.seats[player] && !campaign.seats[player]!.connected)
+    .sort((left, right) => (campaign.seats[left]!.droppedAt ?? now) - (campaign.seats[right]!.droppedAt ?? now))[0];
+  if (!absent) return;
+  const deadline = (player: PlayerId): number =>
+    (campaign.seats[player]!.droppedAt ?? now) + campaign.config.reconnectWindowMs;
+  if (now >= deadline(absent)) { forfeit(campaign, absent, now); return; }
+  const pausable = [absent, ...PLAYERS.filter((player) => player !== absent && campaign.seats[player] && !campaign.seats[player]!.connected)]
+    .find((player) => campaign.seats[player]!.pausesUsed < campaign.config.maxPausesPerPlayer);
+  if (pausable) pauseFor(campaign, pausable, campaign.seats[pausable]!.droppedAt ?? now, now);
 }
 
 function endSector(campaign: Campaign, winner: PlayerId | null, now: number): void {

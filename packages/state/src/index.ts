@@ -63,3 +63,8 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     visibleCells, winner: world.winner,
   };
 }
+
+export { battlefieldViewFor, encodeBattlefieldMask, decodeBattlefieldMask } from './battlefield.js';
+export type {
+  BattlefieldView, BattlefieldMask, BattlefieldPublicPlayer, BattlefieldPublicSquad, BattlefieldOwnSquad,
+} from './battlefield.js';

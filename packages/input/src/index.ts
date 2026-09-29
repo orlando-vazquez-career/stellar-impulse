@@ -32,3 +32,4 @@ export function parseCommand(value: unknown): ParseResult {
 }
 
 export * from './protocol.js';
+export * from './battlefield.js';
