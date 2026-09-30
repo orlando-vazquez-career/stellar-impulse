@@ -8,7 +8,13 @@ describe('command boundary', () => {
     const source = { ...valid };
     const result = parseCommand(source);
     source.x = 9;
-    if (result.ok) expect(result.command.x).toBe(3);
+    if (result.ok && result.command.type === 'move') expect(result.command.x).toBe(3);
+  });
+  it('accepts an attack intention with an entity ID and no coordinates', () => {
+    const attack = { seq: 2, type: 'attack', squadId: 'p1-interceptor', targetId: 'p2-interceptor' };
+    expect(parseCommand(attack)).toEqual({ ok: true, command: attack });
+    expect(parseCommand({ ...attack, x: 3 })).toEqual({ ok: false, reason: 'invalid_command' });
+    expect(parseCommand({ ...attack, targetId: '../enemy' })).toEqual({ ok: false, reason: 'invalid_command' });
   });
   it.each([null, [], 'move', {}, { ...valid, seq: 0 }, { ...valid, seq: 1.5 },
     { ...valid, seq: Number.MAX_SAFE_INTEGER + 1 }, { ...valid, x: NaN },

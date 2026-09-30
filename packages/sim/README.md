@@ -2,12 +2,14 @@
 
 This package implements an initial **single-sector training scenario**, not the full campaign described in the product plan.
 
-- 12 by 12 empty logical grid, symmetric under reflection through the main diagonal.
-- Two players (`p1`, `p2`), one Interceptor squad each.
-- A guarded Metal node at (3, 3), a guarded core at (6, 6).
+- 20 by 20 logical grid with fixed impassable asteroids, symmetric under reflection through the main diagonal.
+- Two players (`p1`, `p2`), one Interceptor squad each, with bases at (2, 17) and (17, 2).
+- A guarded Metal node at (4, 4), a guarded core at (10, 10).
 - A pure 10 Hz tick. Positions, health, damage and progress use integers.
-- One orthogonal movement step every three ticks. This initial arena has no obstacles; movement resolves the x axis before the y axis.
+- Deterministic eight-way A* routes around fixed terrain without treating other ships as walls. The training protocol still accepts whole-cell destinations and advances one cell at a time. Interceptors move every three ticks; the other class cadences are derived from the public prototype stat catalog.
+- The four prototype classes are Explorer, Interceptor, Frigate and Bomber. Their numeric health, damage and speed values are provisional pending playtests. Explorers have wider vision and cannot attack or capture.
 - Automatic attacks within Manhattan distance one, once per second. All damage resolves simultaneously. Stable entity IDs break target ties.
+- Attack commands designate a visible enemy squad or active guardian. Units route around asteroids to reach attack range, then prioritize that target. A move command cancels the designated attack.
 - Guardians stay at their objective. The core guardian is protected until the core opens.
 - Capturing a Metal node takes 30 uncontested ticks after its guardian dies. It then generates one Metal per second. Production, repairs and fleet rebuilding are future work.
 - Training core opens at tick 200 (20 seconds), then requires 80 uncontested ticks (8 seconds), after the guardian dies.

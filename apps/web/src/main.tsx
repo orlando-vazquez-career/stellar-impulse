@@ -48,7 +48,7 @@ function TrainingApp() {
         setNotice('Sesión cerrada. Crea una nueva sala para volver a entrenar.');
       });
       connected.onError(() => setNotice('La conexión tuvo un error. Sal y crea otra sala.'));
-      setNotice('Selecciona tu escuadrón y pulsa un destino. El combate cercano es automático.');
+      setNotice('Selecciona con clic izquierdo. Clic derecho en suelo para mover o en un enemigo visible para atacar.');
     } catch { setNotice('No se pudo entrar. Verifica que el servidor esté activo y el código sea correcto.'); }
     finally { connecting.current = false; setBusy(false); }
   }
@@ -57,6 +57,11 @@ function TrainingApp() {
     if (x < 0 || x >= view.width || y < 0 || y >= view.height) return;
     room.current.send('command', { seq: ++sequence.current, type: 'move', squadId: selected, x, y });
     setNotice(`Orden enviada: moverse a ${x}, ${y}.`);
+  }
+  function attack(targetId: string) {
+    if (!room.current || !selected || !view || view.winner) return;
+    room.current.send('command', { seq: ++sequence.current, type: 'attack', squadId: selected, targetId });
+    setNotice(`Orden enviada: atacar ${targetId}.`);
   }
   async function queryChain(connect = false) {
     setChainBusy(true);
@@ -82,8 +87,9 @@ function TrainingApp() {
       <div className="command-bar"><span className="coordinate">Sector 00 / Órbita de preparación</span><div className="resources"><span>Metal <b>{view?.players[view.playerId].metal ?? 0}</b></span><span>Tiempo <b>{String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}</b></span></div></div>
       <div className="battle-layout">
         <section className="arena" aria-label="Mapa del sector">
-          <canvas ref={canvas} aria-label="Mapa isométrico. Usa también los botones de destino o las flechas con el mapa enfocado." tabIndex={view ? 0 : -1}
-            onClick={event => { const cell = pickCell(event.currentTarget, event.clientX, event.clientY); if (!cell || !view) return; const unit = view.squads.find(u => u.ownerId === view.playerId && u.x === cell.x && u.y === cell.y); if (unit) setSelected(unit.id); else move(cell.x, cell.y); }}
+          <canvas ref={canvas} aria-label="Mapa isométrico. Clic izquierdo para seleccionar; clic derecho para mover o atacar." tabIndex={view ? 0 : -1}
+            onClick={event => { const cell = pickCell(event.currentTarget, event.clientX, event.clientY, view?.width, view?.height); if (!cell || !view) return; const unit = view.squads.find(u => u.ownerId === view.playerId && u.x === cell.x && u.y === cell.y); if (unit) setSelected(unit.id); }}
+            onContextMenu={event => { event.preventDefault(); const cell = pickCell(event.currentTarget, event.clientX, event.clientY, view?.width, view?.height); if (!cell || !view) return; const enemy = view.squads.find(u => u.ownerId !== view.playerId && u.hp > 0 && u.x === cell.x && u.y === cell.y) ?? view.guardians.find(u => u.hp > 0 && u.x === cell.x && u.y === cell.y); if (enemy) attack(enemy.id); else move(cell.x, cell.y); }}
             onKeyDown={event => { if (!squad) return; const dirs: Record<string, [number, number]> = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }; const d = dirs[event.key]; if (d) { event.preventDefault(); move(squad.x + d[0], squad.y + d[1]); } }} />
           {!view && <div className="launch-overlay"><span className="launch-symbol" aria-hidden="true">⟐</span><h2>El centro espera.</h2><p>Entra sin wallet y dirige tu primer escuadrón.</p><button className="primary" disabled={busy} onClick={() => void enter()}>{busy ? 'Conectando…' : 'Crear entrenamiento'}</button><span>Servidor local · hasta dos asientos</span></div>}
           {view?.winner && <div className="result-overlay" role="status"><h2>{view.winner === view.playerId ? 'Núcleo asegurado' : 'El rival tomó el Núcleo'}</h2><p>Entrenamiento completado. La campaña de tres sectores está en desarrollo.</p><button className="primary" disabled={busy} onClick={() => void enter()}>Nuevo entrenamiento</button></div>}
@@ -91,7 +97,7 @@ function TrainingApp() {
         </section>
         <aside className="tactical-panel"><div className="panel-title"><h2>Plan de vuelo</h2><span>Entrenamiento</span></div>
           <ol className="objectives"><li><span>01</span><div><strong>Explora y toma Metal</strong><p>Acércate al nodo y derrota al guardián.</p></div></li><li><span>02</span><div><strong>Prepara la captura</strong><p>{view?.core.open ? 'El escudo está abierto. Elimina al guardián central.' : `El escudo se abre ${view ? 'en ' : 'a los '}${Math.ceil(remaining)} segundos.`}</p></div></li><li><span>03</span><div><strong>Defiende el Núcleo</strong><p>Mantén presencia exclusiva durante 8 segundos.</p></div></li></ol>
-          <div className="squad-panel"><h3>Escuadrón seleccionado</h3><strong>{squad ? 'Interceptor' : 'Esperando despliegue'}</strong><p>{squad ? `Integridad ${squad.hp}/${squad.maxHp} · Posición ${squad.x}, ${squad.y}` : 'Una flota pequeña. Una decisión a la vez.'}</p><div className="order-buttons"><button disabled={!squad || squad.hp <= 0 || !!view?.winner} onClick={() => move(3, 3)}>Ir al nodo</button><button disabled={!squad || squad.hp <= 0 || !!view?.winner} onClick={() => move(6, 6)}>Ir al Núcleo</button></div></div>
+          <div className="squad-panel"><h3>Escuadrón seleccionado</h3><strong>{squad ? { explorer: 'Explorador', interceptor: 'Interceptor', frigate: 'Fragata', bomber: 'Bombardero' }[squad.kind] : 'Esperando despliegue'}</strong><p>{squad ? `Integridad ${squad.hp}/${squad.maxHp} · Posición ${squad.x}, ${squad.y}` : 'Una flota pequeña. Una decisión a la vez.'}</p><div className="order-buttons"><button disabled={!squad || squad.hp <= 0 || !!view?.winner} onClick={() => move(4, 4)}>Ir al nodo</button><button disabled={!squad || squad.hp <= 0 || !!view?.winner} onClick={() => { if (view) move(view.core.x, view.core.y); }}>Ir al Núcleo</button></div></div>
           {view && <div className="capture"><label htmlFor="capture">Control del Núcleo</label><progress id="capture" value={view.core.progress[view.playerId]} max={view.rules.coreCaptureTicks}/></div>}
           <p className="notice" role="status">{notice}</p>
         </aside>

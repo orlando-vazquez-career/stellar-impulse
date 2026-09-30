@@ -24,23 +24,107 @@ describe('visual presentation adapter', () => {
     adapter.destroy();
   });
 
-  it('moves the selected allied squad through the route and rejects occupied destinations', () => {
+  it('moves the selected allied squad toward the exact destination and allows shared ship positions', () => {
     vi.useFakeTimers();
     const adapter = createMockGameplayAdapter();
-    adapter.dispatch({ type: 'set-action', action: 'move' });
-    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 35, y: 35 });
-    expect(adapter.getSnapshot().moveOrder?.route).toEqual([
-      { x: 32, y: 35 }, { x: 33, y: 35 }, { x: 34, y: 35 }, { x: 35, y: 35 },
-    ]);
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 47, y: 47 });
+    expect(adapter.getSnapshot().moveOrder?.route).toEqual([{ x: 44, y: 47 }, { x: 47, y: 47 }]);
     expect(adapter.getSnapshot().activeAction).toBeNull();
     adapter.dispatch({ type: 'set-action', action: 'move' });
-    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 33, y: 37 });
-    expect(adapter.getSnapshot().moveOrder?.destination).toEqual({ x: 35, y: 35 });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 45, y: 49 });
+    expect(adapter.getSnapshot().moveOrder?.destination).toEqual({ x: 45, y: 49 });
     adapter.dispatch({ type: 'move-squad', squadId: 'red-sigma', x: 50, y: 50 });
     expect(adapter.getSnapshot().moveOrder?.squadId).toBe('blue-alpha');
-    vi.advanceTimersByTime(720);
-    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')).toMatchObject({ gridX: 35, gridY: 35, status: 'idle' });
+    vi.advanceTimersByTime(750);
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')).toMatchObject({ gridX: 45, gridY: 49, status: 'idle' });
     expect(adapter.getSnapshot().moveOrder).toBeNull();
+    adapter.destroy();
+    vi.useRealTimers();
+  });
+
+  it('only accepts point-and-click orders for the selected visible ally', () => {
+    vi.useFakeTimers();
+    const adapter = createMockGameplayAdapter();
+    adapter.dispatch({ type: 'select-squad', squadId: 'red-sigma' });
+    expect(adapter.getSnapshot().selectedSquadId).toBe('blue-alpha');
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-beta', x: 47, y: 49 });
+    expect(adapter.getSnapshot().moveOrder).toBeNull();
+    adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-beta', x: 47, y: 49 });
+    expect(adapter.getSnapshot().moveOrder?.squadId).toBe('blue-beta');
+    adapter.dispatch({ type: 'select-squad', squadId: 'blue-alpha' });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 47, y: 47 });
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.status).toBe('moving');
+    expect(adapter.getSnapshot().moveOrder?.squadId).toBe('blue-alpha');
+    vi.advanceTimersByTime(50);
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.gridX).toBeCloseTo(45.15);
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')?.gridX).toBeCloseTo(44.2);
+    adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
+    expect(adapter.getSnapshot().moveOrder?.route[0]?.x).toBeCloseTo(45.15);
+    adapter.destroy();
+    vi.useRealTimers();
+  });
+
+  it('selects only living allies and issues movement and attack orders to the group', () => {
+    vi.useFakeTimers();
+    const adapter = createMockGameplayAdapter();
+    adapter.dispatch({ type: 'select-squads', squadIds: ['blue-alpha', 'blue-beta', 'red-sigma', 'blue-beta'] });
+    expect(adapter.getSnapshot().selectedSquadIds).toEqual(['blue-alpha', 'blue-beta']);
+    adapter.dispatch({ type: 'move-selected', x: 48, y: 52 });
+    const moving = adapter.getSnapshot().squads.filter((squad) => squad.selected);
+    expect(moving.map((squad) => squad.status)).toEqual(['moving', 'moving']);
+    vi.advanceTimersByTime(50);
+    const advanced = adapter.getSnapshot().squads.filter((squad) => squad.selected);
+    expect(advanced[0]!.gridX).toBeGreaterThan(44);
+    expect(advanced[1]!.gridX).toBeGreaterThan(45);
+    adapter.dispatch({ type: 'attack-selected', targetId: 'red-sigma' });
+    expect(adapter.getSnapshot().squads.filter((squad) => squad.selected).map((squad) => squad.attackTargetId))
+      .toEqual(['red-sigma', 'red-sigma']);
+    adapter.dispatch({ type: 'select-squads', squadIds: [] });
+    expect(adapter.getSnapshot().selectedSquadIds).toEqual([]);
+    expect(adapter.getSnapshot().selectedSquadId).toBeNull();
+    adapter.destroy();
+    vi.useRealTimers();
+  });
+
+  it('advances diagonally in both axes rather than taking cardinal steps', () => {
+    vi.useFakeTimers();
+    const adapter = createMockGameplayAdapter();
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 46.5, y: 49.25 });
+    expect(adapter.getSnapshot().moveOrder?.destination).toEqual({ x: 46.5, y: 49.25 });
+    vi.advanceTimersByTime(50);
+    const alpha = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha');
+    expect(alpha?.gridX).toBeGreaterThan(44);
+    expect(alpha?.gridY).toBeGreaterThan(47);
+    adapter.destroy();
+    vi.useRealTimers();
+  });
+  it('adds a slower selectable bomber and routes around asteroids', () => {
+    vi.useFakeTimers();
+    const adapter = createMockGameplayAdapter();
+    const gamma = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-gamma');
+    expect(gamma?.unitType).toBe('bomber');
+    adapter.dispatch({ type: 'select-squad', squadId: 'blue-gamma' });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-gamma', x: 50, y: 46 });
+    expect(adapter.getSnapshot().moveOrder).toBeNull();
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-gamma', x: 44, y: 50 });
+    vi.advanceTimersByTime(50);
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-gamma')?.gridX).toBeCloseTo(42.1);
+    adapter.destroy();
+    vi.useRealTimers();
+  });
+  it('chases and damages a selected visible enemy, then cancels on a move order', () => {
+    vi.useFakeTimers();
+    const adapter = createMockGameplayAdapter();
+    adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
+    adapter.dispatch({ type: 'attack-squad', squadId: 'blue-beta', targetId: 'blue-alpha' });
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.attackTargetId).toBeUndefined();
+    adapter.dispatch({ type: 'attack-squad', squadId: 'blue-beta', targetId: 'red-sigma' });
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.attackTargetId).toBe('red-sigma');
+    vi.advanceTimersByTime(6000);
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'red-sigma')!.healthPercent).toBeLessThan(68);
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-beta', x: 45, y: 49 });
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.attackTargetId).toBeNull();
     adapter.destroy();
     vi.useRealTimers();
   });

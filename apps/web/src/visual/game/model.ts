@@ -1,18 +1,21 @@
 export type SquadOwner = 'blue' | 'red' | 'neutral';
-export type SquadType = 'interceptor' | 'frigate';
+import type { UnitKind } from '@impulso/state';
+export type SquadType = UnitKind;
 
 export interface SquadViewModel {
   id: string;
   callSign: string;
   owner: SquadOwner;
   unitType: SquadType;
+  // Continuous map coordinates; integer values are tile centers.
   gridX: number;
   gridY: number;
   healthPercent: number;
+  attackTargetId?: string | null;
   selected: boolean;
   visible: boolean;
-  composition: { interceptors: number; frigates: number };
-  status: 'idle' | 'moving' | 'holding' | 'capturing';
+  composition: { interceptors: number; frigates: number; bombers?: number; explorers?: number };
+  status: 'idle' | 'moving' | 'holding' | 'capturing' | 'attacking' | 'destroyed';
 }
 
 export type CoreState =
@@ -50,6 +53,7 @@ export interface GameplayViewModel {
   sector: number;
   elapsedSeconds: number;
   selectedSquadId: string | null;
+  selectedSquadIds: string[];
   activeAction: GameplayAction;
   moveOrder: MoveOrder | null;
   resources: {
@@ -68,8 +72,12 @@ export interface GameplayViewModel {
 
 export type PresentationIntent =
   | { type: 'select-squad'; squadId: string }
+  | { type: 'select-squads'; squadIds: string[] }
   | { type: 'set-action'; action: GameplayAction }
   | { type: 'move-squad'; squadId: string; x: number; y: number }
+  | { type: 'move-selected'; x: number; y: number }
+  | { type: 'attack-squad'; squadId: string; targetId: string }
+  | { type: 'attack-selected'; targetId: string }
   | { type: 'set-core-state'; state: CoreState }
   | { type: 'set-core-progress'; progress: number }
   | { type: 'set-selected-health'; healthPercent: number }

@@ -1,11 +1,12 @@
-export const GRID_COLUMNS = 72;
-export const GRID_ROWS = 72;
+export const GRID_COLUMNS = 96;
+export const GRID_ROWS = 96;
 export const CELL_SIZE = 72;
 export const WORLD_WIDTH = GRID_COLUMNS * CELL_SIZE;
 export const WORLD_HEIGHT = GRID_ROWS * CELL_SIZE;
-export const CORE_CELL = { x: 36, y: 36 } as const;
+export const CORE_CELL = { x: 48, y: 48 } as const;
 
-export interface GridCell { x: number; y: number }
+export interface GridPoint { x: number; y: number }
+export interface GridCell extends GridPoint {} // Whole-number tile indices used by grid pathfinding.
 
 export function gridToWorld(x: number, y: number) {
   return { x: (x + 0.5) * CELL_SIZE, y: (y + 0.5) * CELL_SIZE };

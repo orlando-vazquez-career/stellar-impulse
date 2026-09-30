@@ -122,6 +122,75 @@ test.describe('visual interface foundation', () => {
     await page.getByRole('button', { name: 'Restablecer cámara' }).click();
     await expect.poll(() => camera.getAttribute('x')).toBe(initialCameraX);
     await expect(page.locator('.vi-phaser canvas')).toHaveCount(1);
+
+    const initialWidth = Number(await camera.getAttribute('width'));
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -350);
+    await expect.poll(async () => Number(await camera.getAttribute('width'))).toBeLessThan(initialWidth);
+    await page.getByRole('button', { name: 'Restablecer cámara' }).click();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const beforeDrag = await camera.getAttribute('x');
+    await page.mouse.down({ button: 'middle' });
+    await page.mouse.move(box.x + box.width / 2 - 160, box.y + box.height / 2, { steps: 5 });
+    await page.mouse.up({ button: 'middle' });
+    await expect.poll(() => camera.getAttribute('x')).not.toBe(beforeDrag);
+  });
+
+  test('selects with left click and moves with right click', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto('/visual');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
+
+    await page.mouse.click(491, 336, { button: 'right' });
+    await expect(page.getByRole('heading', { name: 'Escuadrón Alpha' })).toBeVisible();
+    await page.mouse.click(491, 336);
+    await expect(page.getByRole('heading', { name: 'Escuadrón Beta' })).toBeVisible();
+    const betaMarker = page.locator('.map-ally').nth(1);
+    const startingX = await betaMarker.getAttribute('cx');
+    const startingY = await betaMarker.getAttribute('cy');
+    await expect(page.getByRole('button', { name: 'Mover M' })).toHaveAttribute('aria-pressed', 'false');
+    await page.mouse.click(1100, 500);
+    await expect(page.locator('.map-move-route')).toHaveCount(0);
+    await expect(page.locator('.vi-squad')).toHaveCount(0);
+    await page.mouse.click(491, 336);
+    await page.mouse.click(1100, 500, { button: 'right' });
+    await expect(page.locator('.map-move-route')).toHaveCount(1);
+    await expect(page.getByText('En movimiento')).toBeVisible();
+    await expect.poll(() => betaMarker.getAttribute('cx')).not.toBe(startingX);
+    await expect.poll(() => betaMarker.getAttribute('cy')).not.toBe(startingY);
+    await page.mouse.click(1019, 456, { button: 'right' });
+    await expect(page.getByText('Atacando')).toBeVisible();
+    await expect(page.locator('.map-enemy')).toHaveCount(0, { timeout: 20000 });
+  });
+
+  test('selects several allied ships by dragging and orders them together', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto('/visual');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
+
+    await page.mouse.move(250, 210);
+    await page.mouse.down();
+    await page.mouse.move(590, 390, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByText('3 unidades seleccionadas')).toBeVisible();
+    const allies = page.locator('.map-ally');
+    const starts = await allies.evaluateAll((markers) => markers.map((marker) => marker.getAttribute('cx')));
+    await page.mouse.click(1100, 500, { button: 'right' });
+    await expect.poll(async () => allies.evaluateAll((markers) => markers.map((marker) => marker.getAttribute('cx'))))
+      .not.toEqual(starts);
+    await expect(page.getByText('3 unidades seleccionadas')).toBeVisible();
+    await page.mouse.click(1019, 456, { button: 'right' });
+    await expect(page.locator('.map-enemy')).toHaveCount(0, { timeout: 20000 });
   });
 
   test('shows the desktop-only warning below 1024 px', async ({ page }) => {
