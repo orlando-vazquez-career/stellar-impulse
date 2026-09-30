@@ -21,13 +21,18 @@ export function GameplayScreen({ preferences, onLeave }: { preferences: VisualPr
       const key = event.key === ' ' ? 'Space' : event.key === 'Escape' ? 'Esc' : event.key;
       if (key.toLowerCase() === preferences.controls.cancel.toLowerCase()) adapter.dispatch({ type: 'set-action', action: null });
       else if (key.toLowerCase() === preferences.controls.move.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'move' });
+      else if (key.toLowerCase() === preferences.controls.attack.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'attack' });
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [adapter, preferences.controls]);
   return <main className="vi-gameplay vi-screen">
     <Suspense fallback={<div className="vi-phaser" aria-busy="true" />}>
-      <PhaserBattlefield ref={battlefieldRef} onCameraChange={setCameraView} />
+      <PhaserBattlefield ref={battlefieldRef} view={view} controls={preferences.controls}
+        onSelectSquads={(squadIds) => adapter.dispatch({ type: 'select-squads', squadIds })}
+        onMoveSelected={(x, y) => adapter.dispatch({ type: 'move-selected', x, y })}
+        onAttackSelected={(targetId) => adapter.dispatch({ type: 'attack-selected', targetId })}
+        onCameraChange={setCameraView} />
     </Suspense>
     <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)} onResetCamera={() => battlefieldRef.current?.resetCamera()} onDevelopment={() => setDevelopmentOpen(true)} onLeave={onLeave} />
     {developmentOpen && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}

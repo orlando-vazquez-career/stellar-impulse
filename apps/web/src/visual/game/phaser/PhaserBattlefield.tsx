@@ -1,7 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import Phaser from 'phaser';
 import { useI18n } from '../../i18n';
-import type { CameraView } from '../model';
+import type { VisualPreferences } from '../../settings/preferences';
+import type { CameraView, GameplayViewModel } from '../model';
 import { MainScene } from './MainScene';
 
 export interface PhaserBattlefieldHandle {
@@ -9,7 +10,16 @@ export interface PhaserBattlefieldHandle {
   centerOnCell(x: number, y: number): void;
 }
 
-export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, { onCameraChange(view: CameraView): void }>(function PhaserBattlefield({ onCameraChange }, forwardedRef) {
+interface PhaserBattlefieldProps {
+  view: GameplayViewModel;
+  controls: VisualPreferences['controls'];
+  onSelectSquads(ids: string[]): void;
+  onMoveSelected(x: number, y: number): void;
+  onAttackSelected(targetId: string): void;
+  onCameraChange(view: CameraView): void;
+}
+
+export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattlefieldProps>(function PhaserBattlefield({ view, controls, onSelectSquads, onMoveSelected, onAttackSelected, onCameraChange }, forwardedRef) {
   const { t } = useI18n();
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -17,6 +27,18 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, { onCameraC
   const [loadError, setLoadError] = useState<string | null>(null);
   const cameraCallbackRef = useRef(onCameraChange);
   cameraCallbackRef.current = onCameraChange;
+  const selectCallbackRef = useRef(onSelectSquads);
+  selectCallbackRef.current = onSelectSquads;
+  const moveCallbackRef = useRef(onMoveSelected);
+  moveCallbackRef.current = onMoveSelected;
+  const attackCallbackRef = useRef(onAttackSelected);
+  attackCallbackRef.current = onAttackSelected;
+  const snapshotRef = useRef(view);
+  snapshotRef.current = view;
+  const controlsRef = useRef(controls);
+  controlsRef.current = controls;
+
+  useEffect(() => { sceneRef.current?.sync(view); }, [view]);
 
   useImperativeHandle(forwardedRef, () => ({
     resetCamera: () => sceneRef.current?.resetCamera(),
@@ -28,6 +50,10 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, { onCameraC
     if (!host || gameRef.current) return;
     let disposed = false;
     const scene = new MainScene(
+      snapshotRef.current,
+      (ids) => { if (!disposed) selectCallbackRef.current(ids); },
+      (x, y) => { if (!disposed) moveCallbackRef.current(x, y); },
+      (targetId) => { if (!disposed) attackCallbackRef.current(targetId); },
       (cameraView) => { if (!disposed) cameraCallbackRef.current(cameraView); },
       () => {
         if (disposed) return;
@@ -35,6 +61,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, { onCameraC
         host.parentElement?.setAttribute('data-ready', 'true');
       },
       (message) => { if (!disposed) setLoadError(message); },
+      (key) => Object.values(controlsRef.current).some((binding) => binding.toUpperCase() === key),
     );
     sceneRef.current = scene;
     const game = new Phaser.Game({

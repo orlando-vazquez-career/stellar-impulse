@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createWorld } from '@impulso/sim';
+import { createSquad, createWorld } from '@impulso/sim';
 import { viewFor } from './index.js';
 
 describe('per-player visibility boundary', () => {
@@ -19,11 +19,13 @@ describe('per-player visibility boundary', () => {
   });
   it('reveals enemies in vision but never reveals their intended destination', () => {
     const world = createWorld();
-    Object.assign(world.squads[1]!, { x: 2, y: 10, target: { x: 11, y: 11 } });
+    Object.assign(world.squads[1]!, { x: 3, y: 17, target: { x: 19, y: 19 }, attackTargetId: 'scout' });
     const view = viewFor(world, 'p1');
     expect(view.squads).toHaveLength(2);
     expect(view.squads[1]).not.toHaveProperty('target');
+    expect(view.squads[1]).not.toHaveProperty('attackTargetId');
     expect(view.squads[0]).toHaveProperty('target', null);
+    expect(view.squads[0]).toHaveProperty('attackTargetId', null);
   });
   it('returns detached snapshots and symmetric initial visible areas', () => {
     const world = createWorld();
@@ -32,10 +34,17 @@ describe('per-player visibility boundary', () => {
     view.rules.visionRadius = 99;
     view.squads[0]!.hp = 0;
     view.players.p1.base.x = 11;
+    view.obstacles[0]!.x = 0;
     expect(world.core.progress.p1).toBe(0);
     expect(world.rules.visionRadius).toBe(4);
     expect(world.squads[0]!.hp).toBe(120);
-    expect(world.players.p1.base.x).toBe(1);
+    expect(world.players.p1.base.x).toBe(2);
+    expect(world.obstacles[0]!.x).toBe(4);
     expect(viewFor(world, 'p1').visibleCells.length).toBe(viewFor(world, 'p2').visibleCells.length);
+  });
+  it('extends vision for an explorer without exposing rival orders', () => {
+    const world = createWorld();
+    world.squads.push(createSquad('scout', 'p1', 'explorer', { x: 4, y: 10 }));
+    expect(viewFor(world, 'p1').visibleCells).toContainEqual({ x: 10, y: 10 });
   });
 });

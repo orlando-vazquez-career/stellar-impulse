@@ -1,8 +1,11 @@
-import { distance, type Guardian, type PlayerId, type Position, type ResourceNode, type Rules, type Squad, type World } from '@impulso/sim';
+import { distance, UNIT_STATS, type Guardian, type PlayerId, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
+export { UNIT_STATS, damageAgainst, findPath } from '@impulso/sim';
+export type { UnitKind } from '@impulso/sim';
 
-export interface VisibleSquad extends Omit<Squad, 'target'> {
+export interface VisibleSquad extends Omit<Squad, 'target' | 'attackTargetId'> {
   /** Rival destinations remain private even while their units are visible. */
   target?: Position | null;
+  attackTargetId?: string | null;
 }
 export interface PlayerView {
   schemaVersion: 1;
@@ -11,6 +14,7 @@ export interface PlayerView {
   playerId: PlayerId;
   width: number;
   height: number;
+  obstacles: Position[];
   rules: Rules;
   players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number }>;
   squads: VisibleSquad[];
@@ -23,8 +27,12 @@ export interface PlayerView {
 /** Fresh whitelist snapshot. Never send the authoritative world to a player. */
 export function viewFor(world: World, playerId: PlayerId): PlayerView {
   if (playerId !== 'p1' && playerId !== 'p2') throw new Error('Unknown player');
-  const sources: Position[] = [world.players[playerId].base, ...world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0)];
-  const visible = (position: Position): boolean => sources.some((source) => distance(source, position) <= world.rules.visionRadius);
+  const sources: { position: Position; bonus: number }[] = [
+    { position: world.players[playerId].base, bonus: 0 },
+    ...world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0)
+      .map((unit) => ({ position: unit, bonus: UNIT_STATS[unit.kind as UnitKind].visionBonus })),
+  ];
+  const visible = (position: Position): boolean => sources.some((source) => distance(source.position, position) <= world.rules.visionRadius + source.bonus);
   const visibleCells: Position[] = [];
   for (let y = 0; y < world.height; y += 1) {
     for (let x = 0; x < world.width; x += 1) if (visible({ x, y })) visibleCells.push({ x, y });
@@ -36,15 +44,15 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
   players[playerId].metal = world.players[playerId].metal;
   return {
     schemaVersion: 1, mode: 'training', tick: world.tick, playerId,
-    width: world.width, height: world.height, rules: { ...world.rules }, players,
+    width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })), rules: { ...world.rules }, players,
     squads: world.squads.filter((unit) => unit.ownerId === playerId || (unit.hp > 0 && visible(unit))).map((unit) => {
-      const { target } = unit;
+      const { target, attackTargetId } = unit;
       const publicUnit = {
         id: unit.id, ownerId: unit.ownerId, kind: unit.kind,
         x: unit.x, y: unit.y, hp: unit.hp, maxHp: unit.maxHp, damage: unit.damage,
       };
       return unit.ownerId === playerId
-        ? { ...publicUnit, target: target ? { ...target } : null }
+        ? { ...publicUnit, target: target ? { ...target } : null, attackTargetId }
         : publicUnit;
     }),
     guardians: world.guardians.filter(visible).map((unit) => ({

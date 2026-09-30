@@ -1,4 +1,4 @@
-import type { CaptureObjective, Core, Guardian, PlayerId, Rules, Squad } from '../index.js';
+import { UNIT_STATS, damageAgainst, type CaptureObjective, type Core, type Guardian, type PlayerId, type Rules, type Squad } from '../index.js';
 import { createSpatialIndex, type SpatialIndex } from './spatial-index.js';
 
 /** Structural mechanics shared by training and battlefield without changing either world type. */
@@ -29,7 +29,8 @@ export interface CaptureContext {
 export function captureContext(world: MechanicsWorld): CaptureContext {
   return {
     index: squadIndex(world),
-    owners: new Map(world.squads.filter((unit) => unit.hp > 0).map((unit) => [unit.id, unit.ownerId])),
+    owners: new Map(world.squads.filter((unit) => unit.hp > 0 && UNIT_STATS[unit.kind].canCapture)
+      .map((unit) => [unit.id, unit.ownerId])),
     liveGuardians: new Set(world.guardians.filter((unit) => unit.hp > 0).map((unit) => unit.id)),
   };
 }
@@ -45,10 +46,12 @@ export function resolveCombat(world: MechanicsWorld): void {
   const hits = new Map<string, number>();
   const hit = (id: string, damage: number): void => { hits.set(id, (hits.get(id) ?? 0) + damage); };
   for (const squad of squads) {
-    const target = index.queryManhattan(squad, 1)
+    if (UNIT_STATS[squad.kind].damage <= 0) continue;
+    const inRange = index.queryManhattan(squad, 1)
       .map((point) => byId.get(point.id)!)
-      .find((unit) => unit.id !== squad.id && (!('ownerId' in unit) || unit.ownerId !== squad.ownerId));
-    if (target) hit(target.id, squad.damage);
+      .filter((unit) => unit.id !== squad.id && (!('ownerId' in unit) || unit.ownerId !== squad.ownerId));
+    const target = inRange.find((unit) => unit.id === squad.attackTargetId) ?? inRange[0];
+    if (target) hit(target.id, 'kind' in target ? damageAgainst(squad.kind, target.kind, squad.damage) : squad.damage);
   }
   for (const guardian of guardians) {
     const target = index.queryManhattan(guardian, 1)

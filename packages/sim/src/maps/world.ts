@@ -6,7 +6,7 @@ import { findPath } from './pathfinding.js';
 import { defineMapSpec, type MapCell, type MapSpec } from './types.js';
 import { computeVisibility, MAX_VISIBILITY_RADIUS, unionExplored } from './visibility.js';
 
-export interface BattlefieldSquad extends Squad { route: MapCell[] }
+export interface BattlefieldSquad extends Squad { kind: 'interceptor'; route: MapCell[] }
 
 /** Separate schema: the legacy training World remains untouched. */
 export interface BattlefieldWorld {
@@ -70,7 +70,7 @@ export function createBattlefieldWorldInternal(mapInput: MapSpec, rules: Rules):
   const squads: BattlefieldSquad[] = PLAYERS.map((player) => ({
     id: `${player}-interceptor`, ownerId: player, kind: 'interceptor',
     x: players[player].base.x, y: players[player].base.y,
-    hp: 120, maxHp: 120, damage: 12, target: null, route: [],
+    hp: 120, maxHp: 120, damage: 12, target: null, attackTargetId: null, route: [],
   }));
   const guardians: Guardian[] = map.objectives.map((objective) => ({
     id: objective.guardianId, objectiveId: objective.id,

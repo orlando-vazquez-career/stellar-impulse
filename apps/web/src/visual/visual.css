@@ -250,6 +250,11 @@
 .vi-squad__identity h2 { font-family: var(--vi-display); font-size: 18px; line-height: 1; }
 .vi-squad__identity p { margin-top: 5px; color: var(--vi-muted); font-size: 12px; }
 .vi-squad__composition { display: grid; gap: 3px; color: var(--vi-muted); font-size: 12px; }
+.vi-squad__group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 10px; }
+.vi-squad__group-unit { min-width: 0; padding: 8px; display: grid; gap: 3px; border: 1px solid var(--vi-border); background: var(--vi-surface-raised); }
+.vi-squad__group-unit strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vi-display); }
+.vi-squad__group-unit span { color: var(--vi-muted); font-size: 11px; }
+.vi-squad__group-unit progress { width: 100%; height: 5px; accent-color: var(--vi-success); }
 .vi-health > div { display: flex; justify-content: space-between; color: var(--vi-muted); font-size: 12px; }
 .vi-health strong { color: var(--vi-text); }
 .vi-health progress { width: 100%; height: 5px; margin-top: 7px; display: block; border: 0; accent-color: var(--vi-success); }
