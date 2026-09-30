@@ -1,6 +1,6 @@
-# Estado del repositorio inicial
+# Estado del repositorio
 
-Fecha: 22 de septiembre de 2026. Versión: 0.1.0.
+Actualizado: 29 de septiembre de 2026. Base de producto: 0.1.0.
 
 ## Implementado
 
@@ -11,24 +11,26 @@ Consulta real de testnet, adapter Freighter y contrato Soroban `cosmetics` v2 (N
 premios idempotentes y aprobaciones), todavía sin desplegar.
 Plan de producto, arquitectura, estrategia y táctica en español; licencia MIT.
 
-Desde el 25 de septiembre: sala `campaign` en el servidor, con lobby de dos asientos, «listo»,
-cuenta atrás, tres sectores con reinicio, transiciones con elección de tecnología, resultados,
-protocolo versionado y reconexión con pausa de 60 s. Está probada con tests unitarios y de
-integración contra un servidor real ([protocolo](protocol.md)). El cliente web todavía usa la
-sala de entrenamiento, y los sectores usan el mundo de entrenamiento hasta que existan sus plantillas.
+### Backend de campaña (29 de septiembre de 2026)
+
+Backend actualizado el 29 de septiembre: campaign usa protocolo v2 y un mundo autoritativo de cuadrícula ortogonal de 72 × 72. Incluye rutas A* deterministas para órdenes de hasta 16 escuadrones, resolución local de ocupación, visibilidad y exploración por jugador, metadata pública del mapa y reconexión con plazo y pausas limitadas. La sala training conserva su API y mundo legacy. Consulta [protocolo](protocol.md) y [mapas](map-backend.md).
 
 ## Límites
 
-No campaña completa, bots, reconexión, producción de flotas, Energía, tecnologías,
-PostgreSQL, SEP-10, compra, premios ni inventario equipado. Sin contrato desplegado.
-Sin mainnet ni sitio publicado. Las salas solo son desarrollo local, se destruyen al
-reiniciar y caducan a15min; un asiento abandonado no puede recuperarse.
+El gameplay de campaña todavía no está completo: el preset está abierto, los tres sectores lo reutilizan, las tecnologías son placeholders y el cliente web aún no integra la vista de campaña. Siguen pendientes bots, producción de flotas, Energía, tecnologías jugables, PostgreSQL, SEP-10, compra, premios e inventario equipado. No hay contrato desplegado, mainnet ni sitio publicado.
+
+Las salas son efímeras de desarrollo. campaign reserva un asiento desconectado hasta 60 s desde la caída original, con hasta dos pausas por jugador; training no ofrece reconexión. Los lobbies de campaña sin empezar caducan a los 15 minutos.
 
 No se ha aprobado interactivamente Freighter ni ejecutado prueba nativa macOS.
 Los tests del adapter no equivalen a una firma o conexión humana real.
 El brief es un diseño, no un reporte de funciones existentes.
 
-## Verificación local del bootstrap
+## Validación local del backend de mapas (29 de septiembre de 2026)
+
+- pnpm check: 174 tests en 23 archivos; límites entre paquetes, árbol público, tipos y build correctos.
+- CI=1 pnpm test:e2e: 9 pruebas E2E pasaron.
+
+## Verificación histórica del bootstrap (22 de septiembre de 2026)
 
 - Node 24.19.0 y pnpm 11.25.0 en Windows: instalación con lockfile, límites entre
   paquetes, higiene pública, tipos, **37 tests TypeScript** y build web correctos.

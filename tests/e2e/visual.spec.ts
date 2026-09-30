@@ -23,6 +23,8 @@ test.describe('visual interface foundation', () => {
     await expect(page.getByLabel('HUD táctico')).toBeVisible();
     await expect(page.getByText('Acciones', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Cancelar Esc' })).toBeDisabled();
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
+    await page.screenshot({ path: 'test-results/visual-sector.png' });
   });
 
   test('keeps HUD modules inside 1366×768 without overlap', async ({ page }) => {
@@ -97,6 +99,8 @@ test.describe('visual interface foundation', () => {
   });
 
   test('loads one Phaser canvas and pans at the edge without clicking', async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
     await page.setViewportSize({ width: 1366, height: 768 });
     await page.goto('/visual');
     await page.getByLabel('Identificador de comandante').fill('Vega');
@@ -147,6 +151,36 @@ test.describe('visual interface foundation', () => {
     await page.mouse.move(box.x + box.width / 2 - 160, box.y + box.height / 2, { steps: 5 });
     await page.mouse.up({ button: 'middle' });
     await expect.poll(() => camera.getAttribute('x')).not.toBe(beforeDrag);
+    expect(consoleErrors).toEqual([]);
+  });
+
+  test('activates the attack shortcut without moving the camera', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto('/visual');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
+    await page.mouse.move(680, 400);
+    const camera = page.locator('.map-camera');
+    const initialX = await camera.getAttribute('x');
+    await page.keyboard.down('a');
+    await expect(page.getByRole('button', { name: 'Atacar A' })).toHaveAttribute('aria-pressed', 'true');
+    const positions = await camera.evaluate(async (element) => {
+      const positions: (string | null)[] = [];
+      for (let frame = 0; frame < 12; frame++) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        positions.push(element.getAttribute('x'));
+      }
+      return [...new Set(positions)];
+    });
+    await page.keyboard.up('a');
+    expect(positions).toEqual([initialX]);
+    await page.keyboard.down('ArrowLeft');
+    await expect.poll(() => camera.getAttribute('x')).not.toBe(initialX);
+    await page.keyboard.up('ArrowLeft');
   });
 
   test('selects with left click and moves with right click', async ({ page }) => {

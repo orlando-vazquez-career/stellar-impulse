@@ -28,7 +28,7 @@ export function GameplayScreen({ preferences, onLeave }: { preferences: VisualPr
   }, [adapter, preferences.controls]);
   return <main className="vi-gameplay vi-screen">
     <Suspense fallback={<div className="vi-phaser" aria-busy="true" />}>
-      <PhaserBattlefield ref={battlefieldRef} view={view}
+      <PhaserBattlefield ref={battlefieldRef} view={view} controls={preferences.controls}
         onSelectSquads={(squadIds) => adapter.dispatch({ type: 'select-squads', squadIds })}
         onMoveSelected={(x, y) => adapter.dispatch({ type: 'move-selected', x, y })}
         onAttackSelected={(targetId) => adapter.dispatch({ type: 'attack-selected', targetId })}

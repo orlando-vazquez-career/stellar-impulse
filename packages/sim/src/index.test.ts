@@ -167,6 +167,28 @@ describe('deterministic integer simulation', () => {
     expect(explored.nodes[0]!.progress.p1).toBe(0);
     expect(explored.squads[0]!.damage).toBe(0);
   });
+  it('prioritizes an explicit attack target over the default ID tie-break', () => {
+    const world = createWorld();
+    world.tick = 9;
+    Object.assign(world.squads[0]!, { x: 2, y: 10 });
+    world.squads[1] = createSquad('a-enemy', 'p2', 'interceptor', { x: 1, y: 10 });
+    world.squads.push(createSquad('z-enemy', 'p2', 'interceptor', { x: 3, y: 10 }));
+    const ordered = applyCommand(world, 'p1', {
+      seq: 1, type: 'attack', squadId: 'p1-interceptor', targetId: 'z-enemy',
+    });
+    expect(ordered.accepted).toBe(true);
+    const fought = stepWorld(ordered.world);
+    expect(fought.squads.find((unit) => unit.id === 'a-enemy')!.hp).toBe(120);
+    expect(fought.squads.find((unit) => unit.id === 'z-enemy')!.hp).toBe(108);
+  });
+  it('does not let an enemy explorer contest resource capture', () => {
+    const world = createWorld();
+    world.guardians[0]!.hp = 0;
+    Object.assign(world.squads[0]!, { x: 4, y: 4 });
+    world.squads[1] = createSquad('scout', 'p2', 'explorer', { x: 4, y: 5 });
+    const captured = stepWorld(world);
+    expect(captured.nodes[0]!.progress).toEqual({ p1: 1, p2: 0 });
+  });
   it('applies lethal attacks simultaneously, independently of array order', () => {
     const world = createWorld();
     world.tick = 9;

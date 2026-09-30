@@ -1,12 +1,17 @@
 import { Room, ServerError, type Client } from '@colyseus/core';
-import { openEnvelope, parseJoinOptions, parseReady, parseTechChoice, PROTOCOL_VERSION } from '@impulso/input';
+import {
+  CAMPAIGN_PROTOCOL_VERSION, openCampaignEnvelope, parseBattlefieldCommand,
+  parseCampaignJoinOptions, parseReady, parseTechChoice,
+} from '@impulso/input';
 import type { PlayerId } from '@impulso/sim';
-import { viewFor } from '@impulso/state';
+import { battlefieldViewFor } from '@impulso/state';
 import * as campaigns from './campaign/machine';
+import { publicMapMetadata } from './map-catalog';
 
 const TICK_MS = 100;
 const LOBBY_TIMEOUT_MS = 15 * 60_000;
-const COMMANDS_PER_SECOND = 20;
+const SQUAD_ACTIONS_PER_SECOND = 32;
+const SEARCH_EXPANSIONS_PER_TICK = 32768;
 
 /** Colyseus adapter for the campaign machine: admission, messages, reconnection and per-player views. */
 export class CampaignRoom extends Room {
@@ -16,7 +21,10 @@ export class CampaignRoom extends Room {
   protected overrides: Partial<campaigns.CampaignConfig> = {};
   private campaign!: campaigns.Campaign;
   private seats = new Map<string, PlayerId>();
-  private rates = new Map<string, { second: number; count: number }>();
+  private rates = new Map<PlayerId, { second: number; count: number }>();
+  private remainingExpansions = SEARCH_EXPANSIONS_PER_TICK;
+  private budgetSector = -1;
+  private budgetTick = -1;
   private ticks = 0;
   private announcedEnd = false;
 
@@ -36,9 +44,12 @@ export class CampaignRoom extends Room {
       this.sendPhase();
     }));
     this.onMessage('command', (client, message) => this.withEnvelope(client, message, (player, body) => {
-      if (!this.withinRate(client)) return this.reject(client, 'rate_limit');
-      const result = campaigns.command(this.campaign, player, body);
+      const parsed = parseBattlefieldCommand(body);
+      const cost = parsed.ok ? parsed.command.squadIds.length : 1;
+      if (!this.withinRate(player, cost)) return this.reject(client, 'rate_limit');
+      const result = this.runCommand(player, body);
       if (!result.accepted) this.reject(client, result.reason);
+      else if (parsed.ok) client.send('ack', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, seq: parsed.command.seq });
     }));
     this.setSimulationInterval(() => this.step(), TICK_MS);
     this.clock.setTimeout(() => {
@@ -48,7 +59,7 @@ export class CampaignRoom extends Room {
 
   /** Admission: the client must speak this protocol version. A wallet is never an identity here. */
   onAuth(_client: Client, options: unknown) {
-    const parsed = parseJoinOptions(options);
+    const parsed = parseCampaignJoinOptions(options);
     if (!parsed.ok) throw new ServerError(4002, parsed.reason);
     return { name: parsed.name };
   }
@@ -70,7 +81,7 @@ export class CampaignRoom extends Room {
     campaigns.drop(this.campaign, player, now);
     void this.allowReconnection(client, Math.ceil(this.campaign.config.reconnectWindowMs / 1000));
     if (this.campaign.pause?.by === player) {
-      this.broadcast('paused', { protocolVersion: PROTOCOL_VERSION, by: player, remainingMs: this.campaign.pause.until - now });
+      this.broadcast('paused', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, by: player, remainingMs: this.campaign.pause.until - now });
     }
     this.sendPhase(now);
   }
@@ -79,14 +90,16 @@ export class CampaignRoom extends Room {
     const player = this.seats.get(client.sessionId);
     if (!player) return;
     campaigns.reconnect(this.campaign, player, Date.now());
-    if (this.campaign.world) client.send('view', viewFor(this.campaign.world, player));
+    if (this.campaign.phase === 'sector' && this.campaign.world) {
+      this.sendMap(client);
+      client.send('view', battlefieldViewFor(this.campaign.world, player));
+    }
     this.sendPhase();
   }
 
   /** Consented exit or expired reconnection window. A seat never passes to a stranger mid-campaign. */
   onLeave(client: Client) {
     const player = this.seats.get(client.sessionId);
-    this.rates.delete(client.sessionId);
     if (!player) return;
     campaigns.leave(this.campaign, player, Date.now());
     if (this.campaign.seats[player] === null) {
@@ -99,19 +112,28 @@ export class CampaignRoom extends Room {
   private step() {
     const now = Date.now();
     const before = this.campaign.phase;
+    const beforeSector = this.campaign.sector;
     campaigns.tick(this.campaign, now);
     const { world, phase, pause, resumeAt } = this.campaign;
-    if (phase === 'sector' && world && !pause && resumeAt === null) {
+    this.syncSearchBudget();
+    const newSector = phase === 'sector' && world && (before !== 'sector' || beforeSector !== this.campaign.sector);
+    if (newSector) {
       for (const client of this.clients) {
         const player = this.seats.get(client.sessionId);
-        if (player) client.send('view', viewFor(world, player));
+        if (player) { this.sendMap(client); client.send('view', battlefieldViewFor(world, player)); }
+      }
+    }
+    if (phase === 'sector' && world && !pause && resumeAt === null && !newSector) {
+      for (const client of this.clients) {
+        const player = this.seats.get(client.sessionId);
+        if (player) client.send('view', battlefieldViewFor(world, player));
       }
     }
     this.ticks += 1;
     if (phase !== before || this.ticks % 10 === 0) this.sendPhase(now);
     if (phase === 'results' && !this.announcedEnd) {
       this.announcedEnd = true;
-      this.broadcast('campaign_end', { protocolVersion: PROTOCOL_VERSION, result: this.campaign.result, sectorResults: this.campaign.sectorResults });
+      this.broadcast('campaign_end', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, result: this.campaign.result, sectorResults: this.campaign.sectorResults });
     }
     if (phase === 'closed') void this.disconnect();
   }
@@ -120,29 +142,52 @@ export class CampaignRoom extends Room {
   private sendPhase(now = Date.now()) {
     for (const client of this.clients) {
       const player = this.seats.get(client.sessionId);
-      if (player) client.send('phase', { protocolVersion: PROTOCOL_VERSION, ...campaigns.phaseView(this.campaign, player, now) });
+      if (player) client.send('phase', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, ...campaigns.phaseView(this.campaign, player, now) });
     }
   }
 
   private withEnvelope(client: Client, message: unknown, handle: (player: PlayerId, body: unknown) => void) {
     const player = this.seats.get(client.sessionId);
     if (!player) return;
-    const opened = openEnvelope(message);
+    const opened = openCampaignEnvelope(message);
     if (!opened.ok) { this.reject(client, opened.reason); return; }
     handle(player, opened.body);
   }
 
-  private withinRate(client: Client): boolean {
+  private withinRate(player: PlayerId, cost: number): boolean {
     const second = Math.floor(Date.now() / 1000);
-    const bucket = this.rates.get(client.sessionId);
+    const bucket = this.rates.get(player);
     const current = bucket && bucket.second === second ? bucket : { second, count: 0 };
-    current.count += 1;
-    this.rates.set(client.sessionId, current);
-    return current.count <= COMMANDS_PER_SECOND;
+    current.count += cost;
+    this.rates.set(player, current);
+    return current.count <= SQUAD_ACTIONS_PER_SECOND;
+  }
+
+  private runCommand(player: PlayerId, body: unknown): ReturnType<typeof campaigns.command> {
+    this.syncSearchBudget();
+    const result = campaigns.command(this.campaign, player, body, this.remainingExpansions);
+    this.remainingExpansions -= result.expansions;
+    return result;
+  }
+
+  /** Reset only when the authoritative world advances or a new sector starts. */
+  private syncSearchBudget(): void {
+    const world = this.campaign.world;
+    if (this.campaign.phase !== 'sector' || !world) return;
+    if (this.budgetSector !== this.campaign.sector || this.budgetTick !== world.tick) {
+      this.budgetSector = this.campaign.sector;
+      this.budgetTick = world.tick;
+      this.remainingExpansions = SEARCH_EXPANSIONS_PER_TICK;
+    }
+  }
+
+  private sendMap(client: Client): void {
+    const world = this.campaign.world;
+    if (world) client.send('map', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, ...publicMapMetadata(world.map) });
   }
 
   private reject(client: Client, reason: string) {
-    client.send('rejected', { protocolVersion: PROTOCOL_VERSION, reason });
+    client.send('rejected', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, reason });
   }
 }
 

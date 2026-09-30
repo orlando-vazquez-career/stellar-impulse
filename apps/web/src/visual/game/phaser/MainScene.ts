@@ -78,6 +78,7 @@ export class MainScene extends Phaser.Scene {
     onCameraChange: (view: CameraView) => void,
     onReady: () => void,
     private readonly onError: (message: string) => void,
+    private readonly isActionKey: (key: string) => boolean,
   ) {
     super({ key: 'MainScene' });
     this.snapshot = snapshot;
@@ -126,10 +127,11 @@ export class MainScene extends Phaser.Scene {
     const pointer = this.input.activePointer;
     const edge = this.pointerOnCanvas && !this.dragOrigin && !this.selectionDrag && pointer.x >= 0 && pointer.y >= 0
       && pointer.x < this.scale.width && pointer.y < this.scale.height;
-    const horizontal = Number(Boolean(this.cursors?.right.isDown || this.movementKeys?.right.isDown || (edge && pointer.x >= this.scale.width - 20)))
-      - Number(Boolean(this.cursors?.left.isDown || this.movementKeys?.left.isDown || (edge && pointer.x < 20)));
-    const vertical = Number(Boolean(this.cursors?.down.isDown || this.movementKeys?.down.isDown || (edge && pointer.y >= this.scale.height - 20)))
-      - Number(Boolean(this.cursors?.up.isDown || this.movementKeys?.up.isDown || (edge && pointer.y < 20)));
+    const cameraKey = (key: Phaser.Input.Keyboard.Key | undefined, binding: string) => key?.isDown && !this.isActionKey(binding);
+    const horizontal = Number(Boolean(this.cursors?.right.isDown || cameraKey(this.movementKeys?.right, 'D') || (edge && pointer.x >= this.scale.width - 20)))
+      - Number(Boolean(this.cursors?.left.isDown || cameraKey(this.movementKeys?.left, 'A') || (edge && pointer.x < 20)));
+    const vertical = Number(Boolean(this.cursors?.down.isDown || cameraKey(this.movementKeys?.down, 'S') || (edge && pointer.y >= this.scale.height - 20)))
+      - Number(Boolean(this.cursors?.up.isDown || cameraKey(this.movementKeys?.up, 'W') || (edge && pointer.y < 20)));
     camera.scrollX += horizontal * distance;
     camera.scrollY += vertical * distance;
     this.refreshCameraView();
@@ -162,10 +164,10 @@ export class MainScene extends Phaser.Scene {
       return { x: (dx + dy) / 2, y: (dy - dx) / 2 };
     });
     const terrainBounds: [number, number, number, number] = [
-      Math.max(0, Math.floor(Math.min(...grid.map((point) => point.x)) - 2)),
-      Math.max(0, Math.floor(Math.min(...grid.map((point) => point.y)) - 2)),
-      Math.min(GRID_COLUMNS - 1, Math.ceil(Math.max(...grid.map((point) => point.x)) + 2)),
-      Math.min(GRID_ROWS - 1, Math.ceil(Math.max(...grid.map((point) => point.y)) + 2)),
+      Phaser.Math.Clamp(Math.floor(Math.min(...grid.map((point) => point.x)) - 2), 0, GRID_COLUMNS - 1),
+      Phaser.Math.Clamp(Math.floor(Math.min(...grid.map((point) => point.y)) - 2), 0, GRID_ROWS - 1),
+      Phaser.Math.Clamp(Math.ceil(Math.max(...grid.map((point) => point.x)) + 2), 0, GRID_COLUMNS - 1),
+      Phaser.Math.Clamp(Math.ceil(Math.max(...grid.map((point) => point.y)) + 2), 0, GRID_ROWS - 1),
     ];
     const terrainKey = terrainBounds.join(',');
     if (terrainKey !== this.lastTerrainBounds) {

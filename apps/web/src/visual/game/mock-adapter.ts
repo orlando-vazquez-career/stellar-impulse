@@ -99,7 +99,11 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
   const startAttack = (squadId: string) => {
     stopAttack(squadId);
     let inRangeMs = 0;
+    let lastUpdate = Date.now();
     const attack = setInterval(() => {
+      const now = Date.now();
+      const elapsedMs = Math.max(0, now - lastUpdate);
+      lastUpdate = now;
       const attacker = snapshot.squads.find((squad) => squad.id === squadId);
       const target = snapshot.squads.find((squad) => squad.id === attacker?.attackTargetId);
       if (!attacker || !target || !attacker.visible || !target.visible || attacker.healthPercent <= 0 || target.healthPercent <= 0) {
@@ -111,20 +115,20 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
       }
       const range = Math.hypot(target.gridX - attacker.gridX, target.gridY - attacker.gridY);
       if (range > 1.5) {
+        inRangeMs = 0;
         const route = planFreeMove({ x: attacker.gridX, y: attacker.gridY }, { x: target.gridX, y: target.gridY }, [...BLOCKING_TERRAIN]);
         if (route.length < 2) { stopAttack(squadId); return; }
         const speed = MOVE_SPEED / UNIT_STATS[attacker.unitType].moveIntervalFactor;
-        const next = advanceFreeMove(route, speed * MOVE_STEP_MS / 1000)[0]!;
+        const next = advanceFreeMove(route, speed * elapsedMs / 1000)[0]!;
         snapshot = { ...snapshot, squads: snapshot.squads.map((squad) => squad.id === squadId
           ? { ...squad, gridX: next.x, gridY: next.y, status: 'attacking' } : squad) };
         emit();
         return;
       }
-      inRangeMs += MOVE_STEP_MS;
+      inRangeMs += elapsedMs;
       if (inRangeMs < 500) return;
-      inRangeMs = 0;
+      inRangeMs %= 500;
       const hit = damageAgainst(attacker.unitType, target.unitType);
-      const now = Date.now();
       const reply = now >= (replyReadyAt.get(target.id) ?? 0)
         ? damageAgainst(target.unitType, attacker.unitType) : 0;
       if (reply) replyReadyAt.set(target.id, now + 500);
@@ -141,13 +145,17 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
   };
   const startMovement = (squadId: string) => {
     stopMovement(squadId);
+    let lastUpdate = Date.now();
     const movement = setInterval(() => {
+      const now = Date.now();
+      const elapsedMs = Math.max(0, now - lastUpdate);
+      lastUpdate = now;
       const order = orders.get(squadId);
       if (!order || order.route.length < 2) { stopMovement(squadId); return; }
       const movingSquad = snapshot.squads.find((squad) => squad.id === squadId);
       if (!movingSquad) { stopMovement(squadId); return; }
       const speed = MOVE_SPEED / UNIT_STATS[movingSquad.unitType].moveIntervalFactor;
-      const remaining = advanceFreeMove(order.route, speed * MOVE_STEP_MS / 1000);
+      const remaining = advanceFreeMove(order.route, speed * elapsedMs / 1000);
       const next = remaining[0]!;
       const arrived = remaining.length === 1;
       const updatedOrder = arrived ? null : { ...order, route: remaining };

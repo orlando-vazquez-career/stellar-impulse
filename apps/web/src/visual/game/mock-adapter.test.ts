@@ -129,6 +129,54 @@ describe('visual presentation adapter', () => {
     vi.useRealTimers();
   });
 
+  it('advances movement by elapsed time when a timer callback is delayed', () => {
+    vi.useFakeTimers();
+    const adapter = createMockGameplayAdapter();
+    try {
+      adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 47, y: 47 });
+      vi.setSystemTime(Date.now() + 450);
+      vi.advanceTimersByTime(50);
+      expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')?.gridX).toBeCloseTo(46);
+    } finally {
+      adapter.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses elapsed time for attacks when a timer callback is delayed', () => {
+    vi.useFakeTimers();
+    const adapter = createMockGameplayAdapter();
+    try {
+      adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
+      adapter.dispatch({ type: 'move-selected', x: 53, y: 47 });
+      vi.advanceTimersByTime(10000);
+      adapter.dispatch({ type: 'attack-selected', targetId: 'red-sigma' });
+      vi.setSystemTime(Date.now() + 450);
+      vi.advanceTimersByTime(50);
+      expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'red-sigma')?.healthPercent).toBe(62.1);
+    } finally {
+      adapter.destroy();
+      vi.useRealTimers();
+    }
+  });
+
+  it('completes an attack redirected during movement', () => {
+    vi.useFakeTimers();
+    const adapter = createMockGameplayAdapter();
+    try {
+      adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
+      adapter.dispatch({ type: 'move-selected', x: 54.76, y: 46.07 });
+      vi.advanceTimersByTime(100);
+      adapter.dispatch({ type: 'attack-selected', targetId: 'red-sigma' });
+      vi.advanceTimersByTime(20000);
+      expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'red-sigma'))
+        .toMatchObject({ healthPercent: 0, visible: false, status: 'destroyed' });
+    } finally {
+      adapter.destroy();
+      vi.useRealTimers();
+    }
+  });
+
   it('notifies subscribers and cleans the optional clock lifecycle', () => {
     vi.useFakeTimers();
     const adapter = createMockGameplayAdapter();

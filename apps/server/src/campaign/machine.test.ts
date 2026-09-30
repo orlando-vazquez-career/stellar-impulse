@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createWorld, type PlayerId, type World } from '@impulso/sim';
+import { createBattlefieldWorld, type BattlefieldWorld, type PlayerId } from '@impulso/sim';
 import {
   chooseTech, command, createCampaign, drop, join, leave, phaseView, ready, reconnect, tick,
   type Campaign, type CampaignConfig,
@@ -7,8 +7,8 @@ import {
 
 const T0 = 1_000_000;
 /** A real simulator world one tick away from `winner` capturing the core. */
-function nearWin(winner: PlayerId): World {
-  const world = createWorld();
+function nearWin(winner: PlayerId): BattlefieldWorld {
+  const world = createBattlefieldWorld();
   world.rules = { ...world.rules, coreOpenTick: 0 };
   world.guardians = world.guardians.map((unit) => (unit.id === world.core.guardianId ? { ...unit, hp: 0 } : unit));
   const squad = world.squads.find((unit) => unit.ownerId === winner)!;
@@ -30,7 +30,7 @@ function started(overrides: Partial<CampaignConfig> = {}): Campaign {
   tick(campaign, T0 + 5_000);
   return campaign;
 }
-const move = (seq = 1) => ({ seq, type: 'move', squadId: 'p1-interceptor', x: 3, y: 3 });
+const move = (seq = 1) => ({ seq, type: 'move_group', squadIds: ['p1-interceptor'], x: 3, y: 3 });
 
 describe('lobby', () => {
   it('seats two players in join order and refuses a third', () => {
@@ -70,15 +70,32 @@ describe('sectors', () => {
     expect(campaign.phase).toBe('sector');
     expect(campaign.sector).toBe(1);
     expect(campaign.world?.tick).toBe(0);
+    expect(campaign.world?.mode).toBe('battlefield');
+    expect(campaign.world?.map.id).toBe('battlefield');
+    expect(campaign.world?.width).toBe(72);
   });
   it('rejects orders outside a sector and hands them to the simulator inside one', () => {
     const lobby = createCampaign(fast());
     join(lobby, 'Ana');
-    expect(command(lobby, 'p1', move())).toEqual({ accepted: false, reason: 'not_in_sector' });
+    expect(command(lobby, 'p1', move())).toEqual({ accepted: false, reason: 'not_in_sector', expansions: 0 });
     const campaign = started();
-    expect(command(campaign, 'p1', move())).toEqual({ accepted: true });
-    expect(command(campaign, 'p1', move())).toEqual({ accepted: false, reason: 'stale_sequence' });
+    expect(command(campaign, 'p1', move())).toMatchObject({ accepted: true });
+    expect(command(campaign, 'p1', move())).toEqual({ accepted: false, reason: 'stale_sequence', expansions: 0 });
     expect(campaign.world?.squads.find((unit) => unit.id === 'p1-interceptor')?.target).toEqual({ x: 3, y: 3 });
+  });
+  it('keeps sequence unchanged on search-budget and unavailable-unit rejections', () => {
+    const campaign = started();
+    expect(command(campaign, 'p1', move(), 0)).toEqual({
+      accepted: false, reason: 'budget_exceeded', expansions: 0,
+    });
+    expect(campaign.world!.players.p1.lastSequence).toBe(0);
+    expect(command(campaign, 'p1', { ...move(), squadIds: ['missing'] })).toEqual({
+      accepted: false, reason: 'unit_unavailable', expansions: 0,
+    });
+    expect(command(campaign, 'p1', { ...move(), squadIds: ['p2-interceptor'] })).toEqual({
+      accepted: false, reason: 'unit_unavailable', expansions: 0,
+    });
+    expect(campaign.world!.players.p1.lastSequence).toBe(0);
   });
   it('declares a drawn sector when the safety tick limit is reached', () => {
     const campaign = started({ sectorLimitTicks: 3 });
@@ -128,6 +145,65 @@ describe('transitions and technologies', () => {
     tick(campaign, now + 60_000);
     expect(campaign.phase).toBe('closed');
   });
+  it('starts the next sector paused for a transition drop, retaining the original deadline', () => {
+    const campaign = started({ createSector: () => nearWin('p1') });
+    tick(campaign, T0 + 5_100);
+    expect(campaign.phase).toBe('transition');
+    drop(campaign, 'p2', T0 + 5_200);
+    tick(campaign, T0 + 30_100);
+    expect(campaign.phase).toBe('sector');
+    expect(campaign.sector).toBe(2);
+    expect(campaign.world?.tick).toBe(0);
+    expect(campaign.pause).toEqual({ by: 'p2', until: T0 + 65_200 });
+    expect(campaign.seats.p2?.pausesUsed).toBe(1);
+    tick(campaign, T0 + 30_200);
+    expect(campaign.world?.tick).toBe(0);
+    reconnect(campaign, 'p2', T0 + 30_300);
+    expect(campaign.resumeAt).toBe(T0 + 33_300);
+    tick(campaign, T0 + 33_200);
+    expect(campaign.world?.tick).toBe(0);
+    tick(campaign, T0 + 33_300);
+    expect(campaign.world?.tick).toBe(1);
+  });
+  it('forfeits expired transition drops and does not grant a fresh pause', () => {
+    const campaign = started({ createSector: () => nearWin('p1'), transitionMs: 70_000 });
+    tick(campaign, T0 + 5_100);
+    drop(campaign, 'p2', T0 + 5_200);
+    tick(campaign, T0 + 75_100);
+    expect(campaign.phase).toBe('results');
+    expect(campaign.result).toEqual({ winner: 'p1', reason: 'forfeit' });
+    expect(campaign.seats.p2?.pausesUsed).toBe(0);
+    expect(campaign.world?.tick).toBe(0);
+    const late = started({ createSector: () => nearWin('p1'), transitionMs: 70_000 });
+    tick(late, T0 + 5_100);
+    drop(late, 'p2', T0 + 5_200);
+    reconnect(late, 'p2', T0 + 65_200);
+    expect(late.phase).toBe('results');
+    expect(late.result).toEqual({ winner: 'p1', reason: 'forfeit' });
+  });
+  it('runs without an extra pause after quota exhaustion and annuls when both seats are absent', () => {
+    const noQuota = started({ createSector: (sector) => sector === 1 ? nearWin('p1') : createBattlefieldWorld(),
+      maxPausesPerPlayer: 0 });
+    tick(noQuota, T0 + 5_100);
+    drop(noQuota, 'p2', T0 + 5_200);
+    tick(noQuota, T0 + 30_100);
+    expect(noQuota.phase).toBe('sector');
+    expect(noQuota.pause).toBeNull();
+    expect(noQuota.world?.tick).toBe(0);
+    tick(noQuota, T0 + 30_200);
+    expect(noQuota.world?.tick).toBe(1);
+    expect(noQuota.phase).toBe('sector');
+    tick(noQuota, T0 + 65_200);
+    expect(noQuota.result).toEqual({ winner: 'p1', reason: 'forfeit' });
+    const both = started({ createSector: () => nearWin('p1') });
+    tick(both, T0 + 5_100);
+    drop(both, 'p1', T0 + 5_200);
+    drop(both, 'p2', T0 + 5_300);
+    tick(both, T0 + 30_100);
+    expect(both.phase).toBe('sector');
+    tick(both, T0 + 65_200);
+    expect(both.result).toEqual({ winner: null, reason: 'annulled' });
+  });
 });
 
 describe('disconnections', () => {
@@ -150,6 +226,12 @@ describe('disconnections', () => {
     for (let i = 0; i < 2; i += 1) { drop(campaign, 'p2', T0 + 6_000 + i * 10_000); reconnect(campaign, 'p2', T0 + 7_000 + i * 10_000); }
     drop(campaign, 'p2', T0 + 40_000);
     expect(campaign.pause).toBeNull();
+    expect(campaign.phase).toBe('sector');
+    tick(campaign, T0 + 40_100);
+    expect(campaign.world?.tick).toBe(1);
+    reconnect(campaign, 'p2', T0 + 40_200);
+    expect(campaign.phase).toBe('sector');
+    expect(campaign.seats.p2?.connected).toBe(true);
   });
   it('forfeits the absent player when the reconnection window runs out', () => {
     const campaign = started();
@@ -173,9 +255,9 @@ describe('disconnections', () => {
   it('rejects orders while the simulation is paused or resuming', () => {
     const campaign = started();
     drop(campaign, 'p2', T0 + 6_000);
-    expect(command(campaign, 'p1', move())).toEqual({ accepted: false, reason: 'paused' });
+    expect(command(campaign, 'p1', move())).toEqual({ accepted: false, reason: 'paused', expansions: 0 });
     reconnect(campaign, 'p2', T0 + 7_000);
-    expect(command(campaign, 'p1', move())).toEqual({ accepted: false, reason: 'paused' });
+    expect(command(campaign, 'p1', move())).toEqual({ accepted: false, reason: 'paused', expansions: 0 });
   });
   it('keeps the game paused for the rival if both dropped and only one came back', () => {
     const campaign = started();

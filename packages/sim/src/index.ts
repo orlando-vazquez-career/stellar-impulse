@@ -1,4 +1,15 @@
 import { parseCommand } from '@impulso/input';
+import { advanceCapture, captureContext, guardianActive, resolveCombat } from './maps/mechanics.js';
+import { BATTLEFIELD_MAP } from './maps/battlefield.js';
+import { createBattlefieldWorldInternal } from './maps/world.js';
+
+export { defineMapSpec, MAX_MAP_SIDE, MAX_MAP_CELLS } from './maps/types.js';
+export type { MapCell, MapObjective, MapSpec } from './maps/types.js';
+export { parseTiledJson, MAX_TILED_JSON_BYTES, MAX_TILED_LAYERS } from './maps/tiled.js';
+export type { TiledGrid } from './maps/tiled.js';
+export { BATTLEFIELD_MAP } from './maps/battlefield.js';
+export { applyBattlefieldCommand, stepBattlefieldWorld, cloneBattlefieldWorld } from './maps/world.js';
+export type { BattlefieldWorld, BattlefieldSquad, BattlefieldCommandResult, BattlefieldRejection } from './maps/world.js';
 
 export type PlayerId = 'p1' | 'p2';
 export interface Position { x: number; y: number }
@@ -29,6 +40,11 @@ export const TRAINING_RULES: Readonly<Rules> = Object.freeze({
   tickRate: 10, moveEveryTicks: 3, attackEveryTicks: 10, visionRadius: 4,
   captureRadius: 1, nodeCaptureTicks: 30, coreOpenTick: 200, coreCaptureTicks: 80,
 });
+/** Battlefield is a separate schema; these default timings preserve the training slice. */
+export function createBattlefieldWorld(map: import('./maps/types.js').MapSpec = BATTLEFIELD_MAP,
+  overrides: Partial<Rules> = {}): import('./maps/world.js').BattlefieldWorld {
+  return createBattlefieldWorldInternal(map, { ...TRAINING_RULES, ...overrides });
+}
 /** Design candidates only. The initial client uses TRAINING_RULES. */
 export const MVP_CANDIDATE_RULES = Object.freeze({
   ...TRAINING_RULES, coreOpenTick: 1800, coreCaptureTicks: 400,
@@ -236,9 +252,6 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
   nextSquad.attackTargetId = null;
   return { accepted: true, world: next };
 }
-function guardianActive(world: World, guardian: Guardian): boolean {
-  return guardian.hp > 0 && (guardian.id !== world.core.guardianId || world.core.open);
-}
 function moveSquads(world: World): void {
   for (const squad of world.squads) {
     if (squad.hp <= 0) continue;
@@ -255,43 +268,6 @@ function moveSquads(world: World): void {
     if (squad.target && squad.x === squad.target.x && squad.y === squad.target.y) squad.target = null;
   }
 }
-function resolveCombat(world: World): void {
-  if (world.tick % world.rules.attackEveryTicks !== 0) return;
-  const hits = new Map<string, number>();
-  const hit = (id: string, damage: number): void => { hits.set(id, (hits.get(id) ?? 0) + damage); };
-  const byId = (a: { id: string }, b: { id: string }): number => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  // All attacks are planned before applying damage, including fatal replies.
-  for (const squad of world.squads.filter((unit) => unit.hp > 0 && UNIT_STATS[unit.kind].damage > 0)) {
-    const enemies: (Squad | Guardian)[] = [
-      ...world.squads.filter((unit) => unit.hp > 0 && unit.ownerId !== squad.ownerId),
-      ...world.guardians.filter((unit) => guardianActive(world, unit)),
-    ];
-    const inRange = enemies.filter((unit) => distance(squad, unit) <= 1).sort(byId);
-    const target = inRange.find((unit) => unit.id === squad.attackTargetId) ?? inRange[0];
-    if (target) hit(target.id, 'kind' in target ? damageAgainst(squad.kind, target.kind, squad.damage) : squad.damage);
-  }
-  for (const guardian of world.guardians.filter((unit) => guardianActive(world, unit))) {
-    const target = world.squads.filter((unit) => unit.hp > 0 && distance(guardian, unit) <= 1).sort(byId)[0];
-    if (target) hit(target.id, guardian.damage);
-  }
-  for (const unit of [...world.squads, ...world.guardians]) unit.hp = Math.max(0, unit.hp - (hits.get(unit.id) ?? 0));
-}
-function advanceCapture(world: World, objective: CaptureObjective, required: number): PlayerId | null {
-  if (world.guardians.some((unit) => unit.id === objective.guardianId && unit.hp > 0)) return null;
-  const present = new Set(world.squads
-    .filter((unit) => unit.hp > 0 && UNIT_STATS[unit.kind].canCapture && distance(unit, objective) <= world.rules.captureRadius)
-    .map((unit) => unit.ownerId));
-  if (present.size === 2) return null;
-  for (const playerId of ['p1', 'p2'] as const) {
-    objective.progress[playerId] = present.has(playerId)
-      ? Math.min(required, objective.progress[playerId] + 1)
-      : Math.max(0, objective.progress[playerId] - 1);
-  }
-  for (const playerId of ['p1', 'p2'] as const) {
-    if (objective.progress[playerId] >= required && present.has(playerId)) return playerId;
-  }
-  return null;
-}
 /** Exactly one integer tick; no clock, RNG, chain, renderer or inventory. */
 export function stepWorld(world: World): World {
   if (world.winner !== null) return world;
@@ -300,11 +276,12 @@ export function stepWorld(world: World): World {
   next.core.open = next.tick >= next.rules.coreOpenTick;
   moveSquads(next);
   resolveCombat(next);
+  const capture = captureContext(next);
   for (const node of next.nodes) {
-    const captor = advanceCapture(next, node, next.rules.nodeCaptureTicks);
+    const captor = advanceCapture(next, node, next.rules.nodeCaptureTicks, capture);
     if (captor) node.ownerId = captor;
     if (node.ownerId && next.tick % next.rules.tickRate === 0) next.players[node.ownerId].metal += 1;
   }
-  if (next.core.open) next.winner = advanceCapture(next, next.core, next.rules.coreCaptureTicks);
+  if (next.core.open) next.winner = advanceCapture(next, next.core, next.rules.coreCaptureTicks, capture);
   return next;
 }

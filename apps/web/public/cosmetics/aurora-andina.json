@@ -1,0 +1,16 @@
+{
+  "classId": 1,
+  "key": "aurora-andina",
+  "slot": "Livery",
+  "family": "Collection",
+  "name": {
+    "es": "Aurora Andina",
+    "en": "Andean Aurora"
+  },
+  "description": {
+    "es": "Librea de colección con los tonos de un amanecer en el altiplano.",
+    "en": "Collection livery in the tones of a highland dawn."
+  },
+  "image": null,
+  "cosmeticOnly": true
+}
