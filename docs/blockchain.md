@@ -11,9 +11,10 @@ contra replay. No se implementa ni se declara conformidad con SEP-10 en esta ent
 La red y la cuenta se deberán volver a validar antes de cualquier firma futura,
 porque el usuario puede cambiarlas después de conectar.
 
-El contrato `Cosmetics` (versión 2) registra cada pieza como un NFT de una clase
+El contrato `Cosmetics` (versión 3) registra cada pieza como un NFT de una clase
 (librea, estela o emblema). Roles separados: `admin` crea clases y precios, `minter`
-(servidor) otorga premios, `treasury` recibe ventas primarias.
+(servidor) otorga premios, `treasury` recibe ventas primarias. El constructor rechaza
+que dos roles usen la misma dirección (`InvalidConfiguration`).
 
 | Función | Uso |
 | --- | --- |
@@ -23,10 +24,16 @@ El contrato `Cosmetics` (versión 2) registra cada pieza como un NFT de una clas
 | `balance`, `owner_of`, `token_uri`, `transfer` | Interfaz NFT estándar |
 | `approve`, `approve_for_all`, `transfer_from` | Base para un marketplace externo |
 | `tokens_of`, `has_class`, `get_class` | Inventario del hangar y verificación de equipamiento |
+| `propose_role`, `accept_role`, `role` | Cambio de rol en dos pasos: el admin propone y el candidato acepta con su firma; emite `RoleChanged` |
 
 Mérito y veteranía son intransferibles y no pueden aprobarse, por lo que nunca se
 listan en un mercado. Mérito no se vende. El marketplace y su comisión quedan en un
 contrato separado. No hay contratos desplegados ni direcciones de despliegue publicadas.
+
+Cada dueño tiene dos inventarios con tope de 200 piezas cada uno: uno para piezas
+transferibles y otro para piezas ligadas (mérito y veteranía). Como `transfer` no pide
+permiso al receptor, alguien podría llenar el inventario transferible de otra persona,
+pero eso nunca bloquea un premio: los premios ligados van a su propio inventario.
 
 Validación inicial (22 de septiembre de 2026): un test de host Soroban y build
 WASM ejecutados en WSL/Linux; diez tests TypeScript y typecheck correctos;
@@ -95,6 +102,18 @@ Los tests TypeScript usan dobles deterministas; no prueban disponibilidad públi
 La conexión real de la extensión requiere la intervención del usuario en su navegador.
 Testnet puede reiniciarse y borrar cuentas, contratos e inventarios. El juego de
 práctica debe seguir disponible si la wallet o la red están caídas.
+
+## Decisión D05 (25 de septiembre de 2026)
+
+Tomada por Orlando, responsable de D05.
+
+| Tema | Decisión |
+| --- | --- |
+| Matriz de versiones | Protocolo 28 (testnet desde el 27 de agosto y mainnet desde el 16 de septiembre): Rust 1.98.1, soroban-sdk 28.0.0, stellar-cli 28.0.0, `@stellar/stellar-sdk` 17.1.0 y `@stellar/freighter-api` 6.0.1. Esta combinación compila y pasa CI. stellar-core 29 ya corre en la red: antes de una votación del protocolo 29, se actualizan los SDK en una rama y se repite CI. |
+| Permisos de emisión | `admin` configura clases y precios. `minter` es la cuenta del servidor y la única que otorga premios. `treasury` solo recibe pagos. Las tres direcciones son distintas y cada cambio de rol se hace en dos pasos (`propose_role` y `accept_role`). La clave del `minter` vive solo en el servidor, como variable de entorno; nunca en el cliente ni en el repositorio. |
+| Autenticación | SEP-10 completo. El servidor de juego publica `/.well-known/stellar.toml` con `WEB_AUTH_ENDPOINT` y `SIGNING_KEY`, y genera el desafío con `buildChallengeTx` del módulo `webauth` de `@stellar/stellar-sdk`. El jugador firma con Freighter (`signTransaction`). El servidor valida con `readChallengeTx` y `verifyChallengeTxSigners` y entrega un token de sesión ligado a esa dirección. La clave que firma los desafíos es propia y distinta de los tres roles del contrato. Una dirección conectada sin desafío firmado nunca es una identidad. Se implementa en la tarjeta O07 (3–5 oct). |
+| Token de pago de prueba | XLM nativo, a través de su Stellar Asset Contract en testnet (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`). No requiere trustline y los fondos salen de Friendbot. Los precios se expresan en stroops (1 XLM = 10.000.000). |
+| Despliegue | Después de fusionar el contrato v3 (tarjeta O04). Se registran en este documento la red, el contrato, el hash WASM, la transacción, el commit y la fecha. |
 
 ## Plan del contrato de cosméticos para el MVP
 

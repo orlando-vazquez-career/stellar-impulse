@@ -21,8 +21,12 @@ const INSTANCE_BUMP: u32 = 30 * DAY_IN_LEDGERS;
 const INSTANCE_THRESHOLD: u32 = INSTANCE_BUMP - DAY_IN_LEDGERS;
 const PERSISTENT_BUMP: u32 = 90 * DAY_IN_LEDGERS;
 const PERSISTENT_THRESHOLD: u32 = PERSISTENT_BUMP - 7 * DAY_IN_LEDGERS;
-/// Bounds the per-owner token list so reads stay cheap.
+/// Bounds each per-owner token list (soulbound and transferable) so reads stay cheap.
+#[cfg(not(test))]
 pub const MAX_TOKENS_PER_OWNER: u32 = 200;
+/// Tests exercise the full-inventory path with a small cap; the logic is the same.
+#[cfg(test)]
+pub const MAX_TOKENS_PER_OWNER: u32 = 12;
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -43,6 +47,7 @@ pub enum Error {
     InventoryFull = 13,
     SelfTransfer = 14,
     Overflow = 15,
+    InvalidConfiguration = 16,
 }
 
 /// Equipment slot shown in the hangar.
@@ -64,6 +69,16 @@ pub enum Family {
     Merit = 0,
     Veteran = 1,
     Collection = 2,
+}
+
+/// Separate keys: no single account can configure, grant and collect.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum Role {
+    Admin = 0,
+    Minter = 1,
+    Treasury = 2,
 }
 
 #[contracttype]
@@ -107,7 +122,11 @@ enum DataKey {
     NextTokenId,
     Class(u32),
     Token(u32),
+    /// Transferable pieces; anyone can send these to an owner.
     OwnerTokens(Address),
+    /// Soulbound pieces; only a grant or purchase adds them, so transfers cannot fill this list.
+    OwnerBound(Address),
+    PendingRole(Role),
     Approval(u32),
     Operator(Address, Address),
     Reward(BytesN<32>),
@@ -150,6 +169,15 @@ pub struct ApproveForAll {
     pub owner: Address,
     pub operator: Address,
     pub live_until_ledger: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoleChanged {
+    #[topic]
+    pub role: Role,
+    pub previous: Address,
+    pub current: Address,
 }
 
 #[contract]
@@ -199,42 +227,74 @@ fn read_token(env: &Env, token_id: u32) -> TokenData {
     data
 }
 
-fn read_owner_tokens(env: &Env, owner: &Address) -> Vec<u32> {
-    let key = DataKey::OwnerTokens(owner.clone());
-    match env.storage().persistent().get(&key) {
+fn owner_key(owner: &Address, soulbound: bool) -> DataKey {
+    if soulbound {
+        DataKey::OwnerBound(owner.clone())
+    } else {
+        DataKey::OwnerTokens(owner.clone())
+    }
+}
+
+fn read_list(env: &Env, key: &DataKey) -> Vec<u32> {
+    match env.storage().persistent().get(key) {
         Some(tokens) => {
-            bump(env, &key);
+            bump(env, key);
             tokens
         }
         None => Vec::new(env),
     }
 }
 
-fn write_owner_tokens(env: &Env, owner: &Address, tokens: &Vec<u32>) {
-    let key = DataKey::OwnerTokens(owner.clone());
+fn write_list(env: &Env, key: &DataKey, tokens: &Vec<u32>) {
     if tokens.is_empty() {
-        env.storage().persistent().remove(&key);
+        env.storage().persistent().remove(key);
     } else {
-        env.storage().persistent().set(&key, tokens);
-        bump(env, &key);
+        env.storage().persistent().set(key, tokens);
+        bump(env, key);
     }
 }
 
-fn add_owned(env: &Env, owner: &Address, token_id: u32) {
-    let mut tokens = read_owner_tokens(env, owner);
+/// Soulbound and transferable pieces are capped separately.
+fn add_owned(env: &Env, owner: &Address, token_id: u32, soulbound: bool) {
+    let key = owner_key(owner, soulbound);
+    let mut tokens = read_list(env, &key);
     if tokens.len() >= MAX_TOKENS_PER_OWNER {
         panic_with_error!(env, Error::InventoryFull);
     }
     tokens.push_back(token_id);
-    write_owner_tokens(env, owner, &tokens);
+    write_list(env, &key, &tokens);
 }
 
+/// Only transferable pieces ever leave an owner.
 fn remove_owned(env: &Env, owner: &Address, token_id: u32) {
-    let mut tokens = read_owner_tokens(env, owner);
+    let key = owner_key(owner, false);
+    let mut tokens = read_list(env, &key);
     if let Some(index) = tokens.first_index_of(token_id) {
         tokens.remove(index);
     }
-    write_owner_tokens(env, owner, &tokens);
+    write_list(env, &key, &tokens);
+}
+
+fn owned_tokens(env: &Env, owner: &Address) -> Vec<u32> {
+    let mut tokens = read_list(env, &owner_key(owner, true));
+    tokens.append(&read_list(env, &owner_key(owner, false)));
+    tokens
+}
+
+fn role_key(role: Role) -> DataKey {
+    match role {
+        Role::Admin => DataKey::Admin,
+        Role::Minter => DataKey::Minter,
+        Role::Treasury => DataKey::Treasury,
+    }
+}
+
+fn ensure_separate(env: &Env, role: Role, candidate: &Address) {
+    for other in [Role::Admin, Role::Minter, Role::Treasury] {
+        if other != role && instance_address(env, &role_key(other)) == *candidate {
+            panic_with_error!(env, Error::InvalidConfiguration);
+        }
+    }
 }
 
 fn operator_live(env: &Env, owner: &Address, operator: &Address) -> bool {
@@ -288,7 +348,7 @@ fn mint(env: &Env, to: &Address, class_id: u32) -> u32 {
         },
     );
     bump(env, &key);
-    add_owned(env, to, token_id);
+    add_owned(env, to, token_id, !class.transferable);
 
     Mint {
         to: to.clone(),
@@ -313,7 +373,7 @@ fn move_token(env: &Env, from: &Address, to: &Address, token_id: u32) {
         .persistent()
         .remove(&DataKey::Approval(token_id));
     remove_owned(env, from, token_id);
-    add_owned(env, to, token_id);
+    add_owned(env, to, token_id, false);
     data.owner = to.clone();
     let key = DataKey::Token(token_id);
     env.storage().persistent().set(&key, &data);
@@ -330,7 +390,8 @@ fn move_token(env: &Env, from: &Address, to: &Address, token_id: u32) {
 #[contractimpl]
 impl Cosmetics {
     /// Roles are separate: `admin` manages classes and roles, `minter` is the game
-    /// server that grants rewards, `treasury` receives primary sales.
+    /// server that grants rewards, `treasury` receives primary sales. Repeated
+    /// addresses are rejected.
     pub fn __constructor(
         env: Env,
         admin: Address,
@@ -340,6 +401,9 @@ impl Cosmetics {
         name: String,
         symbol: String,
     ) {
+        if admin == minter || admin == treasury || minter == treasury {
+            panic_with_error!(&env, Error::InvalidConfiguration);
+        }
         let storage = env.storage().instance();
         storage.set(&DataKey::Admin, &admin);
         storage.set(&DataKey::Minter, &minter);
@@ -352,7 +416,7 @@ impl Cosmetics {
     }
 
     pub fn version() -> u32 {
-        2
+        3
     }
 
     // ----- Administration -----------------------------------------------------
@@ -398,24 +462,42 @@ impl Cosmetics {
         write_class(&env, class_id, &class);
     }
 
-    pub fn set_admin(env: Env, new_admin: Address) {
-        instance_address(&env, &DataKey::Admin).require_auth();
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
-        bump_instance(&env);
+    pub fn role(env: Env, role: Role) -> Address {
+        instance_address(&env, &role_key(role))
     }
 
-    pub fn set_minter(env: Env, new_minter: Address) {
+    /// Step one of a role change: the admin names a candidate. Nothing changes yet,
+    /// so a mistyped address can never lock a role.
+    pub fn propose_role(env: Env, role: Role, candidate: Address) {
         instance_address(&env, &DataKey::Admin).require_auth();
-        env.storage().instance().set(&DataKey::Minter, &new_minter);
         bump_instance(&env);
-    }
-
-    pub fn set_treasury(env: Env, new_treasury: Address) {
-        instance_address(&env, &DataKey::Admin).require_auth();
+        ensure_separate(&env, role, &candidate);
         env.storage()
             .instance()
-            .set(&DataKey::Treasury, &new_treasury);
+            .set(&DataKey::PendingRole(role), &candidate);
+    }
+
+    /// Step two: the candidate accepts with its own signature.
+    pub fn accept_role(env: Env, role: Role) {
+        let pending = DataKey::PendingRole(role);
+        let candidate: Address = env
+            .storage()
+            .instance()
+            .get(&pending)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotAuthorized));
+        candidate.require_auth();
         bump_instance(&env);
+        ensure_separate(&env, role, &candidate);
+        let key = role_key(role);
+        let previous = instance_address(&env, &key);
+        env.storage().instance().set(&key, &candidate);
+        env.storage().instance().remove(&pending);
+        RoleChanged {
+            role,
+            previous,
+            current: candidate,
+        }
+        .publish(&env);
     }
 
     // ----- Acquisition --------------------------------------------------------
@@ -542,7 +624,7 @@ impl Cosmetics {
     }
 
     pub fn balance(env: Env, owner: Address) -> u32 {
-        read_owner_tokens(&env, &owner).len()
+        owned_tokens(&env, &owner).len()
     }
 
     pub fn owner_of(env: Env, token_id: u32) -> Address {
@@ -566,7 +648,7 @@ impl Cosmetics {
 
     /// Token ids owned by `owner`, for the hangar inventory.
     pub fn tokens_of(env: Env, owner: Address) -> Vec<u32> {
-        read_owner_tokens(&env, &owner)
+        owned_tokens(&env, &owner)
     }
 
     pub fn class_of(env: Env, token_id: u32) -> u32 {
@@ -579,7 +661,7 @@ impl Cosmetics {
 
     /// What the server checks before letting a player equip a piece.
     pub fn has_class(env: Env, owner: Address, class_id: u32) -> bool {
-        read_owner_tokens(&env, &owner)
+        owned_tokens(&env, &owner)
             .iter()
             .any(|id| read_token(&env, id).class_id == class_id)
     }
