@@ -1,0 +1,16 @@
+{
+  "classId": 3,
+  "key": "primera-victoria",
+  "slot": "Emblem",
+  "family": "Merit",
+  "name": {
+    "es": "Primera Victoria",
+    "en": "First Victory"
+  },
+  "description": {
+    "es": "Emblema de mérito por ganar la primera campaña.",
+    "en": "Merit emblem for winning a first campaign."
+  },
+  "image": null,
+  "cosmeticOnly": true
+}

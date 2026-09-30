@@ -129,3 +129,5 @@ export async function connectFreighterTestnet(adapter?: FreighterAdapter): Promi
   assertTestnet(details.networkPassphrase);
   return { address: validatePublicAddress(access.address), network: "TESTNET" };
 }
+
+export * from "./cosmetics.js";
