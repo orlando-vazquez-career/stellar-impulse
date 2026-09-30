@@ -9,6 +9,9 @@ import {
   leashBlocks, loopRoute, MAX_ROUTE_POINTS, refreshArrivals, replaceDestination,
   type PlayerStance, type WalkBoard,
 } from './mecanicas/orders.js';
+import { findPath as findSurfacePath } from './maps/pathfinding.js';
+import { SECTOR_01 } from './mapas/sector-01.js';
+import type { Superficie } from './mapas/leer-tiled.js';
 
 export { defineMapSpec, MAX_MAP_SIDE, MAX_MAP_CELLS } from './maps/types.js';
 export type { MapCell, MapObjective, MapSpec } from './maps/types.js';
@@ -103,7 +106,7 @@ export interface CaptureObjective extends Position {
   progress: Record<PlayerId, number>;
 }
 export interface ResourceNode extends CaptureObjective {
-  kind: 'metal';
+  kind: 'metal' | 'capture';
   ownerId: PlayerId | null;
 }
 export interface Core extends CaptureObjective { open: boolean }
@@ -114,6 +117,7 @@ export interface World {
   width: number;
   height: number;
   obstacles: Position[];
+  surface: Superficie | null;
   rules: Rules;
   players: Record<PlayerId, Player>;
   squads: Squad[];
@@ -135,6 +139,7 @@ export function createWorld(): World {
   return {
     schemaVersion: 1, mode: 'training', tick: 0, width: 20, height: 20,
     obstacles: TRAINING_OBSTACLES.map((point) => ({ ...point })),
+    surface: null,
     rules: { ...TRAINING_RULES },
     // Reflection through x=y gives both players equal travel distances.
     players: {
@@ -151,6 +156,37 @@ export function createWorld(): World {
     ],
     nodes: [{ id: 'metal-1', kind: 'metal', x: 4, y: 4, guardianId: 'metal-guardian', ownerId: null, progress: { p1: 0, p2: 0 } }],
     core: { id: 'core', x: 10, y: 10, guardianId: 'core-guardian', open: false, progress: { p1: 0, p2: 0 } },
+    winner: null,
+  };
+}
+export function createSectorWorld(): World {
+  const sector = SECTOR_01;
+  const node = (input: { id: string; kind: 'metal' | 'capture'; x: number; y: number }): ResourceNode => ({
+    id: input.id, kind: input.kind, x: input.x, y: input.y,
+    guardianId: `${input.id}-guardian`, ownerId: null, progress: { p1: 0, p2: 0 },
+  });
+  return {
+    schemaVersion: 1, mode: 'training', tick: 0, width: sector.width, height: sector.height,
+    obstacles: [],
+    surface: {
+      width: sector.width, height: sector.height,
+      walkable: [...sector.walkable], level: [...sector.level], ramp: [...sector.ramp],
+    },
+    rules: { ...TRAINING_RULES },
+    players: {
+      p1: { id: 'p1', base: { ...sector.bases.p1 }, metal: 0, lastSequence: 0 },
+      p2: { id: 'p2', base: { ...sector.bases.p2 }, metal: 0, lastSequence: 0 },
+    },
+    squads: [
+      createSquad('p1-interceptor', 'p1', 'interceptor', sector.bases.p1),
+      createSquad('p2-interceptor', 'p2', 'interceptor', sector.bases.p2),
+    ],
+    guardians: [],
+    nodes: [
+      ...sector.metals.map((cell, index) => node({ id: `metal-${index + 1}`, kind: 'metal', x: cell.x, y: cell.y })),
+      ...sector.captures.map((cell, index) => node({ id: `capture-${index + 1}`, kind: 'capture', x: cell.x, y: cell.y })),
+    ],
+    core: { id: 'core', x: sector.core.x, y: sector.core.y, guardianId: 'core-guardian', open: false, progress: { p1: 0, p2: 0 } },
     winner: null,
   };
 }
@@ -229,6 +265,14 @@ function cloneWorld(world: World): World {
     guardians: world.guardians.map((unit) => ({ ...unit })),
     nodes: world.nodes.map((node) => ({ ...node, progress: { ...node.progress } })),
     core: { ...world.core, progress: { ...world.core.progress } },
+    surface: copySurface(world.surface),
+  };
+}
+function copySurface(surface: Superficie | null): Superficie | null {
+  if (!surface) return null;
+  return {
+    width: surface.width, height: surface.height,
+    walkable: [...surface.walkable], level: [...surface.level], ramp: [...surface.ramp],
   };
 }
 const ATTACK_RANGE = 1;
@@ -237,25 +281,44 @@ const PATROL_OFFSETS: readonly Position[] = [
 ];
 
 function boardOf(world: World): WalkBoard {
-  return { width: world.width, height: world.height, blocked: blockedCells(world.obstacles) };
+  if (!world.surface) return { width: world.width, height: world.height, blocked: blockedCells(world.obstacles) };
+  const blocked = new Set<string>();
+  world.surface.walkable.forEach((open, index) => {
+    if (open) return;
+    blocked.add(`${index % world.width},${Math.floor(index / world.width)}`);
+  });
+  return { width: world.width, height: world.height, blocked };
 }
 function queueOrigin(squad: Squad): Position {
   return squad.route.at(-1) ?? squad.gather ?? squad;
 }
 function rejectDestination(world: World, trip: { from: Position; x: number; y: number }): CommandRejection | null {
   if (trip.x < 0 || trip.y < 0 || trip.x >= world.width || trip.y >= world.height) return 'out_of_bounds';
-  if (world.obstacles.some((point) => point.x === trip.x && point.y === trip.y)) return 'blocked_destination';
+  if (world.surface) {
+    if (world.surface.walkable[trip.y * world.width + trip.x] !== true) return 'blocked_destination';
+  } else if (world.obstacles.some((point) => point.x === trip.x && point.y === trip.y)) return 'blocked_destination';
   if (trip.from.x === trip.x && trip.from.y === trip.y) return null;
   if (!routeExists(world, trip.from, trip)) return 'unreachable_destination';
   return null;
 }
 function routeExists(world: World, from: Position, to: Position): boolean {
   if (from.x === to.x && from.y === to.y) return true;
+  if (world.surface) return findSurfacePath(world.surface, from, to).status === 'found';
   return findPath(from, to, world.width, world.height, world.obstacles).length > 0;
 }
 function nextStep(world: World, from: Position, to: Position): Position | null {
   if (from.x === to.x && from.y === to.y) return null;
+  if (world.surface) {
+    const result = findSurfacePath(world.surface, from, to);
+    return result.status === 'found' ? result.path[0] ?? null : null;
+  }
   return findPath(from, to, world.width, world.height, world.obstacles)[1] ?? null;
+}
+function cellOccupied(world: World, cell: Position, selfId: string): boolean {
+  if (!world.surface) return false;
+  const ship = world.squads.some((unit) => unit.hp > 0 && unit.id !== selfId && unit.x === cell.x && unit.y === cell.y);
+  const guardian = world.guardians.some((unit) => unit.hp > 0 && unit.x === cell.x && unit.y === cell.y);
+  return ship || guardian;
 }
 function commitOrder(world: World, playerId: PlayerId, seq: number, squadId: string, write: (squad: Squad) => void): CommandResult {
   const next = cloneWorld(world);
@@ -267,8 +330,9 @@ function commitOrder(world: World, playerId: PlayerId, seq: number, squadId: str
   return { accepted: true, world: next };
 }
 function cellOnBoard(world: World, cell: Position): boolean {
-  return cell.x >= 0 && cell.y >= 0 && cell.x < world.width && cell.y < world.height
-    && !world.obstacles.some((point) => point.x === cell.x && point.y === cell.y);
+  if (cell.x < 0 || cell.y < 0 || cell.x >= world.width || cell.y >= world.height) return false;
+  if (world.surface) return world.surface.walkable[cell.y * world.width + cell.x] === true;
+  return !world.obstacles.some((point) => point.x === cell.x && point.y === cell.y);
 }
 /** Commands are pure. Rejected commands return the original world unchanged. */
 export function applyCommand(world: World, playerId: string, raw: unknown): CommandResult {
@@ -334,7 +398,7 @@ function moveSquads(world: World): void {
       else clearStuckRoute(squad);
       continue;
     }
-    if (leashBlocks(squad, next, world.rules.visionRadius)) continue;
+    if (leashBlocks(squad, next, world.rules.visionRadius) || cellOccupied(world, next, squad.id)) continue;
     squad.x = next.x;
     squad.y = next.y;
     consumeWaypoint(squad);
@@ -348,12 +412,12 @@ export function stepWorld(world: World): World {
   next.tick += 1;
   next.core.open = next.tick >= next.rules.coreOpenTick;
   moveSquads(next);
-  resolveCombat(next);
+  resolveCombat(next.surface ? { ...next, level: next.surface.level } : next);
   const capture = captureContext(next);
   for (const node of next.nodes) {
     const captor = advanceCapture(next, node, next.rules.nodeCaptureTicks, capture);
     if (captor) node.ownerId = captor;
-    if (node.ownerId && next.tick % next.rules.tickRate === 0) next.players[node.ownerId].metal += 1;
+    if (node.kind === 'metal' && node.ownerId && next.tick % next.rules.tickRate === 0) next.players[node.ownerId].metal += 1;
   }
   if (next.core.open) next.winner = advanceCapture(next, next.core, next.rules.coreCaptureTicks, capture);
   return next;

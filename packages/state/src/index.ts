@@ -18,6 +18,8 @@ export interface PlayerView {
   width: number;
   height: number;
   obstacles: Position[];
+  walkable?: boolean[];
+  level?: number[];
   rules: Rules;
   players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number }>;
   squads: VisibleSquad[];
@@ -47,7 +49,9 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
   players[playerId].metal = world.players[playerId].metal;
   return {
     schemaVersion: 1, mode: 'training', tick: world.tick, playerId,
-    width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })), rules: { ...world.rules }, players,
+    width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })),
+    ...(world.surface ? { walkable: [...world.surface.walkable], level: [...world.surface.level] } : {}),
+    rules: { ...world.rules }, players,
     squads: world.squads.filter((unit) => unit.ownerId === playerId || (unit.hp > 0 && visible(unit))).map((unit) => {
       const { target, attackTargetId } = unit;
       const publicUnit = {
