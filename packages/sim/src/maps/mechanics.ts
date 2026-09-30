@@ -1,3 +1,4 @@
+import { applyHeightAdvantage } from '../mapas/alturas.js';
 import { UNIT_STATS, damageAgainst, type CaptureObjective, type Core, type Guardian, type PlayerId, type Rules, type Squad } from '../index.js';
 import { createSpatialIndex, type SpatialIndex } from './spatial-index.js';
 
@@ -10,6 +11,7 @@ export interface MechanicsWorld {
   squads: Squad[];
   guardians: Guardian[];
   core: Core;
+  level?: readonly number[];
 }
 
 export const guardianActive = (world: MechanicsWorld, guardian: Guardian): boolean =>
@@ -35,6 +37,20 @@ export function captureContext(world: MechanicsWorld): CaptureContext {
   };
 }
 
+function heightDamage(hit: {
+  world: MechanicsWorld;
+  damage: number;
+  attacker: { x: number; y: number };
+  defender: { x: number; y: number };
+}): number {
+  if (!hit.world.level) return hit.damage;
+  return applyHeightAdvantage({
+    damage: hit.damage,
+    attackerLevel: hit.world.level[hit.attacker.y * hit.world.width + hit.attacker.x] ?? 0,
+    defenderLevel: hit.world.level[hit.defender.y * hit.world.width + hit.defender.x] ?? 0,
+  });
+}
+
 /** Plan every attack before applying damage, preserving fatal replies and ID tie-breaks. */
 export function resolveCombat(world: MechanicsWorld): void {
   if (world.tick % world.rules.attackEveryTicks !== 0) return;
@@ -51,13 +67,16 @@ export function resolveCombat(world: MechanicsWorld): void {
       .map((point) => byId.get(point.id)!)
       .filter((unit) => unit.id !== squad.id && (!('ownerId' in unit) || unit.ownerId !== squad.ownerId));
     const target = inRange.find((unit) => unit.id === squad.attackTargetId) ?? inRange[0];
-    if (target) hit(target.id, 'kind' in target ? damageAgainst(squad.kind, target.kind, squad.damage) : squad.damage);
+    if (target) hit(target.id, heightDamage({
+      world, attacker: squad, defender: target,
+      damage: 'kind' in target ? damageAgainst(squad.kind, target.kind, squad.damage) : squad.damage,
+    }));
   }
   for (const guardian of guardians) {
     const target = index.queryManhattan(guardian, 1)
       .map((point) => byId.get(point.id)!)
       .find((unit) => 'ownerId' in unit && unit.hp > 0);
-    if (target) hit(target.id, guardian.damage);
+    if (target) hit(target.id, heightDamage({ world, damage: guardian.damage, attacker: guardian, defender: target }));
   }
   for (const unit of [...world.squads, ...world.guardians]) unit.hp = Math.max(0, unit.hp - (hits.get(unit.id) ?? 0));
 }

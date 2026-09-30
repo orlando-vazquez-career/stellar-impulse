@@ -1,6 +1,13 @@
-import { MAX_MAP_SIDE, type MapCell, type MapSpec } from './types.js';
+import { canCrossHeight, type RampDirection } from '../mapas/alturas.js';
+import { MAX_MAP_SIDE, type MapCell } from './types.js';
 
-export type PathMap = Pick<MapSpec, 'width' | 'height' | 'walkable'>;
+export interface PathMap {
+  readonly width: number;
+  readonly height: number;
+  readonly walkable: readonly boolean[];
+  readonly level?: readonly number[];
+  readonly ramp?: readonly (RampDirection | null)[];
+}
 export interface PathOptions { readonly maxExpansions?: number }
 export type PathResult =
   | { readonly status: 'found'; readonly path: MapCell[]; readonly expansions: number }
@@ -52,14 +59,16 @@ class MinHeap {
  * Returned path omits start and includes goal. All outcomes report popped-cell expansions.
  */
 export function findPath(map: PathMap, start: MapCell, goal: MapCell, options: PathOptions = {}): PathResult {
-  const { width, height, walkable } = map;
+  const { width, height, walkable, level, ramp } = map;
   const validCell = (cell: MapCell): boolean => Number.isSafeInteger(cell.x) && Number.isSafeInteger(cell.y)
     && cell.x >= 0 && cell.y >= 0 && cell.x < width && cell.y < height;
   const cells = width * height;
   const requested = options.maxExpansions ?? cells;
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1
     || width > MAX_MAP_SIDE || height > MAX_MAP_SIDE || walkable.length !== cells
-    || !Number.isSafeInteger(requested) || requested < 0 || !validCell(start) || !validCell(goal)) {
+    || !Number.isSafeInteger(requested) || requested < 0 || !validCell(start) || !validCell(goal)
+    || (level === undefined) !== (ramp === undefined)
+    || (level !== undefined && ramp !== undefined && (level.length !== cells || ramp.length !== cells))) {
     return { status: 'invalid', expansions: 0 };
   }
   const startIndex = start.y * width + start.x;
@@ -100,6 +109,7 @@ export function findPath(map: PathMap, start: MapCell, goal: MapCell, options: P
     ];
     for (const next of neighbors) {
       if (next < 0 || closed[next] || walkable[next] !== true) continue;
+      if (level && ramp && !canCrossHeight({ width, level, ramp, from: current.index, to: next })) continue;
       const g = current.g + 1;
       if (g >= bestG[next]!) continue;
       const h = heuristic(next % width, Math.floor(next / width));

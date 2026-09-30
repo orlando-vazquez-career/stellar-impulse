@@ -115,6 +115,7 @@ function TrainingApp() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [groups, selected, view]);
+  const metalNode = view?.nodes.find(node => node.kind === 'metal');
   const elapsed = view ? Math.floor(view.tick / 10) : 0;
   const remaining = view ? Math.max(0, (view.rules.coreOpenTick - view.tick) / 10) : 20;
   return <div className="shell">
@@ -135,8 +136,8 @@ function TrainingApp() {
           <div className="map-legend"><span><i className="ally" />Tu flota</span><span><i className="enemy" />Rival / guardianes</span><span><i className="objective" />Objetivo</span></div>
         </section>
         <aside className="tactical-panel"><div className="panel-title"><h2>Plan de vuelo</h2><span>Entrenamiento</span></div>
-          <ol className="objectives"><li><span>01</span><div><strong>Explora y toma Metal</strong><p>Acércate al nodo y derrota al guardián.</p></div></li><li><span>02</span><div><strong>Prepara la captura</strong><p>{view?.core.open ? 'El escudo está abierto. Elimina al guardián central.' : `El escudo se abre ${view ? 'en ' : 'a los '}${Math.ceil(remaining)} segundos.`}</p></div></li><li><span>03</span><div><strong>Defiende el Núcleo</strong><p>Mantén presencia exclusiva durante 8 segundos.</p></div></li></ol>
-          <div className="squad-panel"><h3>Escuadrón seleccionado</h3><strong>{squad ? { explorer: 'Explorador', interceptor: 'Interceptor', frigate: 'Fragata', bomber: 'Bombardero' }[squad.kind] : selected.length > 1 ? `${selected.length} escuadrones` : 'Esperando despliegue'}</strong><p>{squad ? `Integridad ${squad.hp}/${squad.maxHp} · Posición ${squad.x}, ${squad.y}` : 'Una flota pequeña. Una decisión a la vez.'}</p><div className="order-buttons"><button disabled={selected.length === 0 || !!view?.winner} onClick={() => move(4, 4)}>Ir al nodo</button><button disabled={selected.length === 0 || !!view?.winner} onClick={() => { if (view) move(view.core.x, view.core.y); }}>Ir al Núcleo</button></div></div>
+          <ol className="objectives"><li><span>01</span><div><strong>Explora y toma Metal</strong><p>Acércate al nodo de metal y mantenlo.</p></div></li><li><span>02</span><div><strong>Prepara la captura</strong><p>{view?.core.open ? 'El escudo está abierto. Elimina al guardián central.' : `El escudo se abre ${view ? 'en ' : 'a los '}${Math.ceil(remaining)} segundos.`}</p></div></li><li><span>03</span><div><strong>Defiende el Núcleo</strong><p>Mantén presencia exclusiva durante 8 segundos.</p></div></li></ol>
+          <div className="squad-panel"><h3>Escuadrón seleccionado</h3><strong>{squad ? { explorer: 'Explorador', interceptor: 'Interceptor', frigate: 'Fragata', bomber: 'Bombardero' }[squad.kind] : selected.length > 1 ? `${selected.length} escuadrones` : 'Esperando despliegue'}</strong><p>{squad ? `Integridad ${squad.hp}/${squad.maxHp} · Posición ${squad.x}, ${squad.y}` : 'Una flota pequeña. Una decisión a la vez.'}</p><div className="order-buttons"><button disabled={selected.length === 0 || !!view?.winner || !metalNode} onClick={() => { if (metalNode) move(metalNode.x, metalNode.y); }}>Ir al nodo</button><button disabled={selected.length === 0 || !!view?.winner} onClick={() => { if (view) move(view.core.x, view.core.y); }}>Ir al Núcleo</button></div></div>
           {view && <div className="capture"><label htmlFor="capture">Control del Núcleo</label><progress id="capture" value={view.core.progress[view.playerId]} max={view.rules.coreCaptureTicks}/></div>}
           <p className="notice" role="status">{notice}</p>
         </aside>

@@ -1,10 +1,10 @@
 import { Room, type Client } from '@colyseus/core';
-import { createWorld, applyCommand, applyEnemyOrders, planTrainingEnemy, stepWorld, type AiMemory, type PlayerId } from '@impulso/sim';
+import { createSectorWorld, applyCommand, applyEnemyOrders, planTrainingEnemy, stepWorld, type AiMemory, type PlayerId } from '@impulso/sim';
 import { viewFor } from '@impulso/state';
 
 export class TrainingRoom extends Room {
   maxClients = 2;
-  private world = createWorld();
+  private world = createSectorWorld();
   private seats = new Map<string, PlayerId>();
   private usedSeats = new Set<PlayerId>();
   private rates = new Map<string, { tick: number; count: number }>();
