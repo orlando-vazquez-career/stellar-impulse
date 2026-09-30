@@ -12,7 +12,20 @@ export interface AttackCommand {
   squadId: string;
   targetId: string;
 }
-export type Command = MoveCommand | AttackCommand;
+export interface EnqueueCommand {
+  seq: number;
+  type: 'enqueue';
+  squadId: string;
+  x: number;
+  y: number;
+}
+export interface StanceCommand {
+  seq: number;
+  type: 'stance';
+  squadId: string;
+  stance: 'guard' | 'patrol' | 'attack';
+}
+export type Command = MoveCommand | AttackCommand | EnqueueCommand | StanceCommand;
 export type ParseResult = { ok: true; command: Command } | { ok: false; reason: 'invalid_command' };
 
 /** Strict validation at the JSON boundary. No coercion or extra properties. */
@@ -23,20 +36,26 @@ export function parseCommand(value: unknown): ParseResult {
   if (prototype !== Object.prototype && prototype !== null) return invalid;
   const fields = Object.getOwnPropertyDescriptors(value);
   const type: unknown = fields.type?.value;
-  const expected = type === 'move' ? ['seq', 'type', 'squadId', 'x', 'y']
-    : type === 'attack' ? ['seq', 'type', 'squadId', 'targetId'] : [];
+  const expected = type === 'move' || type === 'enqueue' ? ['seq', 'type', 'squadId', 'x', 'y']
+    : type === 'attack' ? ['seq', 'type', 'squadId', 'targetId']
+    : type === 'stance' ? ['seq', 'type', 'squadId', 'stance'] : [];
   if (!expected.length || Reflect.ownKeys(value).length !== expected.length) return invalid;
   if (expected.some((key) => !fields[key] || !('value' in fields[key]))) return invalid;
   const seq: unknown = fields.seq!.value;
   const squadId: unknown = fields.squadId!.value;
   if (typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 1) return invalid;
   if (typeof squadId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(squadId)) return invalid;
+  if (type === 'stance') {
+    const stance: unknown = fields.stance!.value;
+    if (stance !== 'guard' && stance !== 'patrol' && stance !== 'attack') return invalid;
+    return { ok: true, command: { seq, type, squadId, stance } };
+  }
   if (type === 'attack') {
     const targetId: unknown = fields.targetId!.value;
     if (typeof targetId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(targetId)) return invalid;
     return { ok: true, command: { seq, type, squadId, targetId } };
   }
-  if (type !== 'move') return invalid;
+  if (type !== 'move' && type !== 'enqueue') return invalid;
   const x: unknown = fields.x!.value;
   const y: unknown = fields.y!.value;
   if (typeof x !== 'number' || !Number.isSafeInteger(x)) return invalid;

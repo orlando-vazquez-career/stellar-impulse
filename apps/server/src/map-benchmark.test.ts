@@ -71,7 +71,8 @@ function fixture(obstacles: boolean): BattlefieldWorld {
     return cells.map((cell, index) => ({
       id: `${ownerId}-squad-${String(index).padStart(2, '0')}`, ownerId,
       kind: 'interceptor' as const, x: cell!.x, y: cell!.y,
-      hp: 120, maxHp: 120, damage: 12, target: null, attackTargetId: null, route: [],
+      hp: 120, maxHp: 120, damage: 12, stance: 'march', anchor: null, gather: null,
+      target: null, attackTargetId: null, route: [],
     }));
   });
   return stepBattlefieldWorld(world); // refresh the two fog masks for all 128 units
