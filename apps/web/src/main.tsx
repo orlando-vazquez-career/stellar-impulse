@@ -4,6 +4,7 @@ import { Client, type Room } from '@colyseus/sdk';
 import type { PlayerView } from '@impulso/state';
 import { drawArena, pickCell } from '@impulso/render-2d';
 import { Status } from '@impulso/ui';
+import { LobbyScreen } from './lobby/LobbyScreen';
 import './style.css';
 
 const VisualPrototypeApp = lazy(() => import('./visual/VisualPrototypeApp'));
@@ -108,6 +109,14 @@ function TrainingApp() {
   </div>;
 }
 const visualRoute = window.location.pathname === '/visual' || window.location.pathname.startsWith('/visual/');
-createRoot(document.getElementById('root')!).render(<StrictMode>{visualRoute
-  ? <Suspense fallback={<div className="visual-loading">Preparando centro de mando…</div>}><VisualPrototypeApp /></Suspense>
-  : <TrainingApp />}</StrictMode>);
+
+function App() {
+  const [training, setTraining] = useState(false);
+  if (visualRoute) {
+    return <Suspense fallback={<div className="visual-loading">Preparando centro de mando…</div>}><VisualPrototypeApp /></Suspense>;
+  }
+  if (training) return <TrainingApp />;
+  return <LobbyScreen onOpenArena={() => setTraining(true)} />;
+}
+
+createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

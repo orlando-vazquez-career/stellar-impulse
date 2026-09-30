@@ -1,13 +1,20 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+async function openTrainingArena(page: Page) {
+  await page.goto('/');
+  await page.locator('.panel--modes').getByRole('button', { name: 'Entrenamiento' }).click();
+  await page.locator('.option-list').getByRole('button', { name: 'Un sector' }).click();
+  await page.getByRole('button', { name: 'DESPLEGAR', exact: true }).click();
+}
 
 test('two browsers join, order a squad, and complete the training objective', async ({ browser, page }) => {
-  await page.goto('/');
+  await openTrainingArena(page);
   await page.getByRole('button', { name: 'Crear entrenamiento' }).click();
   await expect(page.getByTestId('room-code')).toBeVisible();
   const code = await page.getByTestId('room-code').innerText();
   const second = await browser.newContext();
   const opponent = await second.newPage();
-  await opponent.goto('http://127.0.0.1:5173');
+  await openTrainingArena(opponent);
   await opponent.getByLabel('Código de sala').fill(code);
   await opponent.getByRole('button', { name: 'Entrar', exact: true }).click();
   await expect(opponent.getByTestId('room-code')).toHaveText(code);
@@ -23,7 +30,7 @@ test('two browsers join, order a squad, and complete the training objective', as
 test('layout and basic keyboard access at five widths', async ({ page }) => {
   for (const width of [320, 768, 1024, 1440, 1920]) {
     await page.setViewportSize({ width, height: 1080 });
-    await page.goto('/');
+    await openTrainingArena(page);
     await expect(page.getByRole('button', { name: 'Crear entrenamiento' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/layout-${width}.png`, fullPage: true });
