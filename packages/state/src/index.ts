@@ -1,11 +1,14 @@
-import { distance, UNIT_STATS, type Guardian, type PlayerId, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
+import { distance, UNIT_STATS, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
 export { UNIT_STATS, damageAgainst, findPath } from '@impulso/sim';
 export type { UnitKind } from '@impulso/sim';
 
-export interface VisibleSquad extends Omit<Squad, 'target' | 'attackTargetId'> {
+export interface VisibleSquad extends Omit<Squad, 'target' | 'attackTargetId' | 'stance' | 'anchor' | 'gather' | 'route'> {
   /** Rival destinations remain private even while their units are visible. */
   target?: Position | null;
   attackTargetId?: string | null;
+  stance?: PlayerStance;
+  anchor?: Position | null;
+  route?: Position[];
 }
 export interface PlayerView {
   schemaVersion: 1;
@@ -52,7 +55,10 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
         x: unit.x, y: unit.y, hp: unit.hp, maxHp: unit.maxHp, damage: unit.damage,
       };
       return unit.ownerId === playerId
-        ? { ...publicUnit, target: target ? { ...target } : null, attackTargetId }
+        ? {
+          ...publicUnit, target: target ? { ...target } : null, attackTargetId, stance: unit.stance,
+          anchor: unit.anchor ? { ...unit.anchor } : null, route: unit.route.map((cell) => ({ ...cell })),
+        }
         : publicUnit;
     }),
     guardians: world.guardians.filter(visible).map((unit) => ({

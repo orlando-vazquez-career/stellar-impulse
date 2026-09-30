@@ -16,6 +16,14 @@ describe('command boundary', () => {
     expect(parseCommand({ ...attack, x: 3 })).toEqual({ ok: false, reason: 'invalid_command' });
     expect(parseCommand({ ...attack, targetId: '../enemy' })).toEqual({ ok: false, reason: 'invalid_command' });
   });
+  it('accepts a finite enqueue and a stance from the command card', () => {
+    const queued = { seq: 3, type: 'enqueue', squadId: 'p1-interceptor', x: 4, y: 5 };
+    const stance = { seq: 4, type: 'stance', squadId: 'p1-interceptor', stance: 'guard' };
+    expect(parseCommand(queued)).toEqual({ ok: true, command: queued });
+    expect(parseCommand(stance)).toEqual({ ok: true, command: stance });
+    expect(parseCommand({ ...stance, stance: 'march' })).toEqual({ ok: false, reason: 'invalid_command' });
+    expect(parseCommand({ ...queued, loop: true })).toEqual({ ok: false, reason: 'invalid_command' });
+  });
   it.each([null, [], 'move', {}, { ...valid, seq: 0 }, { ...valid, seq: 1.5 },
     { ...valid, seq: Number.MAX_SAFE_INTEGER + 1 }, { ...valid, x: NaN },
     { ...valid, y: Infinity }, { ...valid, x: '3' }, { ...valid, type: 'attack' },

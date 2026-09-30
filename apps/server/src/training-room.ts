@@ -1,5 +1,5 @@
 import { Room, type Client } from '@colyseus/core';
-import { createWorld, applyCommand, stepWorld, type PlayerId } from '@impulso/sim';
+import { createWorld, applyCommand, applyEnemyOrders, planTrainingEnemy, stepWorld, type AiMemory, type PlayerId } from '@impulso/sim';
 import { viewFor } from '@impulso/state';
 
 export class TrainingRoom extends Room {
@@ -8,6 +8,7 @@ export class TrainingRoom extends Room {
   private seats = new Map<string, PlayerId>();
   private usedSeats = new Set<PlayerId>();
   private rates = new Map<string, { tick: number; count: number }>();
+  private enemyMemory = new Map<string, AiMemory>();
 
   onCreate() {
     this.setPrivate(true);
@@ -24,6 +25,11 @@ export class TrainingRoom extends Room {
       else client.send('rejected', { reason: result.reason });
     });
     this.setSimulationInterval(() => {
+      if (!this.usedSeats.has('p2')) {
+        const planned = planTrainingEnemy(this.world, this.enemyMemory);
+        this.enemyMemory = new Map(planned.memories);
+        this.world = applyEnemyOrders(this.world, planned.orders);
+      }
       this.world = stepWorld(this.world);
       for (const client of this.clients) {
         const player = this.seats.get(client.sessionId);

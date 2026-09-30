@@ -70,7 +70,8 @@ export function createBattlefieldWorldInternal(mapInput: MapSpec, rules: Rules):
   const squads: BattlefieldSquad[] = PLAYERS.map((player) => ({
     id: `${player}-interceptor`, ownerId: player, kind: 'interceptor',
     x: players[player].base.x, y: players[player].base.y,
-    hp: 120, maxHp: 120, damage: 12, target: null, attackTargetId: null, route: [],
+    hp: 120, maxHp: 120, damage: 12, stance: 'march', anchor: null, gather: null,
+    target: null, attackTargetId: null, route: [],
   }));
   const guardians: Guardian[] = map.objectives.map((objective) => ({
     id: objective.guardianId, objectiveId: objective.id,

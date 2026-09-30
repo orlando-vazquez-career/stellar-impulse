@@ -11,7 +11,7 @@ export function pickCell(canvas: HTMLCanvasElement, clientX: number, clientY: nu
   return x >= 0 && x < width && y >= 0 && y < height ? { x, y } : null;
 }
 
-export function drawArena(canvas: HTMLCanvasElement, view: PlayerView | null, selected: string | null) {
+export function drawArena(canvas: HTMLCanvasElement, view: PlayerView | null, selected: readonly string[]) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const scale = Math.min(window.devicePixelRatio || 1, 2);
@@ -71,13 +71,20 @@ export function drawArena(canvas: HTMLCanvasElement, view: PlayerView | null, se
   for (const squad of view?.squads ?? []) {
     if (squad.hp <= 0) continue;
     const p = iso(squad.x, squad.y), mine = squad.ownerId === view?.playerId;
-    if (squad.id === selected) {
+    if (selected.includes(squad.id)) {
       ctx.strokeStyle = '#71e5dc'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.ellipse(p.x, p.y, 28, 14, 0, 0, Math.PI * 2); ctx.stroke();
       if (squad.target) {
         const path = findPath(squad, squad.target, view!.width, view!.height, view!.obstacles);
         ctx.setLineDash([4, 6]); ctx.beginPath();
         path.forEach((cell, index) => { const waypoint = iso(cell.x, cell.y); if (index === 0) ctx.moveTo(waypoint.x, waypoint.y); else ctx.lineTo(waypoint.x, waypoint.y); });
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      const route = squad.route ?? [];
+      if (route.length > 0) {
+        ctx.strokeStyle = '#f2cd79'; ctx.setLineDash([2, 4]); ctx.beginPath();
+        const marks = squad.target ? [squad.target, ...route] : route;
+        marks.forEach((cell, index) => { const waypoint = iso(cell.x, cell.y); if (index === 0) ctx.moveTo(waypoint.x, waypoint.y); else ctx.lineTo(waypoint.x, waypoint.y); });
         ctx.stroke(); ctx.setLineDash([]);
       }
       if (squad.attackTargetId) {

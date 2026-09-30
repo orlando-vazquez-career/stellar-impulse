@@ -47,4 +47,13 @@ describe('per-player visibility boundary', () => {
     world.squads.push(createSquad('scout', 'p1', 'explorer', { x: 4, y: 10 }));
     expect(viewFor(world, 'p1').visibleCells).toContainEqual({ x: 10, y: 10 });
   });
+  it('shows the owner the stance and the remaining route', () => {
+    const world = createWorld();
+    world.squads[0]!.stance = 'guard';
+    world.squads[0]!.anchor = { x: 2, y: 17 };
+    world.squads[0]!.route = [{ x: 3, y: 17 }];
+    const view = viewFor(world, 'p1');
+    expect(view.squads[0]).toMatchObject({ stance: 'guard', anchor: { x: 2, y: 17 }, route: [{ x: 3, y: 17 }] });
+    expect(view.squads[0]).not.toHaveProperty('gather');
+  });
 });
