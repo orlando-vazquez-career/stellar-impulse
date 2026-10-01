@@ -11,6 +11,8 @@ import {
 } from './mecanicas/orders.js';
 import { findPath as findSurfacePath } from './maps/pathfinding.js';
 import { SECTOR_01 } from './mapas/sector-01.js';
+export { leerSuperficie } from './mapas/leer-tiled.js';
+export { findPath as findTiledPath } from './maps/pathfinding.js';
 import type { Superficie } from './mapas/leer-tiled.js';
 
 export { defineMapSpec, MAX_MAP_SIDE, MAX_MAP_CELLS } from './maps/types.js';

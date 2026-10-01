@@ -1,7 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import Phaser from 'phaser';
 import { useI18n } from '../../i18n';
-import type { VisualPreferences } from '../../settings/preferences';
 import type { CameraView, GameplayViewModel } from '../model';
 import { MainScene } from './MainScene';
 
@@ -12,14 +11,13 @@ export interface PhaserBattlefieldHandle {
 
 interface PhaserBattlefieldProps {
   view: GameplayViewModel;
-  controls: VisualPreferences['controls'];
   onSelectSquads(ids: string[]): void;
   onMoveSelected(x: number, y: number): void;
   onAttackSelected(targetId: string): void;
   onCameraChange(view: CameraView): void;
 }
 
-export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattlefieldProps>(function PhaserBattlefield({ view, controls, onSelectSquads, onMoveSelected, onAttackSelected, onCameraChange }, forwardedRef) {
+export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattlefieldProps>(function PhaserBattlefield({ view, onSelectSquads, onMoveSelected, onAttackSelected, onCameraChange }, forwardedRef) {
   const { t } = useI18n();
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -35,8 +33,6 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
   attackCallbackRef.current = onAttackSelected;
   const snapshotRef = useRef(view);
   snapshotRef.current = view;
-  const controlsRef = useRef(controls);
-  controlsRef.current = controls;
 
   useEffect(() => { sceneRef.current?.sync(view); }, [view]);
 
@@ -59,9 +55,10 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
         if (disposed) return;
         setLoadError(null);
         host.parentElement?.setAttribute('data-ready', 'true');
+        host.parentElement?.setAttribute('data-map-source', 'sector-01.tmj');
+        host.parentElement?.setAttribute('data-atlas-ready', 'true');
       },
       (message) => { if (!disposed) setLoadError(message); },
-      (key) => Object.values(controlsRef.current).some((binding) => binding.toUpperCase() === key),
     );
     sceneRef.current = scene;
     const game = new Phaser.Game({
@@ -77,6 +74,8 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
     return () => {
       disposed = true;
       host.parentElement?.removeAttribute('data-ready');
+      host.parentElement?.removeAttribute('data-map-source');
+      host.parentElement?.removeAttribute('data-atlas-ready');
       sceneRef.current = null;
       gameRef.current = null;
       game.destroy(true);

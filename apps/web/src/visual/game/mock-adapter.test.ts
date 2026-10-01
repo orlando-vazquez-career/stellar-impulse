@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMockGameplayAdapter } from './mock-adapter';
+import { sectorSurface } from '../map/sector-map';
 
 describe('visual presentation adapter', () => {
+  it('spawns on the playable Tiled surface and rejects blocked move orders', () => {
+    const adapter = createMockGameplayAdapter();
+    const alpha = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')!;
+    expect(sectorSurface.walkable[Math.round(alpha.gridY) * sectorSurface.width + Math.round(alpha.gridX)]).toBe(true);
+    const blocked = sectorSurface.walkable.findIndex((walkable) => !walkable);
+    adapter.dispatch({ type: 'move-selected', x: blocked % sectorSurface.width, y: Math.floor(blocked / sectorSurface.width) });
+    expect(adapter.getSnapshot().moveOrder).toBeNull();
+    adapter.destroy();
+  });
   it('updates selection and visual actions without mutating authoritative state', () => {
     const adapter = createMockGameplayAdapter();
     adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
@@ -27,16 +37,16 @@ describe('visual presentation adapter', () => {
   it('moves the selected allied squad toward the exact destination and allows shared ship positions', () => {
     vi.useFakeTimers();
     const adapter = createMockGameplayAdapter();
-    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 47, y: 47 });
-    expect(adapter.getSnapshot().moveOrder?.route).toEqual([{ x: 44, y: 47 }, { x: 47, y: 47 }]);
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 14, y: 13 });
+    expect(adapter.getSnapshot().moveOrder?.route).toEqual([{ x: 12, y: 13 }, { x: 14, y: 13 }]);
     expect(adapter.getSnapshot().activeAction).toBeNull();
     adapter.dispatch({ type: 'set-action', action: 'move' });
-    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 45, y: 49 });
-    expect(adapter.getSnapshot().moveOrder?.destination).toEqual({ x: 45, y: 49 });
-    adapter.dispatch({ type: 'move-squad', squadId: 'red-sigma', x: 50, y: 50 });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 14, y: 14 });
+    expect(adapter.getSnapshot().moveOrder?.destination).toEqual({ x: 14, y: 14 });
+    adapter.dispatch({ type: 'move-squad', squadId: 'red-sigma', x: 14, y: 14 });
     expect(adapter.getSnapshot().moveOrder?.squadId).toBe('blue-alpha');
     vi.advanceTimersByTime(750);
-    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')).toMatchObject({ gridX: 45, gridY: 49, status: 'idle' });
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')).toMatchObject({ gridX: 14, gridY: 14, status: 'idle' });
     expect(adapter.getSnapshot().moveOrder).toBeNull();
     adapter.destroy();
     vi.useRealTimers();
@@ -47,20 +57,20 @@ describe('visual presentation adapter', () => {
     const adapter = createMockGameplayAdapter();
     adapter.dispatch({ type: 'select-squad', squadId: 'red-sigma' });
     expect(adapter.getSnapshot().selectedSquadId).toBe('blue-alpha');
-    adapter.dispatch({ type: 'move-squad', squadId: 'blue-beta', x: 47, y: 49 });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-beta', x: 14, y: 15 });
     expect(adapter.getSnapshot().moveOrder).toBeNull();
     adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
-    adapter.dispatch({ type: 'move-squad', squadId: 'blue-beta', x: 47, y: 49 });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-beta', x: 14, y: 15 });
     expect(adapter.getSnapshot().moveOrder?.squadId).toBe('blue-beta');
     adapter.dispatch({ type: 'select-squad', squadId: 'blue-alpha' });
-    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 47, y: 47 });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 14, y: 13 });
     expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.status).toBe('moving');
     expect(adapter.getSnapshot().moveOrder?.squadId).toBe('blue-alpha');
     vi.advanceTimersByTime(50);
-    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.gridX).toBeCloseTo(45.15);
-    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')?.gridX).toBeCloseTo(44.2);
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.gridX).toBeCloseTo(13.15);
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')?.gridX).toBeCloseTo(12.2);
     adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
-    expect(adapter.getSnapshot().moveOrder?.route[0]?.x).toBeCloseTo(45.15);
+    expect(adapter.getSnapshot().moveOrder?.route[0]?.x).toBeCloseTo(13.15);
     adapter.destroy();
     vi.useRealTimers();
   });
@@ -70,13 +80,13 @@ describe('visual presentation adapter', () => {
     const adapter = createMockGameplayAdapter();
     adapter.dispatch({ type: 'select-squads', squadIds: ['blue-alpha', 'blue-beta', 'red-sigma', 'blue-beta'] });
     expect(adapter.getSnapshot().selectedSquadIds).toEqual(['blue-alpha', 'blue-beta']);
-    adapter.dispatch({ type: 'move-selected', x: 48, y: 52 });
+    adapter.dispatch({ type: 'move-selected', x: 14, y: 14 });
     const moving = adapter.getSnapshot().squads.filter((squad) => squad.selected);
     expect(moving.map((squad) => squad.status)).toEqual(['moving', 'moving']);
     vi.advanceTimersByTime(50);
     const advanced = adapter.getSnapshot().squads.filter((squad) => squad.selected);
-    expect(advanced[0]!.gridX).toBeGreaterThan(44);
-    expect(advanced[1]!.gridX).toBeGreaterThan(45);
+    expect(advanced[0]!.gridX).toBeGreaterThan(12);
+    expect(advanced[1]!.gridX).toBeGreaterThan(13);
     adapter.dispatch({ type: 'attack-selected', targetId: 'red-sigma' });
     expect(adapter.getSnapshot().squads.filter((squad) => squad.selected).map((squad) => squad.attackTargetId))
       .toEqual(['red-sigma', 'red-sigma']);
@@ -90,26 +100,26 @@ describe('visual presentation adapter', () => {
   it('advances diagonally in both axes rather than taking cardinal steps', () => {
     vi.useFakeTimers();
     const adapter = createMockGameplayAdapter();
-    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 46.5, y: 49.25 });
-    expect(adapter.getSnapshot().moveOrder?.destination).toEqual({ x: 46.5, y: 49.25 });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 14.5, y: 14.25 });
+    expect(adapter.getSnapshot().moveOrder?.destination).toEqual({ x: 14.5, y: 14.25 });
     vi.advanceTimersByTime(50);
     const alpha = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha');
-    expect(alpha?.gridX).toBeGreaterThan(44);
-    expect(alpha?.gridY).toBeGreaterThan(47);
+    expect(alpha?.gridX).toBeGreaterThan(12);
+    expect(alpha?.gridY).toBeGreaterThan(13);
     adapter.destroy();
     vi.useRealTimers();
   });
-  it('adds a slower selectable bomber and routes around asteroids', () => {
+  it('adds a slower selectable bomber and rejects blocked Tiled cells', () => {
     vi.useFakeTimers();
     const adapter = createMockGameplayAdapter();
     const gamma = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-gamma');
     expect(gamma?.unitType).toBe('bomber');
     adapter.dispatch({ type: 'select-squad', squadId: 'blue-gamma' });
-    adapter.dispatch({ type: 'move-squad', squadId: 'blue-gamma', x: 50, y: 46 });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-gamma', x: 0, y: 0 });
     expect(adapter.getSnapshot().moveOrder).toBeNull();
-    adapter.dispatch({ type: 'move-squad', squadId: 'blue-gamma', x: 44, y: 50 });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-gamma', x: 14, y: 15 });
     vi.advanceTimersByTime(50);
-    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-gamma')?.gridX).toBeCloseTo(42.1);
+    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-gamma')?.gridX).toBeCloseTo(12.1);
     adapter.destroy();
     vi.useRealTimers();
   });
@@ -123,7 +133,7 @@ describe('visual presentation adapter', () => {
     expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.attackTargetId).toBe('red-sigma');
     vi.advanceTimersByTime(6000);
     expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'red-sigma')!.healthPercent).toBeLessThan(68);
-    adapter.dispatch({ type: 'move-squad', squadId: 'blue-beta', x: 45, y: 49 });
+    adapter.dispatch({ type: 'move-squad', squadId: 'blue-beta', x: 14, y: 15 });
     expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.attackTargetId).toBeNull();
     adapter.destroy();
     vi.useRealTimers();
@@ -133,10 +143,10 @@ describe('visual presentation adapter', () => {
     vi.useFakeTimers();
     const adapter = createMockGameplayAdapter();
     try {
-      adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 47, y: 47 });
+      adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 14, y: 13 });
       vi.setSystemTime(Date.now() + 450);
       vi.advanceTimersByTime(50);
-      expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')?.gridX).toBeCloseTo(46);
+      expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')?.gridX).toBeCloseTo(14);
     } finally {
       adapter.destroy();
       vi.useRealTimers();
@@ -148,7 +158,7 @@ describe('visual presentation adapter', () => {
     const adapter = createMockGameplayAdapter();
     try {
       adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
-      adapter.dispatch({ type: 'move-selected', x: 53, y: 47 });
+      adapter.dispatch({ type: 'move-selected', x: 16, y: 14 });
       vi.advanceTimersByTime(10000);
       adapter.dispatch({ type: 'attack-selected', targetId: 'red-sigma' });
       vi.setSystemTime(Date.now() + 450);
@@ -165,7 +175,7 @@ describe('visual presentation adapter', () => {
     const adapter = createMockGameplayAdapter();
     try {
       adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
-      adapter.dispatch({ type: 'move-selected', x: 54.76, y: 46.07 });
+      adapter.dispatch({ type: 'move-selected', x: 16, y: 14 });
       vi.advanceTimersByTime(100);
       adapter.dispatch({ type: 'attack-selected', targetId: 'red-sigma' });
       vi.advanceTimersByTime(20000);

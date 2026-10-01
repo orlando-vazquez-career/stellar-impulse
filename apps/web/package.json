@@ -10,12 +10,8 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
-    "@impulso/chain": "workspace:*",
-    "@impulso/input": "workspace:*",
     "@impulso/state": "workspace:*",
-    "@impulso/render-2d": "workspace:*",
-    "@impulso/ui": "workspace:*",
-    "@colyseus/sdk": "0.18.3",
+    "@impulso/sim": "workspace:*",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/rajdhani": "^5.3.0",
     "phaser": "4.2.1",

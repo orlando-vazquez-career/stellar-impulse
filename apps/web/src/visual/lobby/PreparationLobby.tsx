@@ -7,7 +7,7 @@ import './lobby.css';
 export type LobbyMode = 'create' | 'join';
 type FleetSide = 'blue' | 'red';
 
-export function PreparationLobby({ alias, mode, onBack, onDeploy }: { alias: string; mode: LobbyMode; onBack(): void; onDeploy(): void }) {
+export function PreparationLobby({ alias, mode, onBack, onExploreMap, onDeploy }: { alias: string; mode: LobbyMode; onBack(): void; onExploreMap(): void; onDeploy(): void }) {
   const { t } = useI18n();
   const [side, setSide] = useState<FleetSide>('blue');
   const [ready, setReady] = useState(false);
@@ -46,6 +46,7 @@ export function PreparationLobby({ alias, mode, onBack, onDeploy }: { alias: str
             <div><dt>{t('duration')}</dt><dd>{t('durationValue')}</dd></div>
             <div><dt>{t('fleetFormat')}</dt><dd>{t('fleetFormatValue')}</dd></div>
           </dl>
+          <button className="vi-map-explore" onClick={onExploreMap}>Explorar mapa Tiled</button>
         </section>
 
         <section className="vi-lobby-card vi-room" aria-labelledby="room-title">

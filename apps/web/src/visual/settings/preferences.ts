@@ -19,7 +19,7 @@ export interface VisualPreferences {
 
 export const defaultVisualPreferences: VisualPreferences = {
   audio: { master: 80, effects: 85, music: 55, muted: false },
-  controls: { move: 'M', attack: 'A', hold: 'H', capture: 'C', cancel: 'Esc', camera: 'Space' },
+  controls: { move: 'M', attack: 'Q', hold: 'H', capture: 'C', cancel: 'Esc', camera: 'Space' },
   accessibility: { highContrast: false, reducedMotion: false, largeText: false, colorProfile: 'default' },
 };
 
@@ -40,7 +40,10 @@ export function loadVisualPreferences(): VisualPreferences {
     const parsed = JSON.parse(stored) as Partial<VisualPreferences>;
     return {
       audio: { ...defaultVisualPreferences.audio, ...parsed.audio },
-      controls: { ...defaultVisualPreferences.controls, ...parsed.controls },
+      controls: { ...defaultVisualPreferences.controls, ...Object.fromEntries(
+        Object.entries(parsed.controls ?? {}).map(([action, binding]) => [action,
+          typeof binding === 'string' && /^[wasd]$/i.test(binding) ? defaultVisualPreferences.controls[action as ControlAction] : binding]),
+      ) },
       accessibility: { ...defaultVisualPreferences.accessibility, ...parsed.accessibility },
     };
   } catch {

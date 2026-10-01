@@ -31,4 +31,8 @@ describe('visual preferences', () => {
     localStorage.setItem('impulso.visual-preferences', '{not-json');
     expect(loadVisualPreferences()).toEqual(defaultVisualPreferences);
   });
+  it('migrates a saved attack shortcut that conflicts with WASD camera controls', () => {
+    localStorage.setItem('impulso.visual-preferences', JSON.stringify({ controls: { attack: 'A' } }));
+    expect(loadVisualPreferences().controls.attack).toBe('Q');
+  });
 });

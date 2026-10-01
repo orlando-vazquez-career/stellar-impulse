@@ -5,8 +5,14 @@ import { LanguageToggle } from '../shared/LanguageToggle';
 import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
 import type { CameraView, CoreState, GameplayAction, GameplayPresentationAdapter, GameplayViewModel } from './model';
-import { CORE_CELL, GRID_COLUMNS, GRID_ROWS } from './phaser/grid';
-import { ASTEROIDS, BASE_CELLS } from './phaser/asteroids';
+import { sectorMap, sectorSurface } from '../map/sector-map';
+
+const GRID_COLUMNS = sectorMap.width;
+const GRID_ROWS = sectorMap.height;
+const CORE_CELL = sectorSurface.core;
+const BASE_CELLS = { blue: sectorSurface.bases.p1, red: sectorSurface.bases.p2 };
+const FLOOR_CELLS = sectorSurface.walkable.flatMap((walkable, index) => walkable
+  ? [{ x: index % GRID_COLUMNS, y: Math.floor(index / GRID_COLUMNS) }] : []);
 
 function formatTime(seconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -78,7 +84,7 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
         <rect x={point.x - 6} y={point.y - 4} width="12" height="8" />
         <circle cx={point.x - 4} cy={point.y - 5} r="2" /><circle cx={point.x + 4} cy={point.y - 5} r="2" />
       </g>; })}
-      {ASTEROIDS.map((asteroid) => { const point = project(asteroid.x, asteroid.y); return <circle key={`${asteroid.x},${asteroid.y}`} cx={point.x} cy={point.y} r="2.2" fill="#8897a6" />; })}
+      {FLOOR_CELLS.map((cell) => { const point = project(cell.x, cell.y); return <circle key={`${cell.x},${cell.y}`} cx={point.x} cy={point.y} r="2.2" fill="#42637d" />; })}
       {route && <polyline className="map-move-route" points={route.route.map((cell) => { const point = project(cell.x, cell.y); return `${point.x},${point.y}`; }).join(' ')} />}
       {(() => { const selected = view.squads.find((squad) => squad.id === view.selectedSquadId); const target = view.squads.find((squad) => squad.id === selected?.attackTargetId); if (!selected || !target) return null; const from = project(selected.gridX, selected.gridY); const to = project(target.gridX, target.gridY); return <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#ff4f64" strokeWidth="1.5" />; })()}
       {view.squads.filter((squad) => squad.visible).map((squad) => {

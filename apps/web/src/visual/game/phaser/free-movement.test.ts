@@ -5,7 +5,7 @@ import { ASTEROIDS, BASE_CELLS, BLOCKING_TERRAIN } from './asteroids';
 
 describe('free movement on the visual field', () => {
   it('preserves fractional click coordinates through the isometric projection', () => {
-    const point = { x: 34.25, y: 37.6 };
+    const point = { x: 14.25, y: 17.6 };
     const screen = cellToIso(point.x, point.y);
     const restored = isoToPoint(screen.x, screen.y);
     expect(restored?.x).toBeCloseTo(point.x);
