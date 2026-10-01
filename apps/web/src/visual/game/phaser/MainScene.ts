@@ -1,10 +1,13 @@
 import Phaser from 'phaser';
 import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '../model';
-import { CORE_CELL, GRID_COLUMNS, GRID_ROWS, type GridPoint } from './grid';
-import { planFreeMove } from './free-movement';
-import { ASTEROIDS, BASE_CELLS, BLOCKING_TERRAIN } from './asteroids';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH } from './isometric';
-import mapData from './assets/battlefield.json';
+import type { GridPoint } from './grid';
+import { planSectorMove, sectorMap, sectorSurface } from '../../map/sector-map';
+import atlasUrl from '../../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/stellar-plataformas.png';
+import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT } from './isometric';
+
+const GRID_COLUMNS = sectorMap.width;
+const GRID_ROWS = sectorMap.height;
+const CORE_CELL = sectorSurface.core;
 
 const color = {
   background: 0x080e18,
@@ -39,9 +42,6 @@ function coreColor(state: CoreState) {
   return color.core;
 }
 
-function terrainVariant(x: number, y: number) {
-  return ((x * 73856093) ^ (y * 19349663)) >>> 0;
-}
 
 function polygon(vertices: { x: number; y: number }[]) {
   return vertices.map(({ x, y }) => new Phaser.Math.Vector2(x, y));
@@ -58,17 +58,14 @@ export class MainScene extends Phaser.Scene {
   private route?: Phaser.GameObjects.Graphics;
   private selectionBox?: Phaser.GameObjects.Graphics;
   private core?: Phaser.GameObjects.Graphics;
-  private bases?: Phaser.GameObjects.Graphics;
   private readonly unitVisuals = new Map<string, UnitVisual>();
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private movementKeys?: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private dragOrigin?: { x: number; y: number; scrollX: number; scrollY: number };
   private selectionDrag?: { start: { x: number; y: number }; current: { x: number; y: number }; clickedId: string | null };
   private hoverPoint: GridPoint | null = null;
-  private lastTerrainBounds = '';
   private lastCameraView = '';
   private pointerOnCanvas = false;
-  private readonly asteroidIds = new Set(ASTEROIDS.map((point) => `${point.x},${point.y}`));
 
   constructor(
     snapshot: GameplayViewModel,
@@ -78,7 +75,6 @@ export class MainScene extends Phaser.Scene {
     onCameraChange: (view: CameraView) => void,
     onReady: () => void,
     private readonly onError: (message: string) => void,
-    private readonly isActionKey: (key: string) => boolean,
   ) {
     super({ key: 'MainScene' });
     this.snapshot = snapshot;
@@ -89,9 +85,13 @@ export class MainScene extends Phaser.Scene {
     this.onReady = onReady;
   }
 
+  preload() {
+    this.load.spritesheet('sector-atlas', atlasUrl, { frameWidth: 64, frameHeight: 48 });
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => this.onError('No se pudo cargar el atlas de Sector 01.'));
+  }
+
   create() {
-    if (mapData.orientation !== 'orthogonal' || mapData.width !== GRID_COLUMNS || mapData.height !== GRID_ROWS
-      || mapData.layers[0]?.data.length !== GRID_COLUMNS * GRID_ROWS) {
+    if (sectorMap.orientation !== 'isometric' || !this.textures.exists('sector-atlas')) {
       this.onError('El mapa del sector no tiene el tamaño esperado.');
       return;
     }
@@ -102,8 +102,7 @@ export class MainScene extends Phaser.Scene {
     this.route = this.add.graphics().setDepth(20000);
     this.selectionBox = this.add.graphics().setScrollFactor(0).setDepth(30000);
     this.core = this.add.graphics().setDepth(20001);
-    this.bases = this.add.graphics().setDepth(50);
-    this.drawBases();
+    this.drawTerrain();
     this.drawCore();
     this.renderSnapshot();
     this.configureInput();
@@ -127,11 +126,11 @@ export class MainScene extends Phaser.Scene {
     const pointer = this.input.activePointer;
     const edge = this.pointerOnCanvas && !this.dragOrigin && !this.selectionDrag && pointer.x >= 0 && pointer.y >= 0
       && pointer.x < this.scale.width && pointer.y < this.scale.height;
-    const cameraKey = (key: Phaser.Input.Keyboard.Key | undefined, binding: string) => key?.isDown && !this.isActionKey(binding);
-    const horizontal = Number(Boolean(this.cursors?.right.isDown || cameraKey(this.movementKeys?.right, 'D') || (edge && pointer.x >= this.scale.width - 20)))
-      - Number(Boolean(this.cursors?.left.isDown || cameraKey(this.movementKeys?.left, 'A') || (edge && pointer.x < 20)));
-    const vertical = Number(Boolean(this.cursors?.down.isDown || cameraKey(this.movementKeys?.down, 'S') || (edge && pointer.y >= this.scale.height - 20)))
-      - Number(Boolean(this.cursors?.up.isDown || cameraKey(this.movementKeys?.up, 'W') || (edge && pointer.y < 20)));
+    const cameraKey = (key: Phaser.Input.Keyboard.Key | undefined) => key?.isDown;
+    const horizontal = Number(Boolean(this.cursors?.right.isDown || cameraKey(this.movementKeys?.right) || (edge && pointer.x >= this.scale.width - 20)))
+      - Number(Boolean(this.cursors?.left.isDown || cameraKey(this.movementKeys?.left) || (edge && pointer.x < 20)));
+    const vertical = Number(Boolean(this.cursors?.down.isDown || cameraKey(this.movementKeys?.down) || (edge && pointer.y >= this.scale.height - 20)))
+      - Number(Boolean(this.cursors?.up.isDown || cameraKey(this.movementKeys?.up) || (edge && pointer.y < 20)));
     camera.scrollX += horizontal * distance;
     camera.scrollY += vertical * distance;
     this.refreshCameraView();
@@ -156,84 +155,34 @@ export class MainScene extends Phaser.Scene {
 
   private refreshCameraView() {
     const camera = this.cameras.main;
-    const corners = [camera.getWorldPoint(0, 0), camera.getWorldPoint(camera.width, 0),
-      camera.getWorldPoint(0, camera.height), camera.getWorldPoint(camera.width, camera.height)];
-    const grid = corners.map(({ x, y }) => {
-      const dx = (x - GRID_ROWS * TILE_HALF_WIDTH) / TILE_HALF_WIDTH;
-      const dy = (y - 72) / TILE_HALF_HEIGHT;
-      return { x: (dx + dy) / 2, y: (dy - dx) / 2 };
-    });
-    const terrainBounds: [number, number, number, number] = [
-      Phaser.Math.Clamp(Math.floor(Math.min(...grid.map((point) => point.x)) - 2), 0, GRID_COLUMNS - 1),
-      Phaser.Math.Clamp(Math.floor(Math.min(...grid.map((point) => point.y)) - 2), 0, GRID_ROWS - 1),
-      Phaser.Math.Clamp(Math.ceil(Math.max(...grid.map((point) => point.x)) + 2), 0, GRID_COLUMNS - 1),
-      Phaser.Math.Clamp(Math.ceil(Math.max(...grid.map((point) => point.y)) + 2), 0, GRID_ROWS - 1),
-    ];
-    const terrainKey = terrainBounds.join(',');
-    if (terrainKey !== this.lastTerrainBounds) {
-      this.lastTerrainBounds = terrainKey;
-      this.drawTerrain(terrainBounds);
-    }
-    const cameraKey = terrainKey;
+    const cameraKey = `${Math.round(camera.scrollX)},${Math.round(camera.scrollY)},${camera.zoom},${camera.width},${camera.height}`;
     if (cameraKey === this.lastCameraView) return;
     this.lastCameraView = cameraKey;
-    const [minX, minY, maxX, maxY] = terrainBounds;
     this.onCameraChange({
-      x: minX / GRID_COLUMNS, y: minY / GRID_ROWS,
-      width: Math.min(1 - minX / GRID_COLUMNS, (maxX - minX + 1) / GRID_COLUMNS),
-      height: Math.min(1 - minY / GRID_ROWS, (maxY - minY + 1) / GRID_ROWS),
+      x: camera.scrollX / ISO_WORLD_WIDTH, y: camera.scrollY / ISO_WORLD_HEIGHT,
+      width: camera.width / camera.zoom / ISO_WORLD_WIDTH,
+      height: camera.height / camera.zoom / ISO_WORLD_HEIGHT,
     });
   }
 
-  private drawTerrain([minX, minY, maxX, maxY]: [number, number, number, number]) {
+  private drawTerrain() {
     const graphics = this.terrain;
     if (!graphics) return;
-    graphics.clear();
-    for (let sum = minX + minY; sum <= maxX + maxY; sum += 1) {
-      for (let x = minX; x <= maxX; x += 1) {
-        const y = sum - x;
-        if (y < minY || y > maxY) continue;
-        const variant = terrainVariant(x, y);
-        const tile = mapData.layers[0]!.data[y * GRID_COLUMNS + x];
-        const tileColor = tile === 2 ? 0x1b334b : tile === 3 ? 0x102438 : tile === 4 ? 0x20374c : 0x172c40;
+    sectorMap.layers.filter((layer) => layer.visible).forEach((layer, layerIndex) => {
+      for (let y = 0; y < GRID_ROWS; y++) for (let x = 0; x < GRID_COLUMNS; x++) {
+        const gid = layer.data[y * GRID_COLUMNS + x];
+        if (!gid) continue;
         const point = cellToIso(x, y);
-        const rise = tile === 4 ? 8 : tile === 2 ? 5 : 3;
-        graphics.fillStyle(0x081521, 1);
-        graphics.fillPoints(polygon([
-          { x: point.x, y: point.y + TILE_HALF_HEIGHT }, { x: point.x + TILE_HALF_WIDTH, y: point.y },
-          { x: point.x + TILE_HALF_WIDTH, y: point.y + rise }, { x: point.x, y: point.y + TILE_HALF_HEIGHT + rise },
-        ]), true);
-        graphics.fillStyle(0x0d2030, 1);
-        graphics.fillPoints(polygon([
-          { x: point.x - TILE_HALF_WIDTH, y: point.y }, { x: point.x, y: point.y + TILE_HALF_HEIGHT },
-          { x: point.x, y: point.y + TILE_HALF_HEIGHT + rise }, { x: point.x - TILE_HALF_WIDTH, y: point.y + rise },
-        ]), true);
-        graphics.fillStyle(tileColor, 1);
-        graphics.fillPoints(polygon([
-          { x: point.x, y: point.y - TILE_HALF_HEIGHT }, { x: point.x + TILE_HALF_WIDTH, y: point.y },
-          { x: point.x, y: point.y + TILE_HALF_HEIGHT }, { x: point.x - TILE_HALF_WIDTH, y: point.y },
-        ]), true);
-        graphics.lineStyle(1, (x + y) % 8 === 0 ? 0x54708a : 0x38556b, (x + y) % 8 === 0 ? 0.68 : 0.36);
-        graphics.strokePoints(polygon([
-          { x: point.x, y: point.y - TILE_HALF_HEIGHT }, { x: point.x + TILE_HALF_WIDTH, y: point.y },
-          { x: point.x, y: point.y + TILE_HALF_HEIGHT }, { x: point.x - TILE_HALF_WIDTH, y: point.y },
-        ]), true);
-        if (this.asteroidIds.has(`${x},${y}`)) {
-          graphics.fillStyle(0x536879, 1);
-          graphics.fillPoints(polygon([
-            { x: point.x - 24, y: point.y - 5 }, { x: point.x - 12, y: point.y - 31 },
-            { x: point.x + 7, y: point.y - 40 }, { x: point.x + 25, y: point.y - 13 },
-            { x: point.x + 15, y: point.y + 4 }, { x: point.x - 12, y: point.y + 8 },
-          ]), true);
-          graphics.lineStyle(2, 0x9dafb8, 0.8);
-          graphics.lineBetween(point.x - 12, point.y - 31, point.x + 7, point.y - 40);
-        }
-        if (variant % 29 === 0 && Math.abs(x - CORE_CELL.x) + Math.abs(y - CORE_CELL.y) > 4) {
-          graphics.lineStyle(2, 0x87a7bb, 0.34);
-          graphics.lineBetween(point.x - 12, point.y - 2, point.x + 3, point.y - 9);
+        const tileset = [...sectorMap.tilesets].reverse().find((set) => set.firstgid <= gid);
+        if (tileset?.image === 'stellar-plataformas.png') {
+          this.add.image(point.x, point.y + TILE_HALF_HEIGHT - tileset.tileheight / 2,
+            'sector-atlas', gid - tileset.firstgid).setDepth(layerIndex * 2000 + (x + y) * 32 + x);
+        } else {
+          graphics.fillStyle(0x0a1726, 1);
+          graphics.fillRect(point.x - 32, point.y - 16, 64, 32);
         }
       }
-    }
+    });
   }
 
   private drawCore() {
@@ -243,69 +192,19 @@ export class MainScene extends Phaser.Scene {
     const hue = coreColor(this.snapshot.core.state);
     graphics.clear();
     graphics.fillStyle(0x071420, 0.8);
-    graphics.fillEllipse(center.x, center.y + 14, 212, 90);
-    graphics.lineStyle(3, hue, 0.84);
-    graphics.strokeEllipse(center.x, center.y + 9, 176, 74);
-    graphics.lineStyle(1, hue, 0.35);
-    graphics.strokeEllipse(center.x, center.y + 9, 220, 100);
-    graphics.fillStyle(0x334a55, 1);
-    graphics.fillPoints(polygon([
-      { x: center.x, y: center.y - 59 }, { x: center.x + 36, y: center.y - 20 },
-      { x: center.x, y: center.y + 20 }, { x: center.x - 36, y: center.y - 20 },
-    ]), true);
+    graphics.fillEllipse(center.x, center.y + 9, 72, 38);
+    graphics.lineStyle(2, hue, 0.84);
+    graphics.strokeEllipse(center.x, center.y + 9, 62, 31);
     graphics.fillStyle(hue, 0.95);
-    graphics.fillPoints(polygon([
-      { x: center.x, y: center.y - 66 }, { x: center.x + 15, y: center.y - 23 },
-      { x: center.x, y: center.y - 9 }, { x: center.x - 15, y: center.y - 23 },
-    ]), true);
+    graphics.fillTriangle(center.x, center.y - 19, center.x + 8, center.y - 3, center.x - 8, center.y - 3);
     if (this.snapshot.core.progress > 0 && this.snapshot.core.state !== 'locked') {
       graphics.lineStyle(4, hue, 1);
       graphics.beginPath();
-      graphics.arc(center.x, center.y + 9, 49, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.snapshot.core.progress / 100);
+      graphics.arc(center.x, center.y + 9, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.snapshot.core.progress / 100);
       graphics.strokePath();
     }
   }
 
-  private drawBases() {
-    const graphics = this.bases;
-    if (!graphics) return;
-    graphics.clear();
-    for (const [owner, cell] of Object.entries(BASE_CELLS)) {
-      const point = cellToIso(cell.x, cell.y);
-      const hue = owner === 'blue' ? color.blue : color.red;
-      graphics.fillStyle(0x071420, 0.9);
-      graphics.fillEllipse(point.x, point.y + 24, 340, 128);
-      graphics.lineStyle(4, hue, 0.9);
-      graphics.strokeEllipse(point.x, point.y + 18, 310, 108);
-      graphics.lineStyle(2, hue, 0.45);
-      graphics.strokeEllipse(point.x, point.y + 18, 245, 80);
-      graphics.fillStyle(owner === 'blue' ? 0x244c69 : 0x6a3442, 1);
-      graphics.fillPoints(polygon([
-        { x: point.x, y: point.y - 86 }, { x: point.x + 48, y: point.y - 16 },
-        { x: point.x, y: point.y + 27 }, { x: point.x - 48, y: point.y - 16 },
-      ]), true);
-      graphics.fillStyle(hue, 1);
-      graphics.fillTriangle(point.x, point.y - 78, point.x + 13, point.y - 25, point.x - 13, point.y - 25);
-      for (const offset of [-103, 103]) {
-        const towerX = point.x + offset;
-        graphics.fillStyle(0x081b2c, 1);
-        graphics.fillEllipse(towerX, point.y + 14, 68, 32);
-        graphics.fillStyle(owner === 'blue' ? 0x244c69 : 0x6a3442, 1);
-        graphics.fillPoints(polygon([
-          { x: towerX - 23, y: point.y + 7 }, { x: towerX - 17, y: point.y - 55 },
-          { x: towerX, y: point.y - 68 }, { x: towerX + 17, y: point.y - 55 },
-          { x: towerX + 23, y: point.y + 7 },
-        ]), true);
-        graphics.lineStyle(3, hue, 1);
-        graphics.strokeLineShape(new Phaser.Geom.Line(towerX, point.y - 67, towerX, point.y - 91));
-        graphics.fillStyle(hue, 1);
-        graphics.fillCircle(towerX, point.y - 70, 8);
-      }
-      this.add.text(point.x, point.y + 91, owner === 'blue' ? 'BASE AZUL' : 'BASE ROJA', {
-        color: owner === 'blue' ? '#83d4ff' : '#ff9ba7', fontFamily: 'Rajdhani, sans-serif', fontSize: '19px', fontStyle: '700', letterSpacing: 2,
-      }).setOrigin(0.5, 0).setDepth(51);
-    }
-  }
 
   private renderSnapshot() {
     this.drawCore();
@@ -335,7 +234,7 @@ export class MainScene extends Phaser.Scene {
       visual.hull.rotation = Math.atan2(point.y - previous.y, point.x - previous.x) + Math.PI / 2;
       this.tweens.killTweensOf(visual.container);
       this.tweens.add({ targets: visual.container, x: point.x, y: point.y, duration: 50, ease: 'Linear' });
-      visual.container.setDepth(100 + point.y);
+      visual.container.setDepth(16000 + point.y);
     }
   }
 
@@ -344,7 +243,7 @@ export class MainScene extends Phaser.Scene {
     const allied = squad.owner === 'blue';
     const primary = allied ? color.blue : color.red;
     const light = allied ? color.blueLight : color.redLight;
-    const container = this.add.container(point.x, point.y).setDepth(100 + point.y);
+    const container = this.add.container(point.x, point.y).setDepth(16000 + point.y);
     const selection = this.add.graphics();
     selection.lineStyle(2, light, 0.98);
     selection.strokeEllipse(0, 9, 90, 46);
@@ -413,10 +312,10 @@ export class MainScene extends Phaser.Scene {
       graphics.strokeEllipse(to.x, to.y, 70, 35);
     }
     const preview = (this.snapshot.activeAction === null || this.snapshot.activeAction === 'move') && this.hoverPoint
-      ? planFreeMove({ x: selected.gridX, y: selected.gridY }, this.hoverPoint, [...BLOCKING_TERRAIN]) : [];
+      ? planSectorMove({ x: selected.gridX, y: selected.gridY }, this.hoverPoint) : [];
     const ordered = this.snapshot.moveOrder?.squadId === selected.id ? this.snapshot.moveOrder.route : [];
     const path = preview.length > 1 ? preview : ordered;
-    if (this.hoverPoint && BLOCKING_TERRAIN.some((obstacle) => Math.hypot(obstacle.x - this.hoverPoint!.x, obstacle.y - this.hoverPoint!.y) < 0.7)) {
+    if (this.hoverPoint && !sectorSurface.walkable[Math.round(this.hoverPoint.y) * GRID_COLUMNS + Math.round(this.hoverPoint.x)]) {
       const blocked = cellToIso(this.hoverPoint.x, this.hoverPoint.y);
       graphics.lineStyle(2, color.red, 0.9);
       graphics.strokeEllipse(blocked.x, blocked.y, 52, 28);

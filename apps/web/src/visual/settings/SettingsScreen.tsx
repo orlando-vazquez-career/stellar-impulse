@@ -8,7 +8,7 @@ import './settings.css';
 type SettingsCategory = 'audio' | 'controls' | 'language' | 'accessibility';
 
 const controlActions: ControlAction[] = ['move', 'attack', 'hold', 'capture', 'cancel', 'camera'];
-const keyOptions = ['M', 'A', 'H', 'C', 'Q', 'E', 'R', 'F', 'Space', 'Esc'];
+const keyOptions = ['M', 'H', 'C', 'Q', 'E', 'R', 'F', 'Space', 'Esc']; // WASD is reserved for the camera.
 
 function RangeSetting({ label, value, disabled, onChange }: { label: string; value: number; disabled?: boolean; onChange(value: number): void }) {
   return <label className="vi-setting-range"><span><strong>{label}</strong><output>{value}%</output></span><input type="range" min="0" max="100" step="5" value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} /></label>;

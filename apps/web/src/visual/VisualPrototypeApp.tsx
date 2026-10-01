@@ -4,6 +4,7 @@ import { GameplayScreen } from './game/GameplayScreen';
 import { HangarScreen } from './hangar/HangarScreen';
 import { LanguageProvider, useI18n } from './i18n';
 import { PreparationLobby, type LobbyMode } from './lobby/PreparationLobby';
+import { SectorMapScreen } from './map/SectorMapScreen';
 import { CommandCenter } from './menu/CommandCenter';
 import { loadVisualPreferences, saveVisualPreferences } from './settings/preferences';
 import { SettingsScreen } from './settings/SettingsScreen';
@@ -15,7 +16,7 @@ import '@fontsource/rajdhani/latin-600.css';
 import '@fontsource/rajdhani/latin-700.css';
 import './visual.css';
 
-type Screen = 'access' | 'command' | 'lobby' | 'hangar' | 'settings' | 'gameplay';
+type Screen = 'access' | 'command' | 'lobby' | 'map' | 'hangar' | 'settings' | 'gameplay';
 
 function VisualPrototypeContent() {
   const { t } = useI18n();
@@ -39,7 +40,8 @@ function VisualPrototypeContent() {
   return <div className={`visual-app ${accessibilityClasses}`} data-color-profile={preferences.accessibility.colorProfile}>
     {screen === 'access' && <AccessScreen onContinue={(value) => { setAlias(value); setScreen('command'); }} />}
     {screen === 'command' && <CommandCenter alias={alias} onCreateRoom={() => { setLobbyMode('create'); setScreen('lobby'); }} onJoinRoom={() => { setLobbyMode('join'); setScreen('lobby'); }} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => { setAlias(''); setScreen('access'); }} />}
-    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} onBack={() => setScreen('command')} onDeploy={() => setScreen('gameplay')} />}
+    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} onBack={() => setScreen('command')} onExploreMap={() => setScreen('map')} onDeploy={() => setScreen('gameplay')} />}
+    {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
     {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} />}
     {screen === 'settings' && <SettingsScreen preferences={preferences} onBack={() => setScreen('command')} onSave={(nextPreferences) => { saveVisualPreferences(nextPreferences); setPreferences(nextPreferences); }} />}
     {screen === 'gameplay' && <GameplayScreen preferences={preferences} onLeave={() => setScreen('command')} />}

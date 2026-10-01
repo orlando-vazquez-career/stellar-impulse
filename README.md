@@ -2,8 +2,8 @@
 
 RTS roguelite competitivo PvPvE para navegador. Explorar para prepararse, combatir para avanzar y defender para ganar.
 
-**Estado: repositorio inicial y entrenamiento técnico de un sector. No es la campaña MVP.**
-El diseño vigente es la versión 0.3 del 22 de septiembre de 2026. El objetivo es 1v1,
+**Estado: interfaz Visual principal y entrenamiento técnico separado en el servidor. No es la campaña MVP.**
+El brief de referencia es la versión 0.4. El objetivo es 1v1,
 tres sectores isométricos 2D, servidor autoritativo y cosméticos en Stellar testnet.
 Las compras nunca modifican el poder de una flota.
 
@@ -20,18 +20,24 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Abrir **http://127.0.0.1:5173**. Crear entrenamiento, seleccionar el escuadrón y
-dar una orden sobre el mapa. El servidor escucha en **127.0.0.1:2567**.
-Compartir el código de sala con otra pestaña permite conectar el segundo asiento.
-Son sesiones efímeras de desarrollo; recargar no recupera el asiento.
+Abrir **http://127.0.0.1:5173** (la antigua ruta `/visual` también muestra la misma interfaz).
+Entra como invitado → prepara una operación → **Explorar mapa Tiled** para probar
+rutas, rampas, bloqueos y movimiento de una nave en el Sector 01 de 29×29, o
+despliega el combate Phaser sobre ese mismo mapa Tiled para probar selección, órdenes,
+movimiento libre y ataque. WASD mueve la cámara; **Q** activa la orden de ataque.
+El servidor sigue escuchando en **127.0.0.1:2567**, pero el lobby Visual y su
+gameplay usan un adaptador local: los códigos de sala de esa pantalla son simulados.
+La sala `training` y la sala `campaign` permanecen en el servidor para integración futura.
 
-No necesitas wallet, cuenta, base de datos ni credenciales para iniciar.
-El botón de red consulta la testnet real; conectar Freighter es opcional y requiere
-la extensión configurada en testnet. Conectar una dirección **no autentica una cuenta**.
+No necesitas wallet, cuenta, base de datos ni credenciales para iniciar. El adaptador
+de testnet/Freighter sigue en el repositorio, pero ya no está expuesto en esta interfaz.
 
 ## Qué contiene esta base
 
-- Cliente React/Vite y renderer Canvas isométrico intercambiable.
+- Cliente React/Vite con una entrada Visual y demo Phaser isométrica sobre el TMJ
+  editable de Sector 01; usa su atlas, alturas, rampas y bloqueos para las rutas.
+- Inspector interactivo del TMJ editable de Sector 01: pinta su atlas y usa el parser
+  y el buscador de rutas de `@impulso/sim` para probar el terreno.
 - Sala Colyseus y entrenamiento determinista con órdenes validadas y vistas filtradas.
 - Paquetes separados para reglas, órdenes, estado visible, interfaz y Stellar.
 - Consulta real de Stellar testnet y adaptador de conexión de wallet.
@@ -62,7 +68,7 @@ La consulta de red es voluntaria y no forma parte de los tests reproducibles sin
 
 | Ruta | Responsabilidad |
 |---|---|
-| `apps/web` | Navegador, sesión de entrenamiento e integración visual |
+| `apps/web` | Interfaz Visual, demo local e inspector Tiled |
 | `apps/server` | Autoridad, salas, validación y distribución de vistas |
 | `packages/sim` | Reglas puras, sin render, RPC ni inventario |
 | `packages/input` | Órdenes serializables y validación |

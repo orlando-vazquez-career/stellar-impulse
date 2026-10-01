@@ -21,6 +21,7 @@
 .vi-briefing__data > div:nth-child(odd) { border-right: 1px solid rgb(58 74 98 / 55%); }
 .vi-briefing__data dt { color: var(--vi-muted); font-family: var(--vi-display); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
 .vi-briefing__data dd { margin: 5px 0 0; font-size: 13px; }
+.vi-map-explore { margin: 8px 18px; padding: 8px 12px; color: var(--vi-blue-light); border: 1px solid var(--vi-border); background: transparent; font-size: 12px; }
 .vi-room > header > div span { color: var(--vi-muted); font-family: var(--vi-display); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
 .vi-room__status { padding: 5px 8px; border: 1px solid var(--vi-border); display: flex; align-items: center; gap: 7px; color: var(--vi-muted); font-size: 12px; }
 .vi-room__status i { width: 6px; height: 6px; border-radius: 50%; background: var(--vi-success); }

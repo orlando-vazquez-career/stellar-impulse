@@ -1,11 +1,12 @@
-import { GRID_COLUMNS, GRID_ROWS, type GridCell, type GridPoint } from './grid';
+import { MAP_ORIGIN_X, MAP_ORIGIN_Y, TILE_HEIGHT, TILE_WIDTH, sectorMap } from '../../map/sector-map';
+import type { GridCell, GridPoint } from './grid';
 
-export const TILE_HALF_WIDTH = 48;
-export const TILE_HALF_HEIGHT = 24;
-export const ISO_ORIGIN_X = GRID_ROWS * TILE_HALF_WIDTH;
-export const ISO_ORIGIN_Y = 72;
-export const ISO_WORLD_WIDTH = (GRID_COLUMNS + GRID_ROWS) * TILE_HALF_WIDTH;
-export const ISO_WORLD_HEIGHT = (GRID_COLUMNS + GRID_ROWS) * TILE_HALF_HEIGHT + ISO_ORIGIN_Y + 72;
+export const TILE_HALF_WIDTH = TILE_WIDTH / 2;
+export const TILE_HALF_HEIGHT = TILE_HEIGHT / 2;
+export const ISO_ORIGIN_X = MAP_ORIGIN_X;
+export const ISO_ORIGIN_Y = MAP_ORIGIN_Y;
+export const ISO_WORLD_WIDTH = sectorMap.width * TILE_WIDTH;
+export const ISO_WORLD_HEIGHT = (sectorMap.width + sectorMap.height) * TILE_HALF_HEIGHT + ISO_ORIGIN_Y + 48;
 
 export function cellToIso(x: number, y: number) {
   return { x: ISO_ORIGIN_X + (x - y) * TILE_HALF_WIDTH, y: ISO_ORIGIN_Y + (x + y) * TILE_HALF_HEIGHT };
@@ -22,5 +23,5 @@ export function isoToPoint(worldX: number, worldY: number): GridPoint | null {
   const dy = (worldY - ISO_ORIGIN_Y) / TILE_HALF_HEIGHT;
   const x = (dx + dy) / 2;
   const y = (dy - dx) / 2;
-  return x >= 0 && x <= GRID_COLUMNS - 1 && y >= 0 && y <= GRID_ROWS - 1 ? { x, y } : null;
+  return x >= 0 && x <= sectorMap.width - 1 && y >= 0 && y <= sectorMap.height - 1 ? { x, y } : null;
 }

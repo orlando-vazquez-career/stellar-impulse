@@ -25,6 +25,7 @@
     "contracts:deploy:testnet": "node scripts/deploy-testnet.mjs"
   },
   "devDependencies": {
+    "@colyseus/sdk": "0.18.3",
     "@playwright/test": "1.63.0",
     "@types/node": "24.10.1",
     "@types/react": "19.3.0",

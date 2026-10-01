@@ -1,6 +1,53 @@
 import { expect, test } from '@playwright/test';
 
+async function gamePoint(page: import('@playwright/test').Page, x: number, y: number) {
+  const camera = page.locator('.map-camera');
+  const rect = await page.locator('.vi-phaser canvas').boundingBox();
+  if (!rect) throw new Error('No playable canvas');
+  const scrollX = (Number(await camera.getAttribute('x')) - 4) * 1856 / 172;
+  const scrollY = (Number(await camera.getAttribute('y')) - 4) * 1040 / 172;
+  return { x: rect.x + 928 + (x - y) * 32 - scrollX, y: rect.y + 64 + (x + y) * 16 - scrollY };
+}
+
 test.describe('visual interface foundation', () => {
+  test('opens Visual as the only main entry and keeps the legacy lobby out', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Toma el mando.' })).toBeVisible();
+    await expect(page.locator('.panel--modes')).toHaveCount(0);
+  });
+
+  test('inspects the real Sector 01 Tiled map from Visual', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByRole('button', { name: 'Explorar mapa Tiled' }).click();
+    await expect(page.getByRole('heading', { name: 'Sector 01 · Umbral Helios' })).toBeVisible();
+    await expect(page.getByRole('img', { name: 'Mapa Tiled Sector 01' })).toHaveAttribute('data-map-size', '29x29');
+    await expect(page.getByRole('img', { name: 'Mapa Tiled Sector 01' })).toHaveAttribute('data-atlas-ready', 'true');
+    await expect(page.getByText(/Base A ·/)).toBeVisible();
+    await expect(page.getByText('Nave · 3, 3')).toBeVisible();
+    const canvas = page.getByRole('img', { name: 'Mapa Tiled Sector 01' });
+    const size = await canvas.evaluate((element) => ({
+      cssWidth: element.getBoundingClientRect().width,
+      cssHeight: element.getBoundingClientRect().height,
+      nativeWidth: (element as HTMLCanvasElement).width,
+      nativeHeight: (element as HTMLCanvasElement).height,
+    }));
+    await canvas.click({ position: {
+      x: (29 * 32 + (4 - 3) * 32) * size.cssWidth / size.nativeWidth,
+      y: (64 + (4 + 3) * 16) * size.cssHeight / size.nativeHeight,
+    } });
+    await expect(page.getByText('Nave · 4, 3')).toBeVisible();
+    const selected = page.getByText(/Casilla .* · (Transitable|Bloqueada)/);
+    const before = await selected.innerText();
+    await page.getByRole('img', { name: 'Mapa Tiled Sector 01' }).click({ position: { x: 510, y: 260 } });
+    await expect(selected).not.toHaveText(before);
+    await page.screenshot({ path: 'test-results/tiled-sector.png' });
+    await page.getByRole('button', { name: 'Volver a preparación' }).click();
+    await expect(page.getByRole('heading', { name: 'Configura la operación.' })).toBeVisible();
+  });
+
   test('supports the guest flow and bilingual copy', async ({ page }) => {
     await page.goto('/visual');
 
@@ -24,6 +71,8 @@ test.describe('visual interface foundation', () => {
     await expect(page.getByText('Acciones', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Cancelar Esc' })).toBeDisabled();
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'sector-01.tmj');
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-atlas-ready', 'true');
     await page.screenshot({ path: 'test-results/visual-sector.png' });
   });
 
@@ -114,7 +163,7 @@ test.describe('visual interface foundation', () => {
     await expect(page.locator('.vi-phaser canvas')).toHaveCount(1);
     const camera = page.locator('.map-camera');
     await expect(camera).toBeVisible();
-    expect(Number(await camera.getAttribute('width'))).toBeLessThan(90);
+    expect(Number(await camera.getAttribute('width'))).toBeLessThan(172);
     const initialCameraX = await camera.getAttribute('x');
     const initialCameraY = await camera.getAttribute('y');
 
@@ -154,7 +203,7 @@ test.describe('visual interface foundation', () => {
     expect(consoleErrors).toEqual([]);
   });
 
-  test('activates the attack shortcut without moving the camera', async ({ page }) => {
+  test('pans the game camera with WASD without activating attack', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await page.goto('/visual');
     await page.getByLabel('Identificador de comandante').fill('Vega');
@@ -167,20 +216,21 @@ test.describe('visual interface foundation', () => {
     const camera = page.locator('.map-camera');
     const initialX = await camera.getAttribute('x');
     await page.keyboard.down('a');
-    await expect(page.getByRole('button', { name: 'Atacar A' })).toHaveAttribute('aria-pressed', 'true');
-    const positions = await camera.evaluate(async (element) => {
-      const positions: (string | null)[] = [];
-      for (let frame = 0; frame < 12; frame++) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        positions.push(element.getAttribute('x'));
-      }
-      return [...new Set(positions)];
-    });
-    await page.keyboard.up('a');
-    expect(positions).toEqual([initialX]);
-    await page.keyboard.down('ArrowLeft');
     await expect.poll(() => camera.getAttribute('x')).not.toBe(initialX);
-    await page.keyboard.up('ArrowLeft');
+    await page.keyboard.up('a');
+    await expect(page.getByRole('button', { name: 'Atacar Q' })).toHaveAttribute('aria-pressed', 'false');
+    const afterA = await camera.getAttribute('x');
+    await page.keyboard.down('d');
+    await expect.poll(() => camera.getAttribute('x')).not.toBe(afterA);
+    await page.keyboard.up('d');
+    const initialY = await camera.getAttribute('y');
+    await page.keyboard.down('w');
+    await expect.poll(() => camera.getAttribute('y')).not.toBe(initialY);
+    await page.keyboard.up('w');
+    const afterW = await camera.getAttribute('y');
+    await page.keyboard.down('s');
+    await expect.poll(() => camera.getAttribute('y')).not.toBe(afterW);
+    await page.keyboard.up('s');
   });
 
   test('selects with left click and moves with right click', async ({ page }) => {
@@ -193,24 +243,30 @@ test.describe('visual interface foundation', () => {
     await page.getByRole('button', { name: 'Iniciar operación' }).click();
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
 
-    await page.mouse.click(491, 336, { button: 'right' });
+    const beta = await gamePoint(page, 13, 15);
+    await page.mouse.click(beta.x, beta.y, { button: 'right' });
     await expect(page.getByRole('heading', { name: 'Escuadrón Alpha' })).toBeVisible();
-    await page.mouse.click(491, 336);
+    await page.mouse.click(beta.x, beta.y);
     await expect(page.getByRole('heading', { name: 'Escuadrón Beta' })).toBeVisible();
     const betaMarker = page.locator('.map-ally').nth(1);
     const startingX = await betaMarker.getAttribute('cx');
     const startingY = await betaMarker.getAttribute('cy');
     await expect(page.getByRole('button', { name: 'Mover M' })).toHaveAttribute('aria-pressed', 'false');
-    await page.mouse.click(1100, 500);
+    const blocked = await gamePoint(page, 9, 13);
+    await page.mouse.click(blocked.x, blocked.y, { button: 'right' });
+    await expect(page.locator('.map-move-route')).toHaveCount(0);
+    const destination = await gamePoint(page, 15, 13);
+    await page.mouse.click(destination.x, destination.y);
     await expect(page.locator('.map-move-route')).toHaveCount(0);
     await expect(page.locator('.vi-squad')).toHaveCount(0);
-    await page.mouse.click(491, 336);
-    await page.mouse.click(1100, 500, { button: 'right' });
+    await page.mouse.click(beta.x, beta.y);
+    await page.mouse.click(destination.x, destination.y, { button: 'right' });
     await expect(page.locator('.map-move-route')).toHaveCount(1);
     await expect(page.getByText('En movimiento')).toBeVisible();
     await expect.poll(() => betaMarker.getAttribute('cx')).not.toBe(startingX);
     await expect.poll(() => betaMarker.getAttribute('cy')).not.toBe(startingY);
-    await page.mouse.click(1019, 456, { button: 'right' });
+    const enemy = await gamePoint(page, 17, 14);
+    await page.mouse.click(enemy.x, enemy.y, { button: 'right' });
     await expect(page.getByText('Atacando')).toBeVisible();
     await expect(page.locator('.map-enemy')).toHaveCount(0, { timeout: 20000 });
   });
@@ -225,18 +281,23 @@ test.describe('visual interface foundation', () => {
     await page.getByRole('button', { name: 'Iniciar operación' }).click();
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
 
-    await page.mouse.move(250, 210);
+    const first = await gamePoint(page, 12, 13);
+    const second = await gamePoint(page, 13, 15);
+    const third = await gamePoint(page, 12, 15);
+    await page.mouse.move(Math.min(first.x, second.x, third.x) - 45, Math.min(first.y, second.y, third.y) - 50);
     await page.mouse.down();
-    await page.mouse.move(590, 390, { steps: 8 });
+    await page.mouse.move(Math.max(first.x, second.x, third.x) + 45, Math.max(first.y, second.y, third.y) + 30, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByText('3 unidades seleccionadas')).toBeVisible();
     const allies = page.locator('.map-ally');
     const starts = await allies.evaluateAll((markers) => markers.map((marker) => marker.getAttribute('cx')));
-    await page.mouse.click(1100, 500, { button: 'right' });
+    const destination = await gamePoint(page, 15, 13);
+    await page.mouse.click(destination.x, destination.y, { button: 'right' });
     await expect.poll(async () => allies.evaluateAll((markers) => markers.map((marker) => marker.getAttribute('cx'))))
       .not.toEqual(starts);
     await expect(page.getByText('3 unidades seleccionadas')).toBeVisible();
-    await page.mouse.click(1019, 456, { button: 'right' });
+    const enemy = await gamePoint(page, 17, 14);
+    await page.mouse.click(enemy.x, enemy.y, { button: 'right' });
     await expect(page.locator('.map-enemy')).toHaveCount(0, { timeout: 20000 });
   });
 

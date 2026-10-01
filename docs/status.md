@@ -1,8 +1,27 @@
 # Estado del repositorio
 
-Actualizado: 29 de septiembre de 2026. Base de producto: 0.1.0.
+Actualizado: 1 de octubre de 2026. Base de producto: 0.1.0.
 
 ## Implementado
+
+### Interfaz principal y prueba Tiled (1 de octubre de 2026)
+
+`/` y `/visual` abren la misma experiencia Visual. El antiguo Atlas de Mando y su
+cliente Canvas de entrenamiento se retiraron de la entrada web; las salas del servidor
+no se tocaron. Desde la preparación se puede probar el TMJ editable de Sector 01
+(29×29): su atlas, los datos de superficie y una nave local que usa el buscador de
+rutas de la simulación (incluidas las restricciones de altura/rampas).
+El TMJ referencia un segundo atlas ausente para una única casilla de espacio: el
+inspector la dibuja con un color de reserva, sin alterar el archivo de Tiled.
+El combate Phaser ahora dibuja las capas del mismo TMJ de 29×29 y sus naves se
+mueven en continuo cuando el terreno es llano; en las rampas siguen las rutas
+válidas de la simulación. Selección individual y múltiple, órdenes de movimiento y
+ataque se conservan. WASD vuelve a desplazar la cámara y Q queda como atajo de
+ataque (los A guardados se migran). El minimapa refleja el terreno de Sector 01.
+El combate sigue con **adaptador local**, sin conexión a la sala autoritativa `campaign`.
+`pnpm check` pasó con 251 tests; `pnpm test:e2e` pasó con 13 tests
+(incluida una prueba directa de la sala `training` tras retirar su cliente web).
+
 
 Monorepo pnpm, cliente React/Vite, renderer Canvas, sala Colyseus efímera,
 entrenamiento de un sector a10Hz, escuadrones Interceptor, guardianes, nodo Metal,

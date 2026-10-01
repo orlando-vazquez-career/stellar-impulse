@@ -5,8 +5,8 @@ import type {
   PresentationIntent,
 } from './model';
 import { UNIT_STATS, damageAgainst } from '@impulso/state';
-import { BLOCKING_TERRAIN } from './phaser/asteroids';
-import { advanceFreeMove, planFreeMove } from './phaser/free-movement';
+import { planSectorMove, sectorSurface } from '../map/sector-map';
+import { advanceFreeMove } from './phaser/free-movement';
 
 const MOVE_SPEED = 4; // Interceptor speed in grid units per second for the visual prototype.
 const MOVE_STEP_MS = 50;
@@ -33,22 +33,22 @@ const initialSnapshot: GameplayViewModel = {
   squads: [
     {
       id: 'blue-alpha', callSign: 'Alpha', owner: 'blue', unitType: 'interceptor',
-      gridX: 44, gridY: 47, healthPercent: 82, selected: true, visible: true,
+      gridX: 12, gridY: 13, healthPercent: 82, selected: true, visible: true,
       composition: { interceptors: 1, frigates: 0 }, status: 'idle',
     },
     {
       id: 'blue-beta', callSign: 'Beta', owner: 'blue', unitType: 'frigate',
-      gridX: 45, gridY: 49, healthPercent: 100, selected: false, visible: true,
+      gridX: 13, gridY: 15, healthPercent: 100, selected: false, visible: true,
       composition: { interceptors: 0, frigates: 1 }, status: 'holding',
     },
     {
       id: 'blue-gamma', callSign: 'Gamma', owner: 'blue', unitType: 'bomber',
-      gridX: 42, gridY: 50, healthPercent: 100, selected: false, visible: true,
+      gridX: 12, gridY: 15, healthPercent: 100, selected: false, visible: true,
       composition: { interceptors: 0, frigates: 0, bombers: 1 }, status: 'idle',
     },
     {
       id: 'red-sigma', callSign: 'Sigma', owner: 'red', unitType: 'frigate',
-      gridX: 53, gridY: 46, healthPercent: 68, selected: false, visible: true,
+      gridX: 17, gridY: 14, healthPercent: 68, selected: false, visible: true,
       composition: { interceptors: 0, frigates: 1 }, status: 'holding',
     },
   ],
@@ -116,7 +116,7 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
       const range = Math.hypot(target.gridX - attacker.gridX, target.gridY - attacker.gridY);
       if (range > 1.5) {
         inRangeMs = 0;
-        const route = planFreeMove({ x: attacker.gridX, y: attacker.gridY }, { x: target.gridX, y: target.gridY }, [...BLOCKING_TERRAIN]);
+        const route = planSectorMove({ x: attacker.gridX, y: attacker.gridY }, { x: target.gridX, y: target.gridY });
         if (route.length < 2) { stopAttack(squadId); return; }
         const speed = MOVE_SPEED / UNIT_STATS[attacker.unitType].moveIntervalFactor;
         const next = advanceFreeMove(route, speed * elapsedMs / 1000)[0]!;
@@ -220,7 +220,7 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
         if (snapshot.activeAction !== null && snapshot.activeAction !== 'move') return;
         const squad = snapshot.squads.find((candidate) => candidate.id === intent.squadId
           && candidate.id === snapshot.selectedSquadId && candidate.owner === 'blue' && candidate.visible && candidate.healthPercent > 0);
-        const route = squad ? planFreeMove({ x: squad.gridX, y: squad.gridY }, { x: intent.x, y: intent.y }, [...BLOCKING_TERRAIN]) : [];
+        const route = squad ? planSectorMove({ x: squad.gridX, y: squad.gridY }, { x: intent.x, y: intent.y }) : [];
         if (!squad || route.length < 2) return;
         stopAttack(squad.id);
         const order: MoveOrder = { squadId: squad.id, destination: { x: intent.x, y: intent.y }, route };
@@ -235,16 +235,17 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
       } else if (intent.type === 'move-selected') {
         if (snapshot.activeAction !== null && snapshot.activeAction !== 'move') return;
         const selected = selectedAllies();
-        if (!selected.length || BLOCKING_TERRAIN.some((point) => Math.hypot(intent.x - point.x, intent.y - point.y) < 0.7)) return;
+        if (!selected.length || !Number.isFinite(intent.x) || !Number.isFinite(intent.y)
+          || !sectorSurface.walkable[Math.round(intent.y) * sectorSurface.width + Math.round(intent.x)]) return;
         const center = selected.reduce((sum, squad) => ({ x: sum.x + squad.gridX / selected.length, y: sum.y + squad.gridY / selected.length }), { x: 0, y: 0 });
         const newOrders: MoveOrder[] = [];
         for (const squad of selected) {
           const desired = { x: intent.x + squad.gridX - center.x, y: intent.y + squad.gridY - center.y };
-          let route = planFreeMove({ x: squad.gridX, y: squad.gridY }, desired, [...BLOCKING_TERRAIN]);
+          let route = planSectorMove({ x: squad.gridX, y: squad.gridY }, desired);
           let destination = desired;
           if (route.length < 2) {
             destination = { x: intent.x, y: intent.y };
-            route = planFreeMove({ x: squad.gridX, y: squad.gridY }, destination, [...BLOCKING_TERRAIN]);
+            route = planSectorMove({ x: squad.gridX, y: squad.gridY }, destination);
           }
           if (route.length < 2) continue;
           stopAttack(squad.id);
@@ -266,7 +267,7 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
         const target = snapshot.squads.find((candidate) => candidate.id === intent.targetId
           && candidate.owner === 'red' && candidate.visible && candidate.healthPercent > 0);
         if (!squad || !target || UNIT_STATS[squad.unitType].damage <= 0) return;
-        if (!planFreeMove({ x: squad.gridX, y: squad.gridY }, { x: target.gridX, y: target.gridY }, [...BLOCKING_TERRAIN]).length) return;
+        if (!planSectorMove({ x: squad.gridX, y: squad.gridY }, { x: target.gridX, y: target.gridY }).length) return;
         stopMovement(squad.id);
         orders.delete(squad.id);
         snapshot = { ...snapshot, activeAction: null, moveOrder: null,
@@ -279,7 +280,7 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
           && squad.owner === 'red' && squad.visible && squad.healthPercent > 0);
         if (!target) return;
         const attackers = selectedAllies().filter((squad) => UNIT_STATS[squad.unitType].damage > 0
-          && planFreeMove({ x: squad.gridX, y: squad.gridY }, { x: target.gridX, y: target.gridY }, [...BLOCKING_TERRAIN]).length > 0);
+          && planSectorMove({ x: squad.gridX, y: squad.gridY }, { x: target.gridX, y: target.gridY }).length > 0);
         if (!attackers.length) return;
         const ids = new Set(attackers.map((squad) => squad.id));
         for (const squad of attackers) { stopMovement(squad.id); orders.delete(squad.id); }

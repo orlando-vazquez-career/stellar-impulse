@@ -19,6 +19,7 @@ export function GameplayScreen({ preferences, onLeave }: { preferences: VisualPr
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
       const key = event.key === ' ' ? 'Space' : event.key === 'Escape' ? 'Esc' : event.key;
+      if (/^[wasd]$/i.test(key)) return; // Camera navigation is never an action shortcut.
       if (key.toLowerCase() === preferences.controls.cancel.toLowerCase()) adapter.dispatch({ type: 'set-action', action: null });
       else if (key.toLowerCase() === preferences.controls.move.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'move' });
       else if (key.toLowerCase() === preferences.controls.attack.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'attack' });
@@ -28,7 +29,7 @@ export function GameplayScreen({ preferences, onLeave }: { preferences: VisualPr
   }, [adapter, preferences.controls]);
   return <main className="vi-gameplay vi-screen">
     <Suspense fallback={<div className="vi-phaser" aria-busy="true" />}>
-      <PhaserBattlefield ref={battlefieldRef} view={view} controls={preferences.controls}
+      <PhaserBattlefield ref={battlefieldRef} view={view}
         onSelectSquads={(squadIds) => adapter.dispatch({ type: 'select-squads', squadIds })}
         onMoveSelected={(x, y) => adapter.dispatch({ type: 'move-selected', x, y })}
         onAttackSelected={(targetId) => adapter.dispatch({ type: 'attack-selected', targetId })}

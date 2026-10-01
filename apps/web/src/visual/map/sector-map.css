@@ -1,0 +1,8 @@
+.vi-sector-map { overflow: auto; }
+.vi-sector-map__body { max-width: 1180px; margin: 0 auto; padding: 28px 32px 48px; }
+.vi-sector-map__body h1 { font-family: var(--vi-display); font-size: 38px; }
+.vi-sector-map__body p { color: var(--vi-muted); margin: 8px 0 16px; }
+.vi-sector-map__stage { height: min(62vh, 650px); overflow: auto; border: 1px solid var(--vi-border); background: #070b14; display: grid; place-items: center; }
+.vi-sector-map__stage canvas { width: min(100%, 1050px); height: auto; cursor: crosshair; }
+.vi-sector-map__details { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 14px 0; font-family: var(--vi-display); color: var(--vi-blue-light); }
+.vi-sector-map__note { font-size: 12px; }
