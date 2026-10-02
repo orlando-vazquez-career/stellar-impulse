@@ -25,7 +25,13 @@ export interface StanceCommand {
   squadId: string;
   stance: 'guard' | 'patrol' | 'attack';
 }
-export type Command = MoveCommand | AttackCommand | EnqueueCommand | StanceCommand;
+/** Ask the base hangar for one ship. The server checks Metal, fleet cap and queue. */
+export interface ProduceCommand {
+  seq: number;
+  type: 'produce';
+  kind: 'explorer' | 'interceptor' | 'frigate' | 'bomber';
+}
+export type Command = MoveCommand | AttackCommand | EnqueueCommand | StanceCommand | ProduceCommand;
 export type ParseResult = { ok: true; command: Command } | { ok: false; reason: 'invalid_command' };
 
 /** Strict validation at the JSON boundary. No coercion or extra properties. */
@@ -38,12 +44,18 @@ export function parseCommand(value: unknown): ParseResult {
   const type: unknown = fields.type?.value;
   const expected = type === 'move' || type === 'enqueue' ? ['seq', 'type', 'squadId', 'x', 'y']
     : type === 'attack' ? ['seq', 'type', 'squadId', 'targetId']
-    : type === 'stance' ? ['seq', 'type', 'squadId', 'stance'] : [];
+    : type === 'stance' ? ['seq', 'type', 'squadId', 'stance']
+    : type === 'produce' ? ['seq', 'type', 'kind'] : [];
   if (!expected.length || Reflect.ownKeys(value).length !== expected.length) return invalid;
   if (expected.some((key) => !fields[key] || !('value' in fields[key]))) return invalid;
   const seq: unknown = fields.seq!.value;
-  const squadId: unknown = fields.squadId!.value;
   if (typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 1) return invalid;
+  if (type === 'produce') {
+    const kind: unknown = fields.kind!.value;
+    if (kind !== 'explorer' && kind !== 'interceptor' && kind !== 'frigate' && kind !== 'bomber') return invalid;
+    return { ok: true, command: { seq, type, kind } };
+  }
+  const squadId: unknown = fields.squadId!.value;
   if (typeof squadId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(squadId)) return invalid;
   if (type === 'stance') {
     const stance: unknown = fields.stance!.value;

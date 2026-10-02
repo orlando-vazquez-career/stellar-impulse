@@ -73,8 +73,6 @@ La consulta de red es voluntaria y no forma parte de los tests reproducibles sin
 | `packages/sim` | Reglas puras, sin render, RPC ni inventario |
 | `packages/input` | Órdenes serializables y validación |
 | `packages/state` | Proyección autorizada por jugador |
-| `packages/render-2d` | Canvas isométrico |
-| `packages/ui` | Componentes compartidos |
 | `packages/chain` | Red testnet y wallet |
 | `contracts/cosmetics` | Contrato de arranque y futura propiedad cosmética |
 | `docs` | Producto, arquitectura, planificación y ejecución |

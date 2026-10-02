@@ -54,8 +54,10 @@ describe('sector 01', () => {
       .find((cell) => world.surface?.walkable[cell.y * world.width + cell.x] === true
         && world.surface.level[cell.y * world.width + cell.x] === world.surface.level[ship.y * world.width + ship.x]);
     expect(neighbor).toBeDefined();
-    world.squads[1]!.x = neighbor!.x;
-    world.squads[1]!.y = neighbor!.y;
+    // An enemy ship holds its cell; allies may pass through each other.
+    const rival = world.squads.find((squad) => squad.id === 'p2-interceptor')!;
+    rival.x = neighbor!.x;
+    rival.y = neighbor!.y;
     let crowded = applyCommand(world, 'p1', {
       seq: 1, type: 'move', squadId: 'p1-interceptor', x: neighbor!.x, y: neighbor!.y,
     }).world;
@@ -64,11 +66,11 @@ describe('sector 01', () => {
 
     const metal = world.nodes.find((node) => node.kind === 'metal')!;
     let mining = createSectorWorld();
+    mining.guardians = mining.guardians.filter((guardian) => guardian.objectiveId !== metal.id);
     mining.squads[0]!.x = metal.x;
     mining.squads[0]!.y = metal.y;
     for (let tick = 0; tick < mining.rules.nodeCaptureTicks; tick += 1) mining = stepWorld(mining);
     expect(mining.nodes.find((node) => node.id === metal.id)?.ownerId).toBe('p1');
-    expect(mining.players.p1.metal).toBe(1);
 
     const capture = world.nodes.find((node) => node.kind === 'capture')!;
     let holding = createSectorWorld();
@@ -76,13 +78,16 @@ describe('sector 01', () => {
     holding.squads[0]!.y = capture.y;
     for (let tick = 0; tick < holding.rules.nodeCaptureTicks; tick += 1) holding = stepWorld(holding);
     expect(holding.nodes.find((node) => node.id === capture.id)?.ownerId).toBe('p1');
-    expect(holding.players.p1.metal).toBe(0);
+    // Both worlds share the base income; only the Metal node adds its own yield.
+    expect(mining.players.p1.metal).toBe(holding.players.p1.metal + 1);
   });
 
   it('deals more damage from the higher cell', () => {
     const rampIndex = SECTOR_01.ramp.findIndex((direction) => direction != null);
     const highIndex = neighborIndex(rampIndex, SECTOR_01.ramp[rampIndex]);
     let world = createSectorWorld();
+    // Only the two duelists stay on the board.
+    world.squads = world.squads.filter((squad) => squad.kind === 'interceptor');
     const low = { x: rampIndex % SECTOR_01.width, y: Math.floor(rampIndex / SECTOR_01.width) };
     const high = { x: highIndex % SECTOR_01.width, y: Math.floor(highIndex / SECTOR_01.width) };
     world.squads[0]!.x = high.x;

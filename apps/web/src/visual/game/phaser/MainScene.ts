@@ -6,6 +6,14 @@ import atlasUrl from '../../../../../../packages/sim/src/tiled-maps/sector-01 aa
 import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT } from './isometric';
 
 const GRID_COLUMNS = sectorMap.width;
+/** Multiplicative tint for tiles outside vision: dark, but the terrain stays readable. */
+const FOG_TINT = 0x4a5566;
+/** Camera zoom limits: the farthest view still frames a fight; a little closer for detail. */
+export const ZOOM_DEFAULT = 1.5;
+export const ZOOM_MIN = 1.5;
+export const ZOOM_MAX = 2;
+/** Two clicks on the same ship within this window select its whole class on screen. */
+const DOUBLE_CLICK_MS = 350;
 const GRID_ROWS = sectorMap.height;
 const CORE_CELL = sectorSurface.core;
 
@@ -20,6 +28,8 @@ const color = {
   blueLight: 0x83d4ff,
   red: 0xff4f64,
   redLight: 0xff9ba7,
+  neutral: 0xf2b84b,
+  neutralLight: 0xf7d774,
   core: 0xf7e77c,
   panel: 0x131d2d,
 };
@@ -58,11 +68,17 @@ export class MainScene extends Phaser.Scene {
   private route?: Phaser.GameObjects.Graphics;
   private selectionBox?: Phaser.GameObjects.Graphics;
   private core?: Phaser.GameObjects.Graphics;
+  private nodeMarks?: Phaser.GameObjects.Graphics;
+  /** Terrain images per cell, so fog can tint the real tile art instead of painting over it. */
+  private tileImages: Phaser.GameObjects.Image[][] = [];
+  private fogShown: boolean[] | null = null;
+  private created = false;
   private readonly unitVisuals = new Map<string, UnitVisual>();
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private movementKeys?: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private dragOrigin?: { x: number; y: number; scrollX: number; scrollY: number };
   private selectionDrag?: { start: { x: number; y: number }; current: { x: number; y: number }; clickedId: string | null };
+  private lastClick: { id: string; at: number; group: boolean } | null = null;
   private hoverPoint: GridPoint | null = null;
   private lastCameraView = '';
   private pointerOnCanvas = false;
@@ -97,11 +113,15 @@ export class MainScene extends Phaser.Scene {
     }
     this.scale.refresh();
     this.cameras.main.setBackgroundColor(color.background);
-    this.cameras.main.setBounds(0, 0, ISO_WORLD_WIDTH, ISO_WORLD_HEIGHT);
+    // Margin so a base on the map edge can still be centred below the HUD panels.
+    const margin = 360;
+    this.cameras.main.setBounds(-margin, -margin, ISO_WORLD_WIDTH + margin * 2, ISO_WORLD_HEIGHT + margin * 2);
     this.terrain = this.add.graphics().setDepth(0);
     this.route = this.add.graphics().setDepth(20000);
     this.selectionBox = this.add.graphics().setScrollFactor(0).setDepth(30000);
     this.core = this.add.graphics().setDepth(20001);
+    this.nodeMarks = this.add.graphics().setDepth(15000);
+
     this.drawTerrain();
     this.drawCore();
     this.renderSnapshot();
@@ -111,6 +131,7 @@ export class MainScene extends Phaser.Scene {
     window.addEventListener('pointermove', onPointerMove);
     this.resetCamera();
     this.refreshCameraView();
+    this.created = true;
     this.onReady();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.refreshCameraView, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -143,14 +164,20 @@ export class MainScene extends Phaser.Scene {
   }
 
   resetCamera() {
-    this.cameras.main.setZoom(1);
-    this.centerOnCell(CORE_CELL.x, CORE_CELL.y);
-  }
-
-  centerOnCell(x: number, y: number) {
-    const cell = cellToIso(Phaser.Math.Clamp(x, 0, GRID_COLUMNS - 1), Phaser.Math.Clamp(y, 0, GRID_ROWS - 1));
+    this.cameras.main.setZoom(ZOOM_DEFAULT);
+    const cell = cellToIso(CORE_CELL.x, CORE_CELL.y);
     this.cameras.main.centerOn(cell.x, cell.y);
     this.refreshCameraView();
+  }
+
+  /** False until Phaser has created the camera; callers may retry. */
+  centerOnCell(x: number, y: number): boolean {
+    const camera = this.cameras?.main;
+    if (!camera || !this.created) return false;
+    const cell = cellToIso(Phaser.Math.Clamp(x, 0, GRID_COLUMNS - 1), Phaser.Math.Clamp(y, 0, GRID_ROWS - 1));
+    camera.centerOn(cell.x, cell.y);
+    this.refreshCameraView();
+    return true;
   }
 
   private refreshCameraView() {
@@ -158,10 +185,15 @@ export class MainScene extends Phaser.Scene {
     const cameraKey = `${Math.round(camera.scrollX)},${Math.round(camera.scrollY)},${camera.zoom},${camera.width},${camera.height}`;
     if (cameraKey === this.lastCameraView) return;
     this.lastCameraView = cameraKey;
+    // Phaser zooms around the camera centre, so the visible area is centred on scroll + half the viewport.
+    const width = camera.width / camera.zoom;
+    const height = camera.height / camera.zoom;
+    const worldX = camera.scrollX + camera.width / 2 - width / 2;
+    const worldY = camera.scrollY + camera.height / 2 - height / 2;
     this.onCameraChange({
-      x: camera.scrollX / ISO_WORLD_WIDTH, y: camera.scrollY / ISO_WORLD_HEIGHT,
-      width: camera.width / camera.zoom / ISO_WORLD_WIDTH,
-      height: camera.height / camera.zoom / ISO_WORLD_HEIGHT,
+      x: worldX / ISO_WORLD_WIDTH, y: worldY / ISO_WORLD_HEIGHT,
+      width: width / ISO_WORLD_WIDTH, height: height / ISO_WORLD_HEIGHT,
+      worldX, worldY, zoom: camera.zoom,
     });
   }
 
@@ -175,8 +207,9 @@ export class MainScene extends Phaser.Scene {
         const point = cellToIso(x, y);
         const tileset = [...sectorMap.tilesets].reverse().find((set) => set.firstgid <= gid);
         if (tileset?.image === 'stellar-plataformas.png') {
-          this.add.image(point.x, point.y + TILE_HALF_HEIGHT - tileset.tileheight / 2,
+          const image = this.add.image(point.x, point.y + TILE_HALF_HEIGHT - tileset.tileheight / 2,
             'sector-atlas', gid - tileset.firstgid).setDepth(layerIndex * 2000 + (x + y) * 32 + x);
+          (this.tileImages[y * GRID_COLUMNS + x] ??= []).push(image);
         } else {
           graphics.fillStyle(0x0a1726, 1);
           graphics.fillRect(point.x - 32, point.y - 16, 64, 32);
@@ -206,8 +239,43 @@ export class MainScene extends Phaser.Scene {
   }
 
 
+  /** Resource nodes: a ring in the owner's colour (grey while unclaimed); Metal nodes carry a diamond. */
+  private drawNodes() {
+    const graphics = this.nodeMarks;
+    if (!graphics) return;
+    graphics.clear();
+    for (const node of this.snapshot.nodes) {
+      const center = cellToIso(node.x, node.y);
+      const hue = node.owner === 'blue' ? color.blue : node.owner === 'red' ? color.red : 0x8aa0b8;
+      graphics.lineStyle(2, hue, 0.9);
+      graphics.strokeEllipse(center.x, center.y + 9, 54, 27);
+      if (node.kind === 'metal') {
+        graphics.fillStyle(hue, 0.95);
+        graphics.fillPoints(polygon([{ x: center.x, y: center.y - 2 }, { x: center.x + 7, y: center.y + 9 },
+          { x: center.x, y: center.y + 20 }, { x: center.x - 7, y: center.y + 9 }]), true);
+      }
+    }
+  }
+
+  /** Darken the tile art of every cell outside the player's current vision. Only changed cells are touched. */
+  private drawFog() {
+    const cells = this.snapshot.visibleCells;
+    const total = GRID_COLUMNS * GRID_ROWS;
+    for (let index = 0; index < total; index++) {
+      const visible = cells ? cells[index] === true : true;
+      if (this.fogShown && this.fogShown[index] === visible) continue;
+      for (const image of this.tileImages[index] ?? []) {
+        if (visible) image.clearTint();
+        else image.setTint(FOG_TINT);
+      }
+    }
+    this.fogShown = Array.from({ length: total }, (_, index) => (cells ? cells[index] === true : true));
+  }
+
   private renderSnapshot() {
     this.drawCore();
+    this.drawNodes();
+    this.drawFog();
     this.drawRoute();
     const visible = new Set(this.snapshot.squads.filter((squad) => squad.visible).map((squad) => squad.id));
     for (const [id, visual] of this.unitVisuals) {
@@ -241,8 +309,9 @@ export class MainScene extends Phaser.Scene {
   private createUnit(squad: SquadViewModel): UnitVisual {
     const point = cellToIso(squad.gridX, squad.gridY);
     const allied = squad.owner === 'blue';
-    const primary = allied ? color.blue : color.red;
-    const light = allied ? color.blueLight : color.redLight;
+    const neutral = squad.owner === 'neutral';
+    const primary = allied ? color.blue : neutral ? color.neutral : color.red;
+    const light = allied ? color.blueLight : neutral ? color.neutralLight : color.redLight;
     const container = this.add.container(point.x, point.y).setDepth(16000 + point.y);
     const selection = this.add.graphics();
     selection.lineStyle(2, light, 0.98);
@@ -253,7 +322,7 @@ export class MainScene extends Phaser.Scene {
     shadow.fillStyle(0x020912, 0.7);
     shadow.fillEllipse(0, 13, 80, 30);
     const marker = this.add.graphics();
-    marker.fillStyle(allied ? 0xa4d8e5 : 0xe1a1a9, 1);
+    marker.fillStyle(allied ? 0xa4d8e5 : neutral ? 0xe6cf95 : 0xe1a1a9, 1);
     if (squad.unitType === 'interceptor') {
       marker.fillPoints(polygon([{ x: 0, y: -38 }, { x: 12, y: -1 }, { x: 34, y: 13 }, { x: 8, y: 8 },
         { x: 0, y: 17 }, { x: -8, y: 8 }, { x: -34, y: 13 }, { x: -12, y: -1 }]), true);
@@ -283,7 +352,7 @@ export class MainScene extends Phaser.Scene {
     hitFlash.fillCircle(0, -8, 28);
     hitFlash.setAlpha(0);
     const label = this.add.text(0, 31, squad.callSign.toUpperCase(), {
-      color: allied ? '#83d4ff' : '#ff9ba7', fontFamily: 'Rajdhani, sans-serif', fontSize: '15px', fontStyle: '600', letterSpacing: 2,
+      color: allied ? '#83d4ff' : neutral ? '#f7d774' : '#ff9ba7', fontFamily: 'Rajdhani, sans-serif', fontSize: '15px', fontStyle: '600', letterSpacing: 2,
     }).setOrigin(0.5, 0);
     const healthBack = this.add.rectangle(0, 51, 54, 4, color.grid).setOrigin(0.5);
     const health = this.add.rectangle(-27, 51, 54 * squad.healthPercent / 100, 4, squad.healthPercent > 35 ? 0x4ad69a : color.red).setOrigin(0, 0.5);
@@ -363,19 +432,45 @@ export class MainScene extends Phaser.Scene {
     return isoToPoint(world.x, world.y);
   }
 
+  /** Double click: every own ship of the clicked ship's class that is currently on screen (StarCraft style). */
+  private sameTypeOnScreen(clickedId: string): string[] {
+    const clicked = this.snapshot.squads.find((squad) => squad.id === clickedId);
+    if (!clicked) return [clickedId];
+    const camera = this.cameras.main;
+    const width = camera.width / camera.zoom;
+    const height = camera.height / camera.zoom;
+    const left = camera.scrollX + camera.width / 2 - width / 2;
+    const top = camera.scrollY + camera.height / 2 - height / 2;
+    return this.snapshot.squads
+      .filter((squad) => squad.owner === 'blue' && squad.unitType === clicked.unitType && squad.visible && squad.healthPercent > 0)
+      .filter((squad) => {
+        const point = cellToIso(squad.gridX, squad.gridY);
+        return point.x >= left && point.x <= left + width && point.y >= top && point.y <= top + height;
+      })
+      .map((squad) => squad.id);
+  }
+
   private drawSelectionBox() {
     const graphics = this.selectionBox;
     graphics?.clear();
     if (!graphics || !this.selectionDrag) return;
     const { start, current } = this.selectionDrag;
-    const x = Math.min(start.x, current.x);
-    const y = Math.min(start.y, current.y);
-    const width = Math.abs(start.x - current.x);
-    const height = Math.abs(start.y - current.y);
-    if (Math.max(width, height) < 6) return;
+    if (Math.max(Math.abs(start.x - current.x), Math.abs(start.y - current.y)) < 6) return;
+    // Screen-fixed graphics are still zoomed around the viewport centre; undo that so the box sits under the cursor.
+    const camera = this.cameras.main;
+    const toLayer = (point: { x: number; y: number }) => ({
+      x: camera.width / 2 + (point.x - camera.width / 2) / camera.zoom,
+      y: camera.height / 2 + (point.y - camera.height / 2) / camera.zoom,
+    });
+    const a = toLayer(start);
+    const b = toLayer(current);
+    const x = Math.min(a.x, b.x);
+    const y = Math.min(a.y, b.y);
+    const width = Math.abs(a.x - b.x);
+    const height = Math.abs(a.y - b.y);
     graphics.fillStyle(color.blue, 0.12);
     graphics.fillRect(x, y, width, height);
-    graphics.lineStyle(2, color.blueLight, 0.9);
+    graphics.lineStyle(2 / camera.zoom, color.blueLight, 0.9);
     graphics.strokeRect(x, y, width, height);
   }
 
@@ -400,7 +495,7 @@ export class MainScene extends Phaser.Scene {
       }
       if (!pointer.rightButtonDown()) return;
       const enemy = over.map((object) => object.getData('unitId'))
-        .map((id) => this.snapshot.squads.find((squad) => squad.id === id && squad.owner === 'red' && squad.visible && squad.healthPercent > 0))
+        .map((id) => this.snapshot.squads.find((squad) => squad.id === id && squad.owner !== 'blue' && squad.visible && squad.healthPercent > 0))
         .find(Boolean);
       if (this.snapshot.selectedSquadIds.length && enemy && (this.snapshot.activeAction === null || this.snapshot.activeAction === 'attack')) {
         this.onAttackSelected(enemy.id);
@@ -444,7 +539,14 @@ export class MainScene extends Phaser.Scene {
             .filter((squad) => { const point = cellToIso(squad.gridX, squad.gridY); return point.x >= a.x && point.x <= b.x && point.y >= a.y && point.y <= b.y; })
             .map((squad) => squad.id);
           this.onSelectSquads(ids);
-        } else this.onSelectSquads(clickedId ? [clickedId] : []);
+        } else if (clickedId && this.lastClick?.id === clickedId && pointer.downTime - this.lastClick.at <= DOUBLE_CLICK_MS) {
+          // Double click selects the whole class on screen; further quick clicks keep that group.
+          if (!this.lastClick.group) this.onSelectSquads(this.sameTypeOnScreen(clickedId));
+          this.lastClick = { id: clickedId, at: pointer.downTime, group: true };
+        } else {
+          this.onSelectSquads(clickedId ? [clickedId] : []);
+          this.lastClick = clickedId ? { id: clickedId, at: pointer.downTime, group: false } : null;
+        }
         this.selectionDrag = undefined;
         this.drawSelectionBox();
       }
@@ -454,7 +556,7 @@ export class MainScene extends Phaser.Scene {
       const camera = this.cameras.main;
       const position = this.pointerPosition(pointer);
       const before = camera.getWorldPoint(position.x, position.y);
-      camera.setZoom(Phaser.Math.Clamp(camera.zoom - deltaY * 0.001, 0.75, 1.5));
+      camera.setZoom(Phaser.Math.Clamp(camera.zoom - deltaY * 0.001, ZOOM_MIN, ZOOM_MAX));
       const after = camera.getWorldPoint(position.x, position.y);
       camera.scrollX += before.x - after.x;
       camera.scrollY += before.y - after.y;

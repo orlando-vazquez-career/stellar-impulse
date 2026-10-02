@@ -5,10 +5,18 @@ import { LanguageToggle } from '../shared/LanguageToggle';
 import './lobby.css';
 
 export type LobbyMode = 'create' | 'join';
+export type RivalDifficulty = 'easy' | 'medium' | 'hard';
+
+const DIFFICULTIES: { value: RivalDifficulty; label: string; hint: string }[] = [
+  { value: 'easy', label: 'Fácil', hint: 'Flota chica y lenta. No ataca tus nodos.' },
+  { value: 'medium', label: 'Media', hint: 'Se expande rápido y pelea por todo.' },
+  { value: 'hard', label: 'Difícil', hint: 'Toma dos nodos a la vez y asalta los tuyos.' },
+];
 type FleetSide = 'blue' | 'red';
 
-export function PreparationLobby({ alias, mode, onBack, onExploreMap, onDeploy }: { alias: string; mode: LobbyMode; onBack(): void; onExploreMap(): void; onDeploy(): void }) {
+export function PreparationLobby({ alias, mode, onBack, onExploreMap, onDeploy }: { alias: string; mode: LobbyMode; onBack(): void; onExploreMap(): void; onDeploy(difficulty: RivalDifficulty): void }) {
   const { t } = useI18n();
+  const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
   const [side, setSide] = useState<FleetSide>('blue');
   const [ready, setReady] = useState(false);
   const [joinCode, setJoinCode] = useState('');
@@ -71,9 +79,17 @@ export function PreparationLobby({ alias, mode, onBack, onExploreMap, onDeploy }
               <button className={side === 'red' ? 'is-selected' : ''} aria-pressed={side === 'red'} onClick={() => setSide('red')}><i className="is-red" /><span><strong>{t('redSide')}</strong><small>{t('sideAvailable')}</small></span><b>02</b></button>
             </fieldset>
 
+            {mode === 'create' && <fieldset className="vi-difficulty">
+              <legend>Dificultad de la IA rival</legend>
+              {DIFFICULTIES.map((option) => <button key={option.value} type="button" className={difficulty === option.value ? 'is-selected' : ''}
+                aria-pressed={difficulty === option.value} onClick={() => setDifficulty(option.value)}>
+                <strong>{option.label}</strong><small>{option.hint}</small>
+              </button>)}
+            </fieldset>}
+
             <div className="vi-ready-controls">
               <label><input type="checkbox" checked={ready} onChange={(event) => setReady(event.target.checked)} /><span><strong>{t('readyConfirmation')}</strong><small>{t('launchHint')}</small></span></label>
-              <button className="vi-primary" disabled={!ready} onClick={onDeploy}>{t('launchOperation')}<span aria-hidden="true">→</span></button>
+              <button className="vi-primary" disabled={!ready} onClick={() => onDeploy(difficulty)}>{t('launchOperation')}<span aria-hidden="true">→</span></button>
             </div>
           </>}
         </section>

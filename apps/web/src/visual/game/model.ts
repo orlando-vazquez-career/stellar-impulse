@@ -41,12 +41,32 @@ export interface MoveOrder {
   route: { x: number; y: number }[];
 }
 
+/** Visible world area. x/y/width/height are fractions of the isometric world; the raw fields are pixels. */
 export interface CameraView {
   x: number;
   y: number;
   width: number;
   height: number;
+  worldX: number;
+  worldY: number;
+  zoom: number;
 }
+
+export interface NodeViewModel {
+  id: string;
+  kind: 'metal' | 'capture';
+  x: number;
+  y: number;
+  owner: SquadOwner | null;
+}
+
+export interface ProductionViewModel {
+  kind: SquadType;
+  remainingSeconds: number;
+}
+
+/** local: the in-browser mock; the rest describe the link to the authoritative server. */
+export type ConnectionState = 'local' | 'connecting' | 'online' | 'offline';
 
 export interface GameplayViewModel {
   tick: number;
@@ -68,7 +88,21 @@ export interface GameplayViewModel {
   core: CoreViewModel;
   enemiesVisible: boolean;
   clockRunning: boolean;
+  nodes: NodeViewModel[];
+  production: ProductionViewModel | null;
+  result: 'victory' | 'defeat' | null;
+  /** Last server rejection or connection message, already localized by key. */
+  notice: string | null;
+  connection: ConnectionState;
+  /** Row-major cells inside the player's vision; null when there is no fog (local mock). */
+  visibleCells: boolean[] | null;
 }
+
+/** Things that happened between two server views, for sounds and announcements. */
+export type GameplayEvent =
+  | { kind: 'match-start' | 'ship-launched' | 'guardian-down' | 'node-lost' | 'under-attack'
+      | 'core-soon' | 'core-open' | 'core-own-capturing' | 'core-rival-capturing' | 'victory' | 'defeat' }
+  | { kind: 'ship-destroyed' | 'node-captured'; own: boolean };
 
 export type PresentationIntent =
   | { type: 'select-squad'; squadId: string }
@@ -83,11 +117,14 @@ export type PresentationIntent =
   | { type: 'set-selected-health'; healthPercent: number }
   | { type: 'set-resource'; resource: 'metal' | 'energy'; value: number }
   | { type: 'set-enemy-visibility'; visible: boolean }
-  | { type: 'set-clock-running'; running: boolean };
+  | { type: 'set-clock-running'; running: boolean }
+  | { type: 'produce'; kind: SquadType };
 
 export interface GameplayPresentationAdapter {
   getSnapshot(): GameplayViewModel;
   subscribe(listener: () => void): () => void;
   dispatch(intent: PresentationIntent): void;
   destroy(): void;
+  /** Server-backed adapters report match events; the local mock does not. */
+  subscribeEvents?(listener: (event: GameplayEvent) => void): () => void;
 }

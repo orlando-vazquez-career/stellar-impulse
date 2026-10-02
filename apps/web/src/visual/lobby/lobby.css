@@ -46,7 +46,7 @@
 .vi-commander em { color: var(--vi-muted); font-size: 12px; font-style: normal; }
 .vi-commander em.is-ready { color: var(--vi-success); }
 .vi-side-select { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.vi-side-select legend { float: left; width: 100%; }
+.vi-side-select legend { grid-column: 1 / -1; width: 100%; }
 .vi-side-select button { min-height: 58px; padding: 8px 10px; border: 1px solid var(--vi-border); display: grid; grid-template-columns: 9px 1fr auto; gap: 9px; align-items: center; background: #0d1522; text-align: left; }
 .vi-side-select button.is-selected { border-color: var(--vi-blue-light); background: var(--vi-surface-raised); }
 .vi-side-select button > i { width: 7px; height: 32px; background: var(--vi-blue); }
@@ -80,3 +80,11 @@
   .vi-lobby__heading { grid-template-columns: 1fr 360px; gap: 34px; }
   .vi-lobby__grid { grid-template-columns: minmax(320px, .8fr) minmax(500px, 1.2fr); }
 }
+
+.vi-difficulty { margin: 0; padding: 16px 18px; border: 0; border-bottom: 1px solid var(--vi-border); display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.vi-difficulty legend { grid-column: 1 / -1; width: 100%; margin-bottom: 10px; color: var(--vi-muted); font-family: var(--vi-display); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.vi-difficulty button { min-height: 64px; padding: 8px 10px; border: 1px solid var(--vi-border); display: grid; gap: 3px; align-content: start; background: #0d1522; text-align: left; }
+.vi-difficulty button strong { color: var(--vi-text); font-family: var(--vi-display); font-size: 15px; }
+.vi-difficulty button small { color: var(--vi-muted); font-size: 12px; line-height: 1.3; }
+.vi-difficulty button.is-selected { border-color: var(--vi-blue-light); background: var(--vi-surface-raised); }
+.vi-difficulty button:hover { border-color: var(--vi-blue); }

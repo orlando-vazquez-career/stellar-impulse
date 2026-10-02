@@ -1,0 +1,45 @@
+{
+  "music": {
+    "menu": null,
+    "match": null
+  },
+  "sfx": {
+    "explosion-small": null,
+    "explosion-large": null,
+    "capture-own": null,
+    "capture-rival": null,
+    "launch": null,
+    "alarm": null,
+    "horn": null,
+    "victory": null,
+    "defeat": null
+  },
+  "voice": {
+    "es": {
+      "start": null,
+      "ship-lost": null,
+      "node-captured": null,
+      "node-lost": null,
+      "under-attack": null,
+      "core-soon": null,
+      "core-open": null,
+      "core-own-capturing": null,
+      "core-rival-capturing": null,
+      "victory": null,
+      "defeat": null
+    },
+    "en": {
+      "start": null,
+      "ship-lost": null,
+      "node-captured": null,
+      "node-lost": null,
+      "under-attack": null,
+      "core-soon": null,
+      "core-open": null,
+      "core-own-capturing": null,
+      "core-rival-capturing": null,
+      "victory": null,
+      "defeat": null
+    }
+  }
+}

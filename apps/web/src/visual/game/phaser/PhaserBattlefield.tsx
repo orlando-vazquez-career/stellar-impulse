@@ -6,7 +6,8 @@ import { MainScene } from './MainScene';
 
 export interface PhaserBattlefieldHandle {
   resetCamera(): void;
-  centerOnCell(x: number, y: number): void;
+  /** False while the Phaser scene is still loading. */
+  centerOnCell(x: number, y: number): boolean;
 }
 
 interface PhaserBattlefieldProps {
@@ -38,7 +39,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
 
   useImperativeHandle(forwardedRef, () => ({
     resetCamera: () => sceneRef.current?.resetCamera(),
-    centerOnCell: (x, y) => sceneRef.current?.centerOnCell(x, y),
+    centerOnCell: (x, y) => sceneRef.current?.centerOnCell(x, y) ?? false,
   }), []);
 
   useEffect(() => {
