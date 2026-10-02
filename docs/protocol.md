@@ -4,7 +4,7 @@ Contrato de red para `campaign`, con mensajes versionados por `CAMPAIGN_PROTOCOL
 
 ## Crear o unirse
 
-La sala admite dos asientos (`p1` al crear y `p2` al unirse), y no admite participantes nuevos una vez iniciada la campaña. `name` es opcional: admite de 1 a 24 letras, números, espacios, `_`, `.` o `-`; si se omite, el servidor usa `Comandante`. Una versión de campaña incorrecta falla con `unsupported_version`; opciones inválidas fallan con `invalid_join`. El ejemplo de abajo muestra creación, unión por `roomId` y reconexión usando el mismo enlace de eventos.
+La sala admite dos asientos (`p1` al crear y `p2` al unirse), y no admite participantes nuevos una vez iniciada la campaña. Cada jugador necesita un token de cuenta obtenido por `/auth/register` o `/auth/login`; ver [autenticación y salas](auth-multiplayer.md). `name` es opcional: admite de 1 a 24 letras, números, espacios, `_`, `.` o `-`; si se omite, el servidor usa `Comandante`. Una versión de campaña incorrecta falla con `unsupported_version`; opciones inválidas fallan con `invalid_join`. El `roomId` generado es el código de invitación de 12 caracteres hexadecimales. El ejemplo de abajo muestra creación, unión por código y reconexión usando el mismo enlace de eventos.
 
 ## Flujo del cliente
 
@@ -16,6 +16,8 @@ import { CAMPAIGN_PROTOCOL_VERSION } from '@impulso/input';
 
 const client = new Client(import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567');
 let room: Room | undefined;
+const accessToken = sessionStorage.getItem('impulso.auth');
+if (!accessToken) throw new Error('Inicia sesión antes de entrar a una partida');
 
 function bindRoom(nextRoom: Room): void {
   room = nextRoom;
@@ -37,15 +39,17 @@ async function createCampaign(name = 'Ana'): Promise<Room> {
   const nextRoom = await client.create('campaign', {
     protocolVersion: CAMPAIGN_PROTOCOL_VERSION,
     name,
+    token: accessToken,
   });
   bindRoom(nextRoom);
   return nextRoom;
 }
 
-async function joinCampaign(roomId: string, name = 'Beto'): Promise<Room> {
-  const nextRoom = await client.joinById(roomId, {
+async function joinCampaign(code: string, name = 'Beto'): Promise<Room> {
+  const nextRoom = await client.joinById(code.trim().toUpperCase(), {
     protocolVersion: CAMPAIGN_PROTOCOL_VERSION,
     name,
+    token: accessToken,
   });
   bindRoom(nextRoom);
   return nextRoom;

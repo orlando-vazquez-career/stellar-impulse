@@ -1,4 +1,5 @@
 import { Room, ServerError, type Client } from '@colyseus/core';
+import { randomBytes } from 'node:crypto';
 import {
   CAMPAIGN_PROTOCOL_VERSION, openCampaignEnvelope, parseBattlefieldCommand,
   parseCampaignJoinOptions, parseReady, parseTechChoice,
@@ -7,6 +8,7 @@ import type { PlayerId } from '@impulso/sim';
 import { battlefieldViewFor } from '@impulso/state';
 import * as campaigns from './campaign/machine';
 import { publicMapMetadata } from './map-catalog';
+import type { AuthService } from './auth';
 
 const TICK_MS = 100;
 const LOBBY_TIMEOUT_MS = 15 * 60_000;
@@ -19,8 +21,10 @@ export class CampaignRoom extends Room {
   /** Hard cut: Colyseus disconnects above this. The per-command soft limit below only rejects. */
   maxMessagesPerSecond = 40;
   protected overrides: Partial<campaigns.CampaignConfig> = {};
+  protected auth!: AuthService;
   private campaign!: campaigns.Campaign;
   private seats = new Map<string, PlayerId>();
+  private users = new Map<string, PlayerId>();
   private rates = new Map<PlayerId, { second: number; count: number }>();
   private remainingExpansions = SEARCH_EXPANSIONS_PER_TICK;
   private budgetSector = -1;
@@ -29,6 +33,7 @@ export class CampaignRoom extends Room {
   private announcedEnd = false;
 
   onCreate() {
+    this.roomId = randomBytes(6).toString('hex').toUpperCase();
     this.campaign = campaigns.createCampaign(this.overrides);
     void this.setPrivate(true);
     this.onMessage('ready', (client, message) => this.withEnvelope(client, message, (player, body) => {
@@ -61,7 +66,10 @@ export class CampaignRoom extends Room {
   onAuth(_client: Client, options: unknown) {
     const parsed = parseCampaignJoinOptions(options);
     if (!parsed.ok) throw new ServerError(4002, parsed.reason);
-    return { name: parsed.name };
+    const user = this.auth.getUser(parsed.token);
+    if (!user) throw new ServerError(4003, 'authentication_required');
+    if (this.users.has(user.id)) throw new ServerError(4004, 'already_in_room');
+    return { name: parsed.name, userId: user.id };
   }
 
   onJoin(client: Client) {
@@ -69,6 +77,8 @@ export class CampaignRoom extends Room {
     const seated = campaigns.join(this.campaign, name);
     if (!seated.ok) { client.leave(4001); return; }
     this.seats.set(client.sessionId, seated.player);
+    const userId = (client.auth as { userId: string }).userId;
+    this.users.set(userId, seated.player);
     if (this.campaign.seats.p1 && this.campaign.seats.p2) void this.lock();
     this.sendPhase();
   }
@@ -104,6 +114,8 @@ export class CampaignRoom extends Room {
     campaigns.leave(this.campaign, player, Date.now());
     if (this.campaign.seats[player] === null) {
       this.seats.delete(client.sessionId);
+      const userId = (client.auth as { userId: string }).userId;
+      this.users.delete(userId);
       void this.unlock();
     }
     this.sendPhase();
@@ -192,8 +204,9 @@ export class CampaignRoom extends Room {
 }
 
 /** Timing overrides come from server code (tests, future modes), never from client join options. */
-export function campaignRoomWith(overrides: Partial<campaigns.CampaignConfig>): typeof CampaignRoom {
+export function campaignRoomWith(overrides: Partial<campaigns.CampaignConfig>, auth: AuthService): typeof CampaignRoom {
   return class extends CampaignRoom {
     protected overrides = overrides;
+    protected auth = auth;
   };
 }
