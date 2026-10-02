@@ -68,7 +68,8 @@ export function createBattlefieldWorld(map: import('./maps/types.js').MapSpec = 
 }
 /** Playable sector 01: time to build an economy before the core opens (2:00) and a 30 s capture. */
 export const SECTOR_RULES: Readonly<Rules> = Object.freeze({
-  ...TRAINING_RULES, coreOpenTick: 1200, coreCaptureTicks: 300,
+  // One cell every 0.4 s for an Interceptor: slower than the drill, so fights can be read and steered.
+  ...TRAINING_RULES, moveEveryTicks: 4, coreOpenTick: 1200, coreCaptureTicks: 300,
 });
 /** Design candidates only. The initial client uses TRAINING_RULES. */
 export const MVP_CANDIDATE_RULES = Object.freeze({
@@ -191,7 +192,7 @@ const STARTING_FLEET: readonly { kind: UnitKind; dx: number; dy: number }[] = [
 /** Guardians charge ships within this many cells of their post and stop chasing beyond it. */
 export const GUARDIAN_AGGRO_RADIUS = 3;
 /** Guardians move one cell every this many ticks (slower than an Interceptor). */
-const GUARDIAN_MOVE_TICKS = 5;
+const GUARDIAN_MOVE_TICKS = 9;
 export function createSectorWorld(): World {
   const sector = SECTOR_01;
   const node = (input: { id: string; kind: 'metal' | 'capture'; x: number; y: number }): ResourceNode => ({

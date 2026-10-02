@@ -434,14 +434,22 @@ export class MainScene extends Phaser.Scene {
     graphics?.clear();
     if (!graphics || !this.selectionDrag) return;
     const { start, current } = this.selectionDrag;
-    const x = Math.min(start.x, current.x);
-    const y = Math.min(start.y, current.y);
-    const width = Math.abs(start.x - current.x);
-    const height = Math.abs(start.y - current.y);
-    if (Math.max(width, height) < 6) return;
+    if (Math.max(Math.abs(start.x - current.x), Math.abs(start.y - current.y)) < 6) return;
+    // Screen-fixed graphics are still zoomed around the viewport centre; undo that so the box sits under the cursor.
+    const camera = this.cameras.main;
+    const toLayer = (point: { x: number; y: number }) => ({
+      x: camera.width / 2 + (point.x - camera.width / 2) / camera.zoom,
+      y: camera.height / 2 + (point.y - camera.height / 2) / camera.zoom,
+    });
+    const a = toLayer(start);
+    const b = toLayer(current);
+    const x = Math.min(a.x, b.x);
+    const y = Math.min(a.y, b.y);
+    const width = Math.abs(a.x - b.x);
+    const height = Math.abs(a.y - b.y);
     graphics.fillStyle(color.blue, 0.12);
     graphics.fillRect(x, y, width, height);
-    graphics.lineStyle(2, color.blueLight, 0.9);
+    graphics.lineStyle(2 / camera.zoom, color.blueLight, 0.9);
     graphics.strokeRect(x, y, width, height);
   }
 
