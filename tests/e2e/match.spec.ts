@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openApp } from './helpers';
 
-test('plays Sector 01 against the server rival and builds a ship', async ({ page }) => {
+test('plays Espiral Estelar against the server rival and builds a ship', async ({ page }) => {
   await openApp(page, '/');
   await page.getByLabel('Identificador de comandante').fill('Vega');
   await page.getByRole('button', { name: 'Continuar como invitado' }).click();
@@ -32,9 +32,9 @@ test('double click on a ship selects every ship of its class on screen', async (
   await page.waitForTimeout(500);
 
   // Find an Interceptor on screen from its minimap marker (isometric minimap → world → screen).
-  const scale = 172 / 1856;
-  const offsetY = 4 + (172 - 1040 * scale) / 2;
   const camera = page.locator('.map-camera');
+  const scale = 172 / Number(await camera.getAttribute('data-iso-width'));
+  const offsetY = 4 + (172 - Number(await camera.getAttribute('data-iso-height')) * scale) / 2;
   const worldX = Number(await camera.getAttribute('data-world-x'));
   const worldY = Number(await camera.getAttribute('data-world-y'));
   const zoom = Number(await camera.getAttribute('data-zoom'));

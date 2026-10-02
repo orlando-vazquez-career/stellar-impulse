@@ -1,8 +1,16 @@
-import { findTiledPath, leerSuperficie } from '@impulso/sim';
-import source from '../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/sector-01.tmj?raw';
+import { findTiledPath, TRAINING_MAPS, type TrainingMapId } from '@impulso/sim';
+import sectorSource from '../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/sector-01.tmj?raw';
+import espiralSource from '../../../../../packages/sim/src/tiled-maps/espiral-estelar/espiral-estelar.json?raw';
 
-interface TileLayer { name: string; data: number[]; visible: boolean }
-interface Tileset { firstgid: number; columns: number; tilewidth: number; tileheight: number; image: string }
+export type { TrainingMapId } from '@impulso/sim';
+
+interface TiledObject { gid?: number; x: number; y: number; width: number; height: number; visible?: boolean }
+interface TileLayer { name: string; type?: string; data: number[]; visible: boolean; objects?: TiledObject[] }
+interface TilesetTile { id: number; image?: string; imagewidth?: number; imageheight?: number }
+interface Tileset {
+  firstgid: number; columns: number; tilewidth: number; tileheight: number; image?: string; name?: string;
+  tiles?: TilesetTile[]; tileoffset?: { x: number; y: number };
+}
 interface TiledSector {
   orientation: string;
   width: number;
@@ -10,13 +18,49 @@ interface TiledSector {
   layers: TileLayer[];
   tilesets: Tileset[];
 }
+export type { TiledObject, TileLayer, Tileset, TilesetTile, TiledSector };
 
-export const sectorMap = JSON.parse(source) as TiledSector;
-export const sectorSurface = leerSuperficie(sectorMap);
+/** Image files referenced by each map's tilesets, resolved by file name. */
+const IMAGE_URLS: Record<TrainingMapId, Record<string, string>> = {
+  'sector-01': byFileName(import.meta.glob('../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/*.png', { eager: true, query: '?url', import: 'default' })),
+  espiral: byFileName(import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar/tilesets/img/*.png', { eager: true, query: '?url', import: 'default' })),
+};
+const SOURCES: Record<TrainingMapId, string> = { 'sector-01': sectorSource, espiral: espiralSource };
+/** Tile layers that carry rules for the server, not art. */
+export const HIDDEN_LAYERS = new Set(['logica']);
+
+function byFileName(files: Record<string, unknown>): Record<string, string> {
+  return Object.fromEntries(Object.entries(files).map(([path, url]) => [path.split('/').pop()!, String(url)]));
+}
+
 export const TILE_WIDTH = 64;
 export const TILE_HEIGHT = 32;
-export const MAP_ORIGIN_X = sectorMap.height * TILE_WIDTH / 2;
 export const MAP_ORIGIN_Y = 64;
+
+// Live bindings: every importer sees the map chosen by selectMap(). Sector 01 until a match picks one.
+export let activeMapId: TrainingMapId = 'sector-01';
+export let sectorMap = JSON.parse(sectorSource) as TiledSector;
+export let sectorSurface = TRAINING_MAPS['sector-01'];
+export let MAP_ORIGIN_X = sectorMap.height * TILE_WIDTH / 2;
+export let ISO_WORLD_WIDTH = sectorMap.width * TILE_WIDTH;
+export let ISO_WORLD_HEIGHT = (sectorMap.width + sectorMap.height) * TILE_HEIGHT / 2 + MAP_ORIGIN_Y + 48;
+
+/** Switch the map every client module draws and plans on. Call before mounting the scene or inspector. */
+export function selectMap(id: TrainingMapId): void {
+  if (id === activeMapId) return;
+  activeMapId = id;
+  sectorMap = JSON.parse(SOURCES[id]) as TiledSector;
+  sectorSurface = TRAINING_MAPS[id];
+  MAP_ORIGIN_X = sectorMap.height * TILE_WIDTH / 2;
+  ISO_WORLD_WIDTH = sectorMap.width * TILE_WIDTH;
+  ISO_WORLD_HEIGHT = (sectorMap.width + sectorMap.height) * TILE_HEIGHT / 2 + MAP_ORIGIN_Y + 48;
+}
+
+/** URL of a tileset image of the active map, or null when the file is not in the repository. */
+export function mapImageUrl(image: string | undefined): string | null {
+  if (!image) return null;
+  return IMAGE_URLS[activeMapId][image.split('/').pop()!] ?? null;
+}
 
 export function cellToPixel(cell: { x: number; y: number }) {
   return { x: MAP_ORIGIN_X + (cell.x - cell.y) * TILE_WIDTH / 2,

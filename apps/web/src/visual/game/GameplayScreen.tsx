@@ -7,6 +7,7 @@ import { MatchAudio, playEvent, type Announcement } from './audio';
 import { useI18n } from '../i18n';
 import type { VisualPreferences } from '../settings/preferences';
 import type { RivalDifficulty } from '../lobby/PreparationLobby';
+import { selectMap, type TrainingMapId } from '../map/sector-map';
 import type { CameraView, GameplayPresentationAdapter } from './model';
 import type { PhaserBattlefieldHandle } from './phaser/PhaserBattlefield';
 
@@ -17,16 +18,19 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567';
 const wantsLocalMock = () => new URLSearchParams(window.location.search).get('adapter') === 'mock';
 const PRODUCTION_KEYS: Record<string, 'explorer' | 'interceptor' | 'frigate' | 'bomber'> = { '1': 'interceptor', '2': 'frigate', '3': 'bomber', '4': 'explorer' };
 
-export function GameplayScreen({ preferences, difficulty = 'medium', onLeave }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; onLeave(): void }) {
+export function GameplayScreen({ preferences, difficulty = 'medium', map = 'espiral', onLeave }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; onLeave(): void }) {
   const [match, setMatch] = useState(0);
-  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} onLeave={onLeave} onRestart={() => setMatch((count) => count + 1)} />;
+  // The local mock only knows Sector 01. Selecting before the children render keeps scene, HUD and server on one map.
+  const chosen = wantsLocalMock() ? 'sector-01' : map;
+  selectMap(chosen);
+  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} onLeave={onLeave} onRestart={() => setMatch((count) => count + 1)} />;
 }
 
 /** The adapter lives exactly as long as the mounted match, so a server room is never left orphaned. */
-function GameplayMatch({ preferences, difficulty, onLeave, onRestart }: { preferences: VisualPreferences; difficulty: RivalDifficulty; onLeave(): void; onRestart(): void }) {
+function GameplayMatch({ preferences, difficulty, map, onLeave, onRestart }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; onLeave(): void; onRestart(): void }) {
   const [adapter, setAdapter] = useState<GameplayPresentationAdapter | null>(null);
   useEffect(() => {
-    const created = wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL, difficulty);
+    const created = wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL, difficulty, map);
     setAdapter(created);
     return () => created.destroy();
   }, []);
