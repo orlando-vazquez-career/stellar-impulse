@@ -140,7 +140,7 @@ const visualRoute = window.location.pathname === '/visual' || window.location.pa
 function App() {
   const [screen, setScreen] = useState<'login' | 'lobby' | 'training'>('login');
   const [entry, setEntry] = useState<LoginEntry>(null);
-  const [gateChainStatus, setGateChainStatus] = useState('Testnet - Stellar');
+  const [gateChainStatus, setGateChainStatus] = useState('Impulso Stellar - Testnet');
   const [gateChainBusy, setGateChainBusy] = useState(false);
 
   async function gateWallet() {

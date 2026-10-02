@@ -51,7 +51,8 @@ export function LoginForm(props: LoginFormProps) {
   return (
     <div className="li-form">
       <p className="li-eyebrow li-eyebrow--login">LOGIN</p>
-      <h1 className="li-title" data-text="IMPULSO STELLAR">IMPULSO STELLAR</h1>
+      <h1 className="li-title" data-text="IMPULSO STELLAR">IMPULSO</h1>
+      <h1 className="li-title" data-text="IMPULSO STELLAR">STELLAR</h1>
 
       <p className="li-alias">
         <span className="li-alias-label">Comandante</span>
@@ -102,7 +103,7 @@ export function LoginForm(props: LoginFormProps) {
 
       <p className="li-notice" role="status">{notice}</p>
       <p className="li-chain">{chainStatus}</p>
-      <p className="li-fineprint">Se parte de Stellar Impulse. Juega, gana, defiende.</p>
+      <p className="li-fineprint">Juega, compite, conquista.</p>
     </div>
   );
 }
