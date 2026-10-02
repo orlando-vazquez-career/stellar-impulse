@@ -350,3 +350,10 @@
 .vi-result__card div { display: flex; justify-content: center; gap: 10px; }
 .vi-result__card button { min-height: 42px; padding: 0 18px; border: 1px solid var(--vi-border); color: var(--vi-text); }
 .vi-result__card .vi-primary { border-color: var(--vi-blue); background: var(--vi-blue); color: #04111d; font-weight: 600; }
+
+/* Phase and event announcements. */
+.vi-announcement { position: absolute; top: 150px; left: 50%; z-index: 25; padding: 12px 26px; transform: translateX(-50%); border: 1px solid var(--vi-blue); background: #0d1522ee; color: var(--vi-text); font-family: var(--vi-display); font-size: 24px; letter-spacing: .06em; text-transform: uppercase; pointer-events: none; animation: vi-announce 3.2s ease forwards; }
+.vi-announcement--good { border-color: #4ad69a; color: #c8f5e0; }
+.vi-announcement--bad { border-color: #ff4f64; color: #ffc9cf; }
+@keyframes vi-announce { 0% { opacity: 0; transform: translate(-50%, -8px); } 10%, 80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+.is-reduced-motion .vi-announcement { animation: none; }

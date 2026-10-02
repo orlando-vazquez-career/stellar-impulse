@@ -35,6 +35,7 @@ const initialSnapshot: GameplayViewModel = {
   result: null,
   notice: null,
   connection: 'local',
+  visibleCells: null,
   squads: [
     {
       id: 'blue-alpha', callSign: 'Alpha', owner: 'blue', unitType: 'interceptor',

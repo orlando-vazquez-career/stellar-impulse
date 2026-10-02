@@ -3,7 +3,7 @@ import { FLEET_CAP } from '@impulso/sim';
 import { UNIT_STATS, type PlayerView, type UnitKind } from '@impulso/state';
 import { sectorSurface } from '../map/sector-map';
 import type {
-  CoreState, GameplayPresentationAdapter, GameplayViewModel, PresentationIntent, SquadOwner, SquadViewModel,
+  CoreState, GameplayEvent, GameplayPresentationAdapter, GameplayViewModel, PresentationIntent, SquadOwner, SquadViewModel,
 } from './model';
 
 /** The client renders at this rate and eases ships toward the last authoritative cell. */
@@ -41,6 +41,7 @@ function blankSnapshot(): GameplayViewModel {
     squads: [], core: { state: 'locked', progress: 0, opensInSeconds: 0 },
     enemiesVisible: true, clockRunning: true,
     nodes: [], production: null, result: null, notice: 'Conectando con el servidor…', connection: 'connecting',
+    visibleCells: null,
   };
 }
 
@@ -57,6 +58,48 @@ export function nearestOpenCell(x: number, y: number): Point | null {
     }
   }
   return best;
+}
+
+const UNDER_ATTACK_COOLDOWN_MS = 10_000;
+
+/** Compare two consecutive server views and name what changed for the player. */
+export function diffViews(previous: PlayerView | null, next: PlayerView): GameplayEvent[] {
+  if (!previous) return [{ kind: 'match-start' }];
+  const events: GameplayEvent[] = [];
+  const me = next.playerId;
+  const visible = new Set(next.visibleCells.map((cell) => `${cell.x},${cell.y}`));
+  const alive = (view: PlayerView) => new Map(view.squads.filter((squad) => squad.hp > 0).map((squad) => [squad.id, squad]));
+  const before = alive(previous);
+  const after = alive(next);
+  for (const [id, squad] of before) {
+    if (after.has(id)) continue;
+    const own = squad.ownerId === me;
+    // An enemy that walked out of sight is not a kill: only count it if its cell is still watched.
+    if (own || visible.has(`${squad.x},${squad.y}`)) events.push({ kind: 'ship-destroyed', own });
+  }
+  for (const [id, squad] of after) if (!before.has(id) && squad.ownerId === me) events.push({ kind: 'ship-launched' });
+  for (const guardian of previous.guardians) {
+    if (guardian.hp <= 0) continue;
+    const now = next.guardians.find((unit) => unit.id === guardian.id);
+    if ((!now || now.hp <= 0) && visible.has(`${guardian.x},${guardian.y}`)) events.push({ kind: 'guardian-down' });
+  }
+  for (const node of next.nodes) {
+    const old = previous.nodes.find((candidate) => candidate.id === node.id);
+    if (!old || old.ownerId === node.ownerId || node.kind !== 'metal') continue;
+    if (node.ownerId === me) events.push({ kind: 'node-captured', own: true });
+    else if (old.ownerId === me) events.push({ kind: 'node-lost' });
+    else if (node.ownerId !== null) events.push({ kind: 'node-captured', own: false });
+  }
+  const opensIn = (view: PlayerView) => (view.rules.coreOpenTick - view.tick) / TICKS_PER_SECOND;
+  if (opensIn(previous) > 30 && opensIn(next) <= 30) events.push({ kind: 'core-soon' });
+  if (!previous.core.open && next.core.open) events.push({ kind: 'core-open' });
+  const rival = me === 'p1' ? 'p2' : 'p1';
+  if (previous.core.progress[me] === 0 && next.core.progress[me] > 0) events.push({ kind: 'core-own-capturing' });
+  if (previous.core.progress[rival] === 0 && next.core.progress[rival] > 0) events.push({ kind: 'core-rival-capturing' });
+  if (previous.winner === null && next.winner !== null) events.push({ kind: next.winner === me ? 'victory' : 'defeat' });
+  const hurt = [...after.values()].some((squad) => squad.ownerId === me && squad.hp < (before.get(squad.id)?.hp ?? squad.hp));
+  if (hurt) events.push({ kind: 'under-attack' });
+  return events;
 }
 
 function coreState(view: PlayerView): CoreState {
@@ -80,7 +123,9 @@ export function createServerGameplayAdapter(serverUrl: string): GameplayPresenta
   let destroyed = false;
   const shown = new Map<string, Point>();
   const listeners = new Set<() => void>();
+  const eventListeners = new Set<(event: GameplayEvent) => void>();
   const emit = () => listeners.forEach((listener) => listener());
+  let lastAttackAlert = -Infinity;
 
   const send = (command: Record<string, unknown>) => {
     if (!room || snapshot.result) return;
@@ -162,6 +207,11 @@ export function createServerGameplayAdapter(serverUrl: string): GameplayPresenta
         ? { kind: own.production.kind, remainingSeconds: Math.ceil(own.production.remainingTicks / TICKS_PER_SECOND) }
         : null,
       result: view.winner === null ? null : view.winner === me ? 'victory' : 'defeat',
+      visibleCells: (() => {
+        const cells = Array<boolean>(view.width * view.height).fill(false);
+        for (const cell of view.visibleCells) cells[cell.y * view.width + cell.x] = true;
+        return cells;
+      })(),
     };
     emit();
   };
@@ -186,6 +236,13 @@ export function createServerGameplayAdapter(serverUrl: string): GameplayPresenta
   }, FRAME_MS);
 
   const onView = (view: PlayerView) => {
+    for (const event of diffViews(latest, view)) {
+      if (event.kind === 'under-attack') {
+        if (performance.now() - lastAttackAlert < UNDER_ATTACK_COOLDOWN_MS) continue;
+        lastAttackAlert = performance.now();
+      }
+      eventListeners.forEach((listener) => listener(event));
+    }
     latest = view;
     const present = new Set(view.squads.map((squad) => squad.id));
     for (const id of shown.keys()) if (!present.has(id)) shown.delete(id);
@@ -224,6 +281,10 @@ export function createServerGameplayAdapter(serverUrl: string): GameplayPresenta
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    subscribeEvents(listener) {
+      eventListeners.add(listener);
+      return () => eventListeners.delete(listener);
     },
     dispatch(intent: PresentationIntent) {
       if (intent.type === 'select-squad' || intent.type === 'select-squads') {
@@ -280,6 +341,7 @@ export function createServerGameplayAdapter(serverUrl: string): GameplayPresenta
       void room?.leave();
       room = null;
       listeners.clear();
+      eventListeners.clear();
     },
   };
 }

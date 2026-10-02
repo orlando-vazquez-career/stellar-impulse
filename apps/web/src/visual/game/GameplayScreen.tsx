@@ -3,6 +3,8 @@ import { DevelopmentControls } from './DevelopmentControls';
 import { Hud } from './Hud';
 import { createMockGameplayAdapter } from './mock-adapter';
 import { createServerGameplayAdapter } from './server-adapter';
+import { MatchAudio, playEvent, type Announcement } from './audio';
+import { useI18n } from '../i18n';
 import type { VisualPreferences } from '../settings/preferences';
 import type { CameraView, GameplayPresentationAdapter } from './model';
 import type { PhaserBattlefieldHandle } from './phaser/PhaserBattlefield';
@@ -33,6 +35,24 @@ function GameplayMatch({ preferences, onLeave, onRestart }: { preferences: Visua
 
 function GameplayView({ adapter, preferences, onLeave, onRestart }: { adapter: GameplayPresentationAdapter; preferences: VisualPreferences; onLeave(): void; onRestart(): void }) {
   const view = useSyncExternalStore(adapter.subscribe, adapter.getSnapshot);
+  const { locale } = useI18n();
+  const [announcement, setAnnouncement] = useState<(Announcement & { id: number }) | null>(null);
+  // Sounds and spoken calls for server events; the banner fades after a few seconds.
+  useEffect(() => {
+    if (!adapter.subscribeEvents) return;
+    const audio = new MatchAudio(preferences.audio, locale);
+    let counter = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = adapter.subscribeEvents((event) => {
+      const banner = playEvent(audio, event, locale);
+      if (!banner) return;
+      counter += 1;
+      setAnnouncement({ ...banner, id: counter });
+      clearTimeout(timer);
+      timer = setTimeout(() => setAnnouncement(null), 3200);
+    });
+    return () => { unsubscribe(); clearTimeout(timer); audio.dispose(); };
+  }, [adapter, preferences.audio, locale]);
   const [developmentOpen, setDevelopmentOpen] = useState(false);
   const [cameraView, setCameraView] = useState<CameraView | null>(null);
   const battlefieldRef = useRef<PhaserBattlefieldHandle>(null);
@@ -68,6 +88,7 @@ function GameplayView({ adapter, preferences, onLeave, onRestart }: { adapter: G
     </Suspense>
     <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)} onResetCamera={() => battlefieldRef.current?.resetCamera()} onDevelopment={() => setDevelopmentOpen(true)} onLeave={onLeave} />
     {developmentOpen && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}
+    {announcement && !view.result && <div key={announcement.id} className={`vi-announcement vi-announcement--${announcement.tone}`} role="status">{announcement.text}</div>}
     {view.result && <div className="vi-result" role="dialog" aria-label={view.result === 'victory' ? 'Victoria' : 'Derrota'}>
       <div className={`vi-result__card vi-result__card--${view.result}`}>
         <h2>{view.result === 'victory' ? 'Núcleo asegurado' : 'El rival tomó el Núcleo'}</h2>

@@ -90,7 +90,15 @@ export interface GameplayViewModel {
   /** Last server rejection or connection message, already localized by key. */
   notice: string | null;
   connection: ConnectionState;
+  /** Row-major cells inside the player's vision; null when there is no fog (local mock). */
+  visibleCells: boolean[] | null;
 }
+
+/** Things that happened between two server views, for sounds and announcements. */
+export type GameplayEvent =
+  | { kind: 'match-start' | 'ship-launched' | 'guardian-down' | 'node-lost' | 'under-attack'
+      | 'core-soon' | 'core-open' | 'core-own-capturing' | 'core-rival-capturing' | 'victory' | 'defeat' }
+  | { kind: 'ship-destroyed' | 'node-captured'; own: boolean };
 
 export type PresentationIntent =
   | { type: 'select-squad'; squadId: string }
@@ -113,4 +121,6 @@ export interface GameplayPresentationAdapter {
   subscribe(listener: () => void): () => void;
   dispatch(intent: PresentationIntent): void;
   destroy(): void;
+  /** Server-backed adapters report match events; the local mock does not. */
+  subscribeEvents?(listener: (event: GameplayEvent) => void): () => void;
 }

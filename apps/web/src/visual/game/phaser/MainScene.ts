@@ -3,7 +3,7 @@ import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '.
 import type { GridPoint } from './grid';
 import { planSectorMove, sectorMap, sectorSurface } from '../../map/sector-map';
 import atlasUrl from '../../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/stellar-plataformas.png';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT } from './isometric';
+import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH } from './isometric';
 
 const GRID_COLUMNS = sectorMap.width;
 const GRID_ROWS = sectorMap.height;
@@ -61,6 +61,8 @@ export class MainScene extends Phaser.Scene {
   private selectionBox?: Phaser.GameObjects.Graphics;
   private core?: Phaser.GameObjects.Graphics;
   private nodeMarks?: Phaser.GameObjects.Graphics;
+  private fog?: Phaser.GameObjects.Graphics;
+  private fogKey = '';
   private created = false;
   private readonly unitVisuals = new Map<string, UnitVisual>();
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -109,6 +111,8 @@ export class MainScene extends Phaser.Scene {
     this.selectionBox = this.add.graphics().setScrollFactor(0).setDepth(30000);
     this.core = this.add.graphics().setDepth(20001);
     this.nodeMarks = this.add.graphics().setDepth(15000);
+    // Above terrain and node rings, below ships (which the server already hides outside vision).
+    this.fog = this.add.graphics().setDepth(15500);
     this.drawTerrain();
     this.drawCore();
     this.renderSnapshot();
@@ -238,9 +242,32 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
+  /** Darken every floor cell outside the player's current vision. Redrawn only when vision changes. */
+  private drawFog() {
+    const graphics = this.fog;
+    if (!graphics) return;
+    const cells = this.snapshot.visibleCells;
+    const key = cells ? cells.map((seen) => (seen ? '1' : '0')).join('') : '';
+    if (key === this.fogKey) return;
+    this.fogKey = key;
+    graphics.clear();
+    if (!cells) return;
+    graphics.fillStyle(0x02060c, 0.62);
+    for (let y = 0; y < GRID_ROWS; y++) for (let x = 0; x < GRID_COLUMNS; x++) {
+      const index = y * GRID_COLUMNS + x;
+      if (cells[index] || !sectorSurface.walkable[index]) continue;
+      const center = cellToIso(x, y);
+      graphics.fillPoints(polygon([
+        { x: center.x, y: center.y - TILE_HALF_HEIGHT }, { x: center.x + TILE_HALF_WIDTH, y: center.y },
+        { x: center.x, y: center.y + TILE_HALF_HEIGHT }, { x: center.x - TILE_HALF_WIDTH, y: center.y },
+      ]), true);
+    }
+  }
+
   private renderSnapshot() {
     this.drawCore();
     this.drawNodes();
+    this.drawFog();
     this.drawRoute();
     const visible = new Set(this.snapshot.squads.filter((squad) => squad.visible).map((squad) => squad.id));
     for (const [id, visual] of this.unitVisuals) {
