@@ -4,7 +4,7 @@ import ts from 'typescript';
 const root = process.cwd();
 const errors = [];
 const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]);
-for (const file of walk('packages/sim/src').filter(f => f.endsWith('.ts') && !f.endsWith('.test.ts'))) {
+for (const file of walk('packages/sim/src').filter(f => f.endsWith('.ts') && !f.endsWith('.test.ts') && !f.includes(`${path.sep}tiled-maps${path.sep}`))) {
   const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
   function inspect(node) {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {

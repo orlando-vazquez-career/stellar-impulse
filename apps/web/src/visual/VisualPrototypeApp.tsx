@@ -6,6 +6,7 @@ import { HangarScreen } from './hangar/HangarScreen';
 import { LanguageProvider, useI18n } from './i18n';
 import { PreparationLobby, type LobbyMode, type RivalDifficulty } from './lobby/PreparationLobby';
 import { SectorMapScreen } from './map/SectorMapScreen';
+import { selectMap, type TrainingMapId } from './map/sector-map';
 import { CommandCenter } from './menu/CommandCenter';
 import { loadVisualPreferences, saveVisualPreferences } from './settings/preferences';
 import { SettingsScreen } from './settings/SettingsScreen';
@@ -26,6 +27,7 @@ function VisualPrototypeContent() {
   const [lobbyMode, setLobbyMode] = useState<LobbyMode>('create');
   const [preferences, setPreferences] = useState(loadVisualPreferences);
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
+  const [map, setMap] = useState<TrainingMapId>('espiral');
   const music = useRef<MusicPlayer | null>(null);
 
   // One background player for the whole app; browsers only start audio after a gesture.
@@ -60,11 +62,11 @@ function VisualPrototypeContent() {
   return <div className={`visual-app ${accessibilityClasses}`} data-color-profile={preferences.accessibility.colorProfile}>
     {screen === 'access' && <AccessScreen onContinue={(value) => { setAlias(value); setScreen('command'); }} />}
     {screen === 'command' && <CommandCenter alias={alias} onCreateRoom={() => { setLobbyMode('create'); setScreen('lobby'); }} onJoinRoom={() => { setLobbyMode('join'); setScreen('lobby'); }} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => { setAlias(''); setScreen('access'); }} />}
-    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} onBack={() => setScreen('command')} onExploreMap={() => setScreen('map')} onDeploy={(chosen) => { setDifficulty(chosen); setScreen('gameplay'); }} />}
+    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} onBack={() => setScreen('command')} onExploreMap={() => { selectMap('sector-01'); setScreen('map'); }} onDeploy={(chosen, chosenMap) => { setDifficulty(chosen); setMap(chosenMap); setScreen('gameplay'); }} />}
     {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
     {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} />}
     {screen === 'settings' && <SettingsScreen preferences={preferences} onBack={() => setScreen('command')} onSave={(nextPreferences) => { saveVisualPreferences(nextPreferences); setPreferences(nextPreferences); }} />}
-    {screen === 'gameplay' && <GameplayScreen preferences={preferences} difficulty={difficulty} onLeave={() => setScreen('command')} />}
+    {screen === 'gameplay' && <GameplayScreen preferences={preferences} difficulty={difficulty} map={map} onLeave={() => setScreen('command')} />}
     <div className="vi-resolution-warning" role="alert"><div><Brand /><h1>{t('resolutionWarningTitle')}</h1><p>{t('resolutionWarningBody')}</p></div></div>
   </div>;
 }

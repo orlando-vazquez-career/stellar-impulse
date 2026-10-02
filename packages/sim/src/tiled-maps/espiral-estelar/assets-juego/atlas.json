@@ -1,0 +1,28 @@
+{
+  "portal_apertura": {
+    "image": "portal_apertura.png",
+    "frameWidth": 112,
+    "frameHeight": 112,
+    "frames": 16,
+    "frameRate": 20,
+    "repeat": 0,
+    "note": "Para cerrar el portal, reproducir en reversa."
+  },
+  "portal_activo": {
+    "image": "portal_activo.png",
+    "frameWidth": 112,
+    "frameHeight": 112,
+    "frames": 8,
+    "frameRate": 12,
+    "repeat": -1
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.6964285714285714
+  },
+  "pincel_vision": {
+    "image": "pincel_vision.png",
+    "originX": 0.5,
+    "originY": 0.75
+  }
+}

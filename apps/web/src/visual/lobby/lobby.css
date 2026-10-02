@@ -88,3 +88,4 @@
 .vi-difficulty button small { color: var(--vi-muted); font-size: 12px; line-height: 1.3; }
 .vi-difficulty button.is-selected { border-color: var(--vi-blue-light); background: var(--vi-surface-raised); }
 .vi-difficulty button:hover { border-color: var(--vi-blue); }
+.vi-map-select { grid-template-columns: repeat(2, 1fr); }
