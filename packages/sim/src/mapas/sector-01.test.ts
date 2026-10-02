@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { applyCommand, createSectorWorld, stepWorld } from '../index.js';
+import { applyCommand, createWorldOn, stepWorld } from '../index.js';
 import { findPath } from '../maps/pathfinding.js';
 import { canCrossHeight, type RampDirection } from './alturas.js';
 import { leerSuperficie } from './leer-tiled.js';
@@ -41,7 +41,7 @@ describe('sector 01', () => {
   });
 
   it('keeps ships on the surface, blocks occupied cells, and separates metal from capture', () => {
-    const world = createSectorWorld();
+    const world = createWorldOn(SECTOR_01);
     const voidCell = world.surface?.walkable.findIndex((open) => !open) ?? -1;
     const blocked = applyCommand(world, 'p1', {
       seq: 1, type: 'move', squadId: 'p1-interceptor', x: voidCell % world.width, y: Math.floor(voidCell / world.width),
@@ -63,7 +63,7 @@ describe('sector 01', () => {
     expect(crowded.squads[0]).toMatchObject({ x: ship.x, y: ship.y });
 
     const metal = world.nodes.find((node) => node.kind === 'metal')!;
-    let mining = createSectorWorld();
+    let mining = createWorldOn(SECTOR_01);
     mining.squads[0]!.x = metal.x;
     mining.squads[0]!.y = metal.y;
     for (let tick = 0; tick < mining.rules.nodeCaptureTicks; tick += 1) mining = stepWorld(mining);
@@ -71,7 +71,7 @@ describe('sector 01', () => {
     expect(mining.players.p1.metal).toBe(1);
 
     const capture = world.nodes.find((node) => node.kind === 'capture')!;
-    let holding = createSectorWorld();
+    let holding = createWorldOn(SECTOR_01);
     holding.squads[0]!.x = capture.x;
     holding.squads[0]!.y = capture.y;
     for (let tick = 0; tick < holding.rules.nodeCaptureTicks; tick += 1) holding = stepWorld(holding);
@@ -82,7 +82,7 @@ describe('sector 01', () => {
   it('deals more damage from the higher cell', () => {
     const rampIndex = SECTOR_01.ramp.findIndex((direction) => direction != null);
     const highIndex = neighborIndex(rampIndex, SECTOR_01.ramp[rampIndex]);
-    let world = createSectorWorld();
+    let world = createWorldOn(SECTOR_01);
     const low = { x: rampIndex % SECTOR_01.width, y: Math.floor(rampIndex / SECTOR_01.width) };
     const high = { x: highIndex % SECTOR_01.width, y: Math.floor(highIndex / SECTOR_01.width) };
     world.squads[0]!.x = high.x;

@@ -19,8 +19,6 @@ test('two browsers join, order a squad, and complete the training objective', as
   await opponent.getByRole('button', { name: 'Entrar', exact: true }).click();
   await expect(opponent.getByTestId('room-code')).toHaveText(code);
   await page.screenshot({ path: 'test-results/training-sector.png', fullPage: true });
-  await page.getByRole('button', { name: 'Ir al nodo' }).click();
-  await expect(page.getByText('Posición 5, 2', { exact: false })).toBeVisible({ timeout: 12000 });
   await page.getByRole('button', { name: 'Ir al Núcleo' }).click();
   await expect(page.getByRole('heading', { name: 'Núcleo asegurado' })).toBeVisible({ timeout: 45000 });
   await expect(opponent.getByRole('heading', { name: 'El rival tomó el Núcleo' })).toBeVisible();

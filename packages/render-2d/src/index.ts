@@ -1,6 +1,7 @@
 import { findPath, type PlayerView } from '@impulso/state';
 
 const W = 1000, H = 660, TILE_X = 23, TILE_Y = 12, OX = 500, OY = 86;
+const ESPIRAL_SIDE = 58;
 const VOID = '#070b14';
 
 interface Camera { tileX: number; tileY: number; ox: number; oy: number }
@@ -136,6 +137,6 @@ export function drawArena(canvas: HTMLCanvasElement, view: PlayerView | null, se
     ctx.fillStyle = mine ? '#71e5dc' : '#ffad85'; ctx.fillRect(p.x - 22 * unit, p.y + 10 * unit, 44 * unit * squad.hp / squad.maxHp, 4 * unit);
     label(p.x, p.y + 35 * unit, mine ? 'Tu escuadrón' : 'Rival');
   }
-  label(78, 617, view?.walkable ? 'SECTOR 01' : 'SECTOR 00');
+  label(78, 617, view?.walkable ? (view.width === ESPIRAL_SIDE ? 'ESPIRAL' : 'SECTOR 01') : 'SECTOR 00');
   label(889, 617, view ? `T + ${(view.tick / 10).toFixed(1)} s` : 'Entrenamiento');
 }

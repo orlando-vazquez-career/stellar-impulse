@@ -10,8 +10,8 @@ import {
   type PlayerStance, type WalkBoard,
 } from './mecanicas/orders.js';
 import { findPath as findSurfacePath } from './maps/pathfinding.js';
-import { SECTOR_01 } from './mapas/sector-01.js';
-import type { Superficie } from './mapas/leer-tiled.js';
+import { ESPIRAL } from './mapas/espiral.js';
+import type { SectorLeido, Superficie } from './mapas/leer-tiled.js';
 
 export { defineMapSpec, MAX_MAP_SIDE, MAX_MAP_CELLS } from './maps/types.js';
 export type { MapCell, MapObjective, MapSpec } from './maps/types.js';
@@ -159,8 +159,7 @@ export function createWorld(): World {
     winner: null,
   };
 }
-export function createSectorWorld(): World {
-  const sector = SECTOR_01;
+export function createWorldOn(sector: SectorLeido): World {
   const node = (input: { id: string; kind: 'metal' | 'capture'; x: number; y: number }): ResourceNode => ({
     id: input.id, kind: input.kind, x: input.x, y: input.y,
     guardianId: `${input.id}-guardian`, ownerId: null, progress: { p1: 0, p2: 0 },
@@ -189,6 +188,9 @@ export function createSectorWorld(): World {
     core: { id: 'core', x: sector.core.x, y: sector.core.y, guardianId: 'core-guardian', open: false, progress: { p1: 0, p2: 0 } },
     winner: null,
   };
+}
+export function createSectorWorld(): World {
+  return createWorldOn(ESPIRAL);
 }
 export function distance(a: Position, b: Position): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
