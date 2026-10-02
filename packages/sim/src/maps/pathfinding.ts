@@ -55,7 +55,7 @@ class MinHeap {
   }
 }
 
-/** Static-terrain A*: four neighbors in N,E,S,W order; Manhattan distance.
+/** Static-terrain A*: eight neighbors with diagonal corner blocking and octile distance.
  * Returned path omits start and includes goal. All outcomes report popped-cell expansions.
  */
 export function findPath(map: PathMap, start: MapCell, goal: MapCell, options: PathOptions = {}): PathResult {
@@ -76,11 +76,15 @@ export function findPath(map: PathMap, start: MapCell, goal: MapCell, options: P
   if (walkable[startIndex] !== true || walkable[goalIndex] !== true) return { status: 'blocked', expansions: 0 };
   if (startIndex === goalIndex) return { status: 'found', path: [], expansions: 0 };
   const cap = Math.min(requested, cells);
-  const bestG = new Int32Array(cells).fill(0x7fffffff);
+  const bestG = new Float64Array(cells).fill(Infinity);
   const previous = new Int32Array(cells).fill(-1);
   const closed = new Uint8Array(cells);
   const heap = new MinHeap();
-  const heuristic = (x: number, y: number): number => Math.abs(goal.x - x) + Math.abs(goal.y - y);
+  const heuristic = (x: number, y: number): number => {
+    const dx = Math.abs(goal.x - x);
+    const dy = Math.abs(goal.y - y);
+    return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy);
+  };
   const firstH = heuristic(start.x, start.y);
   bestG[startIndex] = 0;
   heap.push({ index: startIndex, g: 0, h: firstH, f: firstH });
@@ -101,18 +105,25 @@ export function findPath(map: PathMap, start: MapCell, goal: MapCell, options: P
     }
     const x = current.index % width;
     const y = Math.floor(current.index / width);
-    const neighbors = [
-      y > 0 ? current.index - width : -1,
-      x + 1 < width ? current.index + 1 : -1,
-      y + 1 < height ? current.index + width : -1,
-      x > 0 ? current.index - 1 : -1,
+    const neighbors: readonly (readonly [number, number, number])[] = [
+      [0, -1, 1], [1, 0, 1], [0, 1, 1], [-1, 0, 1],
+      [1, -1, Math.SQRT2], [1, 1, Math.SQRT2], [-1, 1, Math.SQRT2], [-1, -1, Math.SQRT2],
     ];
-    for (const next of neighbors) {
-      if (next < 0 || closed[next] || walkable[next] !== true) continue;
+    for (const [dx, dy, stepCost] of neighbors) {
+      const nextX = x + dx;
+      const nextY = y + dy;
+      if (nextX < 0 || nextY < 0 || nextX >= width || nextY >= height) continue;
+      const next = nextY * width + nextX;
+      if (closed[next] || walkable[next] !== true) continue;
+      if (dx !== 0 && dy !== 0) {
+        const sideA = y * width + nextX;
+        const sideB = nextY * width + x;
+        if (walkable[sideA] !== true || walkable[sideB] !== true) continue;
+      }
       if (level && ramp && !canCrossHeight({ width, level, ramp, from: current.index, to: next })) continue;
-      const g = current.g + 1;
+      const g = current.g + stepCost;
       if (g >= bestG[next]!) continue;
-      const h = heuristic(next % width, Math.floor(next / width));
+      const h = heuristic(nextX, nextY);
       bestG[next] = g;
       previous[next] = current.index;
       heap.push({ index: next, g, h, f: g + h });

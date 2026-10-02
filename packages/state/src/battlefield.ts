@@ -63,6 +63,7 @@ export interface BattlefieldPublicSquad {
 export interface BattlefieldOwnSquad extends BattlefieldPublicSquad {
   target: MapCell | null;
   route: MapCell[];
+  attackTargetId: string | null;
 }
 export interface BattlefieldPublicPlayer { id: PlayerId; base: MapCell; metal?: number; lastSequence?: number }
 export interface BattlefieldView {
@@ -116,6 +117,7 @@ export function battlefieldViewFor(world: BattlefieldWorld, playerId: PlayerId):
           ...publicUnit,
           target: unit.target ? { x: unit.target.x, y: unit.target.y } : null,
           route: unit.route.map((cell) => ({ x: cell.x, y: cell.y })),
+          attackTargetId: unit.attackTargetId,
         } : publicUnit;
       }),
     guardians: world.guardians.filter(canSee).map((unit) => ({

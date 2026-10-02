@@ -260,6 +260,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       if (destroyed) { void joined.leave(); return; }
       room = joined;
       joined.onMessage('view', onView);
+      joined.onMessage('ack', () => { /* the next view already reflects accepted orders */ });
       joined.onMessage('rejected', (message: { reason?: string }) => {
         snapshot = { ...snapshot, notice: REJECTION_TEXT[message.reason ?? ''] ?? 'Orden rechazada.' };
         emit();

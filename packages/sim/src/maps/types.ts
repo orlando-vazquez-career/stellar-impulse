@@ -1,3 +1,5 @@
+import { isRampDirection, type RampDirection } from '../mapas/alturas.js';
+
 /** Integer grid coordinates are independent of screen projection. */
 export interface MapCell { readonly x: number; readonly y: number }
 
@@ -22,6 +24,9 @@ export interface MapSpec {
   readonly walkable: readonly boolean[];
   /** Row-major vision blockers; independent of walkability. */
   readonly opaque: readonly boolean[];
+  /** Optional authored elevation metadata; level and ramp must be supplied together. */
+  readonly level?: readonly number[];
+  readonly ramp?: readonly (RampDirection | null)[];
 }
 
 export const MAX_MAP_SIDE = 128;
@@ -37,8 +42,14 @@ export function defineMapSpec(input: MapSpec): MapSpec {
   if (!positive(input.cellSize, 512)) throw new Error('Invalid cell size');
   const cells = input.width * input.height;
   if (cells > MAX_MAP_CELLS || input.walkable.length !== cells || input.opaque.length !== cells) throw new Error('Invalid map masks');
+  if ((input.level === undefined) !== (input.ramp === undefined)
+    || (input.level !== undefined && input.ramp !== undefined
+      && (input.level.length !== cells || input.ramp.length !== cells))) throw new Error('Invalid elevation masks');
   for (let index = 0; index < cells; index += 1) {
     if (typeof input.walkable[index] !== 'boolean' || typeof input.opaque[index] !== 'boolean') throw new Error('Invalid map masks');
+    if (input.level !== undefined && input.ramp !== undefined
+      && (!Number.isSafeInteger(input.level[index]) || input.level[index]! < 0 || input.level[index]! > 7
+        || (input.ramp[index] !== null && !isRampDirection(input.ramp[index])))) throw new Error('Invalid elevation masks');
   }
   const inBounds = (cell: MapCell): boolean => Number.isSafeInteger(cell.x) && Number.isSafeInteger(cell.y)
     && cell.x >= 0 && cell.y >= 0 && cell.x < input.width && cell.y < input.height;
@@ -78,5 +89,7 @@ export function defineMapSpec(input: MapSpec): MapSpec {
     objectives: Object.freeze(objectives),
     walkable: Object.freeze([...input.walkable]),
     opaque: Object.freeze([...input.opaque]),
+    level: input.level === undefined ? undefined : Object.freeze([...input.level]),
+    ramp: input.ramp === undefined ? undefined : Object.freeze([...input.ramp]),
   });
 }

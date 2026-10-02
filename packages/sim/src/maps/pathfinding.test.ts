@@ -9,29 +9,51 @@ function grid(width: number, height: number, blocked: readonly MapCell[] = []): 
   return { width, height, walkable };
 }
 
-/** Independent breadth-first distance oracle for unit-cost four-neighbor maps. */
-function bfsDistance(map: PathMap, start: MapCell, goal: MapCell): number | null {
-  const queue = [start.y * map.width + start.x];
-  const distance = new Int32Array(map.width * map.height).fill(-1);
-  distance[queue[0]!] = 0;
-  for (let head = 0; head < queue.length; head++) {
-    const index = queue[head]!;
-    if (index === goal.y * map.width + goal.x) return distance[index]!;
-    const x = index % map.width;
-    const y = Math.floor(index / map.width);
-    const neighbors = [
-      y > 0 ? index - map.width : -1,
-      x + 1 < map.width ? index + 1 : -1,
-      y + 1 < map.height ? index + map.width : -1,
-      x > 0 ? index - 1 : -1,
-    ];
-    for (const next of neighbors) {
-      if (next < 0 || map.walkable[next] !== true || distance[next] !== -1) continue;
-      distance[next] = distance[index]! + 1;
-      queue.push(next);
+/** Independent Dijkstra distance oracle for eight-neighbor maps. */
+function dijkstraDistance(map: PathMap, start: MapCell, goal: MapCell): number | null {
+  const costs = new Float64Array(map.width * map.height).fill(Infinity);
+  const pending = new Set<number>();
+  const startIndex = start.y * map.width + start.x;
+  const goalIndex = goal.y * map.width + goal.x;
+  costs[startIndex] = 0;
+  pending.add(startIndex);
+  while (pending.size) {
+    let current = -1;
+    let best = Infinity;
+    for (const index of pending) if (costs[index]! < best) { best = costs[index]!; current = index; }
+    if (current < 0) break;
+    pending.delete(current);
+    if (current === goalIndex) return costs[current]!;
+    const x = current % map.width;
+    const y = Math.floor(current / map.width);
+    for (const [dx, dy, stepCost] of [
+      [0, -1, 1], [1, 0, 1], [0, 1, 1], [-1, 0, 1],
+      [1, -1, Math.SQRT2], [1, 1, Math.SQRT2], [-1, 1, Math.SQRT2], [-1, -1, Math.SQRT2],
+    ] as const) {
+      const nextX = x + dx;
+      const nextY = y + dy;
+      if (nextX < 0 || nextY < 0 || nextX >= map.width || nextY >= map.height) continue;
+      const next = nextY * map.width + nextX;
+      if (map.walkable[next] !== true) continue;
+      if (dx !== 0 && dy !== 0
+        && (map.walkable[y * map.width + nextX] !== true || map.walkable[nextY * map.width + x] !== true)) continue;
+      const cost = costs[current]! + stepCost;
+      if (cost >= costs[next]!) continue;
+      costs[next] = cost;
+      pending.add(next);
     }
   }
   return null;
+}
+
+function pathCost(start: MapCell, path: readonly MapCell[]): number {
+  let cost = 0;
+  let previous = start;
+  for (const cell of path) {
+    cost += previous.x === cell.x || previous.y === cell.y ? 1 : Math.SQRT2;
+    previous = cell;
+  }
+  return cost;
 }
 
 function expectValidPath(map: PathMap, start: MapCell, goal: MapCell, result: PathResult): void {
@@ -39,7 +61,13 @@ function expectValidPath(map: PathMap, start: MapCell, goal: MapCell, result: Pa
   if (result.status !== 'found') return;
   let previous = start;
   for (const cell of result.path) {
-    expect(Math.abs(cell.x - previous.x) + Math.abs(cell.y - previous.y)).toBe(1);
+    const dx = Math.abs(cell.x - previous.x);
+    const dy = Math.abs(cell.y - previous.y);
+    expect(Math.max(dx, dy)).toBe(1);
+    if (dx !== 0 && dy !== 0) {
+      expect(map.walkable[previous.y * map.width + cell.x]).toBe(true);
+      expect(map.walkable[cell.y * map.width + previous.x]).toBe(true);
+    }
     expect(map.walkable[cell.y * map.width + cell.x]).toBe(true);
     previous = cell;
   }
@@ -47,10 +75,21 @@ function expectValidPath(map: PathMap, start: MapCell, goal: MapCell, result: Pa
 }
 
 describe('deterministic static-terrain pathfinding', () => {
-  it('chooses the documented row-major tie-break on an open grid', () => {
+  it('uses diagonal steps on open ground without cutting blocked corners', () => {
+    const open = findPath(grid(3, 3), { x: 0, y: 0 }, { x: 2, y: 2 });
+    expect(open).toMatchObject({
+      status: 'found',
+      path: [{ x: 1, y: 1 }, { x: 2, y: 2 }],
+    });
+    const cornerBlocked = findPath(grid(3, 3, [{ x: 1, y: 0 }]), { x: 0, y: 0 }, { x: 2, y: 2 });
+    expect(cornerBlocked.status).toBe('found');
+    if (cornerBlocked.status === 'found') expect(cornerBlocked.path[0]).not.toEqual({ x: 1, y: 1 });
+  });
+
+  it('chooses a stable diagonal tie-break on an open grid', () => {
     expect(findPath(grid(3, 3), { x: 0, y: 0 }, { x: 2, y: 2 })).toMatchObject({
       status: 'found',
-      path: [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 1 }, { x: 2, y: 2 }],
+      path: [{ x: 1, y: 1 }, { x: 2, y: 2 }],
     });
   });
 
@@ -61,7 +100,9 @@ describe('deterministic static-terrain pathfinding', () => {
     const first = findPath(map, start, goal);
     expectValidPath(map, start, goal, first);
     if (first.status !== 'found') return;
-    expect(first.path.length).toBe(bfsDistance(map, start, goal));
+    const shortest = dijkstraDistance(map, start, goal);
+    if (shortest === null) throw new Error('Expected a route through the chokepoint');
+    expect(pathCost(start, first.path)).toBeCloseTo(shortest, 8);
     expect(first.path).toContainEqual({ x: 3, y: 4 });
     expect(findPath(map, start, goal)).toEqual(first);
     expect(first.expansions).toBeGreaterThan(0);
@@ -80,13 +121,13 @@ describe('deterministic static-terrain pathfinding', () => {
       const candidate = { ...map, walkable: mask };
       const start = { x: 0, y: 0 };
       const goal = { x: 15, y: 15 };
-      const shortest = bfsDistance(candidate, start, goal);
+      const shortest = dijkstraDistance(candidate, start, goal);
       const result = findPath(candidate, start, goal);
       expect(result.expansions).toBeLessThanOrEqual(256);
       if (shortest === null) expect(result.status).toBe('unreachable');
       else {
         expectValidPath(candidate, start, goal, result);
-        if (result.status === 'found') expect(result.path.length).toBe(shortest);
+        if (result.status === 'found') expect(pathCost(start, result.path)).toBeCloseTo(shortest, 8);
       }
     }
   });
@@ -145,7 +186,7 @@ describe('deterministic static-terrain pathfinding', () => {
     const result = findPath(BATTLEFIELD_MAP, start, goal);
     const elapsedMs = performance.now() - began;
     expectValidPath(BATTLEFIELD_MAP, start, goal, result);
-    if (result.status === 'found') expect(result.path.length).toBe(110);
+    if (result.status === 'found') expect(pathCost(start, result.path)).toBeCloseTo(Math.hypot(goal.x - start.x, goal.y - start.y), 8);
     expect(result.expansions).toBeLessThanOrEqual(72 * 72);
     console.info(`pathfinding 72x72 open: ${result.expansions} expansions, ${elapsedMs.toFixed(2)} ms`);
   });

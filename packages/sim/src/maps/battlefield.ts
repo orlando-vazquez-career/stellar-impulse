@@ -1,4 +1,5 @@
 import { defineMapSpec } from './types.js';
+import { SECTOR_01 } from '../mapas/sector-01.js';
 
 const SIDE = 72;
 const CELLS = SIDE * SIDE;
@@ -16,4 +17,27 @@ export const BATTLEFIELD_MAP = defineMapSpec({
   ],
   walkable: Array<boolean>(CELLS).fill(true),
   opaque: Array<boolean>(CELLS).fill(false),
+});
+
+/** Static catalog entry shared with the Sector 01 Tiled presentation. */
+export const SECTOR_01_BATTLEFIELD_MAP = defineMapSpec({
+  id: 'sector-01', version: 1, width: SECTOR_01.width, height: SECTOR_01.height, cellSize: 64,
+  bases: SECTOR_01.bases,
+  objectives: [
+    ...SECTOR_01.metals.map((cell, index) => ({
+      id: `metal-${index + 1}`,
+      kind: 'metal' as const,
+      cell,
+      guardianId: `metal-${index + 1}-guardian`,
+      guardianCell: cell,
+    })),
+    {
+      id: 'core', kind: 'core' as const, cell: SECTOR_01.core,
+      guardianId: 'core-guardian', guardianCell: SECTOR_01.core,
+    },
+  ],
+  walkable: [...SECTOR_01.walkable],
+  opaque: SECTOR_01.walkable.map((walkable) => !walkable),
+  level: [...SECTOR_01.level],
+  ramp: [...SECTOR_01.ramp],
 });

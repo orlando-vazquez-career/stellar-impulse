@@ -23,3 +23,27 @@ test('training server remains available to two clients after the old web lobby i
     await first.leave();
   }
 });
+
+test('accepts a move and stop order, acknowledges them, and explains rejected actions', async () => {
+  const client = new Client('http://127.0.0.1:2567');
+  const room = await client.create('training');
+  const next = <T>(type: string): Promise<T> => new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`${type} timeout`)), 5000);
+    const off = room.onMessage(type, (value: T) => { clearTimeout(timeout); off(); resolve(value); });
+  });
+  try {
+    const rejected = next<{ reason: string; message: string }>('rejected');
+    room.send('command', { seq: 1, type: 'attack', squadId: 'p1-interceptor', targetId: 'p1-interceptor' });
+    expect(await rejected).toMatchObject({ reason: 'friendly_target', message: 'No puedo hacer eso.' });
+
+    const moved = next<{ seq: number }>('ack');
+    room.send('command', { seq: 2, type: 'move', squadId: 'p1-interceptor', x: 5, y: 25 });
+    expect(await moved).toEqual({ seq: 2 });
+
+    const stopped = next<{ seq: number }>('ack');
+    room.send('command', { seq: 3, type: 'stop', squadId: 'p1-interceptor' });
+    expect(await stopped).toEqual({ seq: 3 });
+  } finally {
+    await room.leave();
+  }
+});

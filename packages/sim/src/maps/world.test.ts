@@ -12,6 +12,7 @@ const map = (walkable = Array<boolean>(12 * 12).fill(true)): MapSpec => defineMa
   walkable, opaque: Array<boolean>(12 * 12).fill(false),
 });
 const move = (seq: number, squadIds: string[], x: number, y: number) => ({ type: 'move_group', seq, squadIds, x, y });
+const attack = (seq: number, squadIds: string[], targetId: string) => ({ type: 'attack_group', seq, squadIds, targetId });
 
 describe('battlefield world', () => {
   it('creates a separate 72-cell-ready schema with one squad each and copied fog', () => {
@@ -68,6 +69,44 @@ describe('battlefield world', () => {
     expect(stopped.world.squads.filter((unit) => unit.ownerId === 'p1').every((unit) => unit.route.length === 0 && unit.target === null)).toBe(true);
   });
 
+  it('accepts a visible attack group and keeps target resolution authoritative', () => {
+    let world = createBattlefieldWorld(map(), { moveEveryTicks: 1, attackEveryTicks: 1 });
+    world.squads[0]!.x = 1; world.squads[0]!.y = 10;
+    world.squads[1]!.x = 5; world.squads[1]!.y = 10;
+    world.visible.p1.fill(true);
+    const accepted = applyBattlefieldCommand(world, 'p1', attack(1, ['p1-interceptor'], 'p2-interceptor'));
+    expect(accepted).toMatchObject({ accepted: true });
+    expect(accepted.world.squads[0]).toMatchObject({ attackTargetId: 'p2-interceptor', target: { x: 5, y: 10 } });
+    expect(accepted.world.squads[0]!.route.length).toBeGreaterThan(0);
+    const fought = stepBattlefieldWorld(accepted.world);
+    expect(fought.squads[0]!.attackTargetId).toBe('p2-interceptor');
+  });
+
+  it('cancels an attack when a replacement move or stop order is accepted', () => {
+    let world = createBattlefieldWorld(map(), { moveEveryTicks: 1, attackEveryTicks: 1 });
+    world.squads[0]!.x = 1; world.squads[0]!.y = 10;
+    world.squads[1]!.x = 2; world.squads[1]!.y = 10;
+    world.visible.p1.fill(true);
+    const attackResult = applyBattlefieldCommand(world, 'p1', attack(1, ['p1-interceptor'], 'p2-interceptor'));
+    expect(attackResult.accepted).toBe(true);
+    const stopped = applyBattlefieldCommand(attackResult.world, 'p1', { type: 'stop', seq: 2, squadIds: ['p1-interceptor'] });
+    expect(stopped).toMatchObject({ accepted: true });
+    expect(stopped.world.squads[0]).toMatchObject({ attackTargetId: null, stance: 'guard' });
+    const afterStop = stepBattlefieldWorld(stopped.world);
+    expect(afterStop.squads[1]!.hp).toBe(120);
+    const moved = applyBattlefieldCommand(attackResult.world, 'p1', move(2, ['p1-interceptor'], 1, 9));
+    expect(moved).toMatchObject({ accepted: true });
+    expect(moved.world.squads[0]).toMatchObject({ attackTargetId: null, stance: 'march' });
+  });
+
+  it('rejects an attack against the locked core guardian', () => {
+    const world = createBattlefieldWorld(map(), { coreOpenTick: 100 });
+    world.squads[0]!.x = 5; world.squads[0]!.y = 6;
+    world.visible.p1.fill(true);
+    const result = applyBattlefieldCommand(world, 'p1', attack(1, ['p1-interceptor'], 'core-guardian'));
+    expect(result).toMatchObject({ accepted: false, reason: 'target_unavailable' });
+  });
+
   it('uses only static terrain for ack and route, independent of a hidden enemy', () => {
     const base = createBattlefieldWorld(map());
     const hidden = cloneBattlefieldWorld(base);
@@ -104,6 +143,8 @@ describe('battlefield world', () => {
   it('keeps simultaneous fatal combat, capture and metal income', () => {
     let world = createBattlefieldWorld(map(), { attackEveryTicks: 1, moveEveryTicks: 100, tickRate: 1, nodeCaptureTicks: 2 });
     world.squads[0]!.x = 2; world.squads[0]!.y = 3; world.squads[0]!.hp = 2;
+    world.squads[0]!.stance = 'attack';
+    world.squads[0]!.attackTargetId = 'metal-guardian';
     world.guardians.find((unit) => unit.id === 'metal-guardian')!.hp = 12;
     const fought = stepBattlefieldWorld(world);
     expect(fought.squads[0]!.hp).toBe(0);
