@@ -3,6 +3,7 @@ import { parseBattlefieldCommand, parseCommand } from './index.js';
 
 const move = { type: 'move_group', seq: 1, squadIds: ['p1-a', 'p1_b'], x: 0, y: 72 };
 const stop = { type: 'stop', seq: 2, squadIds: ['p1-a'] };
+const attack = { type: 'attack_group', seq: 3, squadIds: ['p1-a'], targetId: 'p2-b' };
 const invalid = { ok: false, reason: 'invalid_command' };
 
 describe('battlefield command boundary', () => {
@@ -14,6 +15,7 @@ describe('battlefield command boundary', () => {
     source.x = 90;
     expect(result).toEqual({ ok: true, command: move });
     expect(parseBattlefieldCommand(stop)).toEqual({ ok: true, command: stop });
+    expect(parseBattlefieldCommand(attack)).toEqual({ ok: true, command: attack });
     expect(parseBattlefieldCommand({ ...move, squadIds: Array.from({ length: 16 }, (_, i) => `s${i}`) }).ok).toBe(true);
     expect(parseBattlefieldCommand({ ...move, x: Number.MAX_SAFE_INTEGER, y: 0 }).ok).toBe(true);
     expect(parseBattlefieldCommand({ ...stop, seq: Number.MAX_SAFE_INTEGER }).ok).toBe(true);
@@ -40,6 +42,7 @@ describe('battlefield command boundary', () => {
     { ...move, squadIds: ['a', 2] }, { ...move, squadIds: 'a' },
     { ...move, type: 'move' }, { ...move, map: {} },
     { ...stop, x: 0 }, { ...stop, y: 0 }, { ...stop, mapId: 'custom' },
+    { ...attack, targetId: '../secret' }, { ...attack, targetId: '' }, { ...attack, x: 0 },
   ])('rejects malformed data: %j', (value) => {
     expect(parseBattlefieldCommand(value)).toEqual(invalid);
   });
@@ -83,5 +86,6 @@ describe('battlefield command boundary', () => {
     expect(parseBattlefieldCommand(legacy)).toEqual(invalid);
     expect(parseCommand(move)).toEqual(invalid);
     expect(parseCommand(stop)).toEqual(invalid);
+    expect(parseCommand(attack)).toEqual(invalid);
   });
 });

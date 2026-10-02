@@ -1,4 +1,5 @@
 import { Room, type Client } from '@colyseus/core';
+import { parseCommand } from '@impulso/input';
 import { createSectorWorld, applyCommand, runTrainingRival, stepWorld, type AiMemory, type PlayerId, type RivalDifficulty } from '@impulso/sim';
 import { viewFor } from '@impulso/state';
 
@@ -10,6 +11,19 @@ export class TrainingRoom extends Room {
   private rates = new Map<string, { tick: number; count: number }>();
   private enemyMemory = new Map<string, AiMemory>();
   private difficulty: RivalDifficulty = 'medium';
+
+  private reject(client: Client, reason: string): void {
+    const messages: Record<string, string> = {
+      blocked_destination: 'No puedo ir ahí.',
+      unreachable_destination: 'No puedo llegar ahí.',
+      target_not_visible: 'No puedo atacar un objetivo que no veo.',
+      target_destroyed: 'Ese objetivo ya fue destruido.',
+      friendly_target: 'No puedo hacer eso.',
+      squad_destroyed: 'Esta nave ya no puede actuar.',
+      rate_limit: 'No puedo hacer eso tan rápido.',
+    };
+    client.send('rejected', { reason, message: messages[reason] ?? 'No puedo hacer eso.' });
+  }
 
   /** The room creator picks the rival's difficulty; anything unexpected falls back to medium. */
   onCreate(options?: unknown) {
@@ -23,10 +37,12 @@ export class TrainingRoom extends Room {
       if (this.world.tick - bucket.tick >= 10) { bucket.tick = this.world.tick; bucket.count = 0; }
       bucket.count += 1;
       this.rates.set(client.sessionId, bucket);
-      if (bucket.count > 20) { client.send('rejected', { reason: 'rate_limit' }); return; }
+      if (bucket.count > 20) { this.reject(client, 'rate_limit'); return; }
       const result = applyCommand(this.world, player, command);
       if (result.accepted) this.world = result.world;
-      else client.send('rejected', { reason: result.reason });
+      else { this.reject(client, result.reason); return; }
+      const parsed = parseCommand(command);
+      if (parsed.ok) client.send('ack', { seq: parsed.command.seq });
     });
     this.setSimulationInterval(() => {
       if (!this.usedSeats.has('p2')) {

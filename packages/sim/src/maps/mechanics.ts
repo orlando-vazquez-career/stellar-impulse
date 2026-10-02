@@ -4,6 +4,7 @@ import { createSpatialIndex, type SpatialIndex } from './spatial-index.js';
 
 /** Structural mechanics shared by training and battlefield without changing either world type. */
 export interface MechanicsWorld {
+  mode?: 'training' | 'battlefield';
   width: number;
   height: number;
   tick: number;
@@ -76,7 +77,12 @@ export function resolveCombat(world: MechanicsWorld): void {
       .map((point) => byId.get(point.id)!)
       .filter((unit) => unit.id !== squad.id && withinReach(world, squad, unit)
         && (!('ownerId' in unit) || unit.ownerId !== squad.ownerId));
-    const target = inRange.find((unit) => unit.id === squad.attackTargetId) ?? inRange[0];
+    // Battlefield squads only fire at their chosen target or, in attack stance, at whatever is in range.
+    // Training ships prefer their target and otherwise answer anything adjacent.
+    const chosen = squad.attackTargetId ? inRange.find((unit) => unit.id === squad.attackTargetId) : undefined;
+    const target = world.mode === 'battlefield'
+      ? squad.attackTargetId ? chosen : squad.stance === 'attack' ? inRange[0] : undefined
+      : chosen ?? inRange[0];
     if (target) hit(target.id, heightDamage({
       world, attacker: squad, defender: target,
       damage: 'kind' in target ? damageAgainst(squad.kind, target.kind, squad.damage) : squad.damage,
