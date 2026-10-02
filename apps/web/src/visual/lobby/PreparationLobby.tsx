@@ -14,12 +14,12 @@ const DIFFICULTIES: { value: RivalDifficulty; label: string; hint: string }[] = 
 ];
 type FleetSide = 'blue' | 'red';
 
-export function PreparationLobby({ alias, mode, onBack, onExploreMap, onDeploy }: { alias: string; mode: LobbyMode; onBack(): void; onExploreMap(): void; onDeploy(difficulty: RivalDifficulty): void }) {
+export function PreparationLobby({ alias, mode, onBack, onExploreMap, onDeploy, initialJoinCode = '' }: { alias: string; mode: LobbyMode; onBack(): void; onExploreMap(): void; onDeploy(difficulty: RivalDifficulty): void; initialJoinCode?: string }) {
   const { t } = useI18n();
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
   const [side, setSide] = useState<FleetSide>('blue');
   const [ready, setReady] = useState(false);
-  const [joinCode, setJoinCode] = useState('');
+  const [joinCode, setJoinCode] = useState(initialJoinCode.toUpperCase());
   const [joinedCode, setJoinedCode] = useState(mode === 'create' ? 'ST-0427' : '');
   const joined = Boolean(joinedCode);
 
