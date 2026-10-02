@@ -12,6 +12,8 @@ const FOG_TINT = 0x4a5566;
 export const ZOOM_DEFAULT = 1.5;
 export const ZOOM_MIN = 1.5;
 export const ZOOM_MAX = 2;
+/** Two clicks on the same ship within this window select its whole class on screen. */
+const DOUBLE_CLICK_MS = 350;
 const GRID_ROWS = sectorMap.height;
 const CORE_CELL = sectorSurface.core;
 
@@ -76,6 +78,7 @@ export class MainScene extends Phaser.Scene {
   private movementKeys?: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private dragOrigin?: { x: number; y: number; scrollX: number; scrollY: number };
   private selectionDrag?: { start: { x: number; y: number }; current: { x: number; y: number }; clickedId: string | null };
+  private lastClick: { id: string; at: number; group: boolean } | null = null;
   private hoverPoint: GridPoint | null = null;
   private lastCameraView = '';
   private pointerOnCanvas = false;
@@ -429,6 +432,24 @@ export class MainScene extends Phaser.Scene {
     return isoToPoint(world.x, world.y);
   }
 
+  /** Double click: every own ship of the clicked ship's class that is currently on screen (StarCraft style). */
+  private sameTypeOnScreen(clickedId: string): string[] {
+    const clicked = this.snapshot.squads.find((squad) => squad.id === clickedId);
+    if (!clicked) return [clickedId];
+    const camera = this.cameras.main;
+    const width = camera.width / camera.zoom;
+    const height = camera.height / camera.zoom;
+    const left = camera.scrollX + camera.width / 2 - width / 2;
+    const top = camera.scrollY + camera.height / 2 - height / 2;
+    return this.snapshot.squads
+      .filter((squad) => squad.owner === 'blue' && squad.unitType === clicked.unitType && squad.visible && squad.healthPercent > 0)
+      .filter((squad) => {
+        const point = cellToIso(squad.gridX, squad.gridY);
+        return point.x >= left && point.x <= left + width && point.y >= top && point.y <= top + height;
+      })
+      .map((squad) => squad.id);
+  }
+
   private drawSelectionBox() {
     const graphics = this.selectionBox;
     graphics?.clear();
@@ -518,7 +539,14 @@ export class MainScene extends Phaser.Scene {
             .filter((squad) => { const point = cellToIso(squad.gridX, squad.gridY); return point.x >= a.x && point.x <= b.x && point.y >= a.y && point.y <= b.y; })
             .map((squad) => squad.id);
           this.onSelectSquads(ids);
-        } else this.onSelectSquads(clickedId ? [clickedId] : []);
+        } else if (clickedId && this.lastClick?.id === clickedId && pointer.downTime - this.lastClick.at <= DOUBLE_CLICK_MS) {
+          // Double click selects the whole class on screen; further quick clicks keep that group.
+          if (!this.lastClick.group) this.onSelectSquads(this.sameTypeOnScreen(clickedId));
+          this.lastClick = { id: clickedId, at: pointer.downTime, group: true };
+        } else {
+          this.onSelectSquads(clickedId ? [clickedId] : []);
+          this.lastClick = clickedId ? { id: clickedId, at: pointer.downTime, group: false } : null;
+        }
         this.selectionDrag = undefined;
         this.drawSelectionBox();
       }
