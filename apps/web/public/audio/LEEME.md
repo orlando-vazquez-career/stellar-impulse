@@ -14,6 +14,16 @@ el juego usa un sonido sintetizado o la voz del navegador, así que nunca queda 
 Los volúmenes se ajustan desde Ajustes (general × efectos). Normaliza los archivos a un volumen
 parecido y deja poco silencio al inicio para que suenen al instante.
 
+## Música (`music`)
+
+| Espacio | Cuándo suena | Sugerencia |
+| --- | --- | --- |
+| `menu` | Menú, lobby, hangar y ajustes | Ambiental tranquila que se pueda repetir en bucle, 1–3 min |
+| `match` | Durante la partida | Más tensa y rítmica, en bucle, 1–3 min |
+
+Mientras estén vacíos suena música generada por el propio juego. El volumen sale de Ajustes (general × música).
+Guarda las pistas en una carpeta `music/`.
+
 ## Efectos (`sfx`)
 
 | Espacio | Cuándo suena | Sugerencia |

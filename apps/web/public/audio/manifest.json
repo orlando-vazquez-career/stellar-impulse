@@ -1,4 +1,8 @@
 {
+  "music": {
+    "menu": null,
+    "match": null
+  },
   "sfx": {
     "explosion-small": null,
     "explosion-large": null,

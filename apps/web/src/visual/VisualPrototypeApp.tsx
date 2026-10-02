@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { MusicPlayer } from './music';
 import { AccessScreen } from './access/AccessScreen';
 import { GameplayScreen } from './game/GameplayScreen';
 import { HangarScreen } from './hangar/HangarScreen';
@@ -24,6 +25,24 @@ function VisualPrototypeContent() {
   const [alias, setAlias] = useState('');
   const [lobbyMode, setLobbyMode] = useState<LobbyMode>('create');
   const [preferences, setPreferences] = useState(loadVisualPreferences);
+  const music = useRef<MusicPlayer | null>(null);
+
+  // One background player for the whole app; browsers only start audio after a gesture.
+  useEffect(() => {
+    const player = new MusicPlayer(loadVisualPreferences().audio);
+    music.current = player;
+    const wake = () => player.resume();
+    window.addEventListener('pointerdown', wake);
+    window.addEventListener('keydown', wake);
+    return () => {
+      window.removeEventListener('pointerdown', wake);
+      window.removeEventListener('keydown', wake);
+      player.dispose();
+      music.current = null;
+    };
+  }, []);
+  useEffect(() => { music.current?.setPreferences(preferences.audio); }, [preferences.audio]);
+  useEffect(() => { music.current?.play(screen === 'gameplay' ? 'match' : 'menu'); }, [screen]);
 
   useEffect(() => {
     const previousTitle = document.title;
