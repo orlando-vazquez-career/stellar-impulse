@@ -19,13 +19,13 @@ const MAPS: { value: TrainingMapId; label: string; hint: string }[] = [
 ];
 type FleetSide = 'blue' | 'red';
 
-export function PreparationLobby({ alias, mode, onBack, onExploreMap, onDeploy }: { alias: string; mode: LobbyMode; onBack(): void; onExploreMap(): void; onDeploy(difficulty: RivalDifficulty, map: TrainingMapId): void }) {
+export function PreparationLobby({ alias, mode, onBack, onExploreMap, onDeploy, initialJoinCode = '' }: { alias: string; mode: LobbyMode; onBack(): void; onExploreMap(): void; onDeploy(difficulty: RivalDifficulty, map: TrainingMapId): void; initialJoinCode?: string }) {
   const { t } = useI18n();
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
   const [map, setMap] = useState<TrainingMapId>('espiral');
   const [side, setSide] = useState<FleetSide>('blue');
   const [ready, setReady] = useState(false);
-  const [joinCode, setJoinCode] = useState('');
+  const [joinCode, setJoinCode] = useState(initialJoinCode.toUpperCase());
   const [joinedCode, setJoinedCode] = useState(mode === 'create' ? 'ST-0427' : '');
   const joined = Boolean(joinedCode);
 
