@@ -15,7 +15,9 @@ import {
   BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, launchCell, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS,
   type ProductionState,
 } from './economia.js';
-import { rivalGoals, rivalProduction } from './inteligencia-enemiga/estrategia.js';
+import { rivalGoals, rivalProduction, type RivalDifficulty } from './inteligencia-enemiga/estrategia.js';
+export { RIVAL_PROFILES } from './inteligencia-enemiga/estrategia.js';
+export type { RivalDifficulty } from './inteligencia-enemiga/estrategia.js';
 export { BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS } from './economia.js';
 export type { ProductionOrder, ProductionState } from './economia.js';
 export { leerSuperficie } from './mapas/leer-tiled.js';
@@ -567,11 +569,11 @@ function toAi(world: World, unit: Squad): AiUnit {
     attackRange: world.surface ? 2 : ATTACK_RANGE, sightRange: world.rules.visionRadius + UNIT_STATS[unit.kind].visionBonus,
   };
 }
-function enemyScene(world: World): EnemyScene {
+function enemyScene(world: World, difficulty: RivalDifficulty): EnemyScene {
   const units = world.squads.filter((unit) => unit.ownerId === 'p2' && unit.hp > 0);
   const patrolByUnit: Record<string, Position[]> = {};
   const retreatByUnit: Record<string, Position> = {};
-  const goals = world.economy ? rivalGoals(world, 'p2', (target) => canSee(world, 'p2', target)) : new Map<string, Position>();
+  const goals = world.economy ? rivalGoals(world, 'p2', (target) => canSee(world, 'p2', target), difficulty) : new Map<string, Position>();
   for (const unit of units) {
     const base = world.players[unit.ownerId].base;
     const goal = goals.get(unit.id);
@@ -589,23 +591,23 @@ function enemyScene(world: World): EnemyScene {
   };
 }
 /** Training rival only. A seated human on p2 must not call this. */
-export function planTrainingEnemy(world: World, memories: ReadonlyMap<string, AiMemory>): {
+export function planTrainingEnemy(world: World, memories: ReadonlyMap<string, AiMemory>, difficulty: RivalDifficulty = 'medium'): {
   memories: ReadonlyMap<string, AiMemory>;
   orders: readonly AiOrder[];
 } {
-  return planEnemyTurn(enemyScene(world), memories);
+  return planEnemyTurn(enemyScene(world, difficulty), memories);
 }
 /** One full rival turn for an empty p2 seat: hangar order, then fleet orders. */
-export function runTrainingRival(world: World, memories: ReadonlyMap<string, AiMemory>): {
+export function runTrainingRival(world: World, memories: ReadonlyMap<string, AiMemory>, difficulty: RivalDifficulty = 'medium'): {
   world: World; memories: ReadonlyMap<string, AiMemory>;
 } {
   let next = world;
-  const kind = world.economy ? rivalProduction(world, 'p2') : null;
+  const kind = world.economy ? rivalProduction(world, 'p2', difficulty) : null;
   if (kind) {
     next = cloneWorld(world);
     startProduction(next, 'p2', kind);
   }
-  const planned = planTrainingEnemy(next, memories);
+  const planned = planTrainingEnemy(next, memories, difficulty);
   return { world: applyEnemyOrders(next, planned.orders), memories: planned.memories };
 }
 /** Applies rival orders without touching player sequence numbers. */

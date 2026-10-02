@@ -6,6 +6,7 @@ import { createServerGameplayAdapter } from './server-adapter';
 import { MatchAudio, playEvent, type Announcement } from './audio';
 import { useI18n } from '../i18n';
 import type { VisualPreferences } from '../settings/preferences';
+import type { RivalDifficulty } from '../lobby/PreparationLobby';
 import type { CameraView, GameplayPresentationAdapter } from './model';
 import type { PhaserBattlefieldHandle } from './phaser/PhaserBattlefield';
 
@@ -16,16 +17,16 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567';
 const wantsLocalMock = () => new URLSearchParams(window.location.search).get('adapter') === 'mock';
 const PRODUCTION_KEYS: Record<string, 'explorer' | 'interceptor' | 'frigate' | 'bomber'> = { '1': 'interceptor', '2': 'frigate', '3': 'bomber', '4': 'explorer' };
 
-export function GameplayScreen({ preferences, onLeave }: { preferences: VisualPreferences; onLeave(): void }) {
+export function GameplayScreen({ preferences, difficulty = 'medium', onLeave }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; onLeave(): void }) {
   const [match, setMatch] = useState(0);
-  return <GameplayMatch key={match} preferences={preferences} onLeave={onLeave} onRestart={() => setMatch((count) => count + 1)} />;
+  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} onLeave={onLeave} onRestart={() => setMatch((count) => count + 1)} />;
 }
 
 /** The adapter lives exactly as long as the mounted match, so a server room is never left orphaned. */
-function GameplayMatch({ preferences, onLeave, onRestart }: { preferences: VisualPreferences; onLeave(): void; onRestart(): void }) {
+function GameplayMatch({ preferences, difficulty, onLeave, onRestart }: { preferences: VisualPreferences; difficulty: RivalDifficulty; onLeave(): void; onRestart(): void }) {
   const [adapter, setAdapter] = useState<GameplayPresentationAdapter | null>(null);
   useEffect(() => {
-    const created = wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL);
+    const created = wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL, difficulty);
     setAdapter(created);
     return () => created.destroy();
   }, []);

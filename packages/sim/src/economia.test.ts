@@ -75,3 +75,32 @@ describe('training rival', () => {
     expect(world.winner).toBe('p2');
   });
 });
+
+describe('rival difficulty', () => {
+  const play = (difficulty: 'easy' | 'medium' | 'hard', ticks: number) => {
+    let world = createSectorWorld();
+    // The idle human already holds two Metal nodes, so raids have a target.
+    world.guardians = world.guardians.filter((guardian) => guardian.objectiveId !== 'metal-1' && guardian.objectiveId !== 'metal-2');
+    for (const node of world.nodes) if (node.id === 'metal-1' || node.id === 'metal-2') node.ownerId = 'p1';
+    let memories: ReadonlyMap<string, AiMemory> = new Map();
+    for (let tick = 0; tick < ticks; tick += 1) {
+      const rival = runTrainingRival(world, memories, difficulty);
+      memories = rival.memories;
+      world = stepWorld(rival.world);
+    }
+    return world;
+  };
+  const rivalShips = (world: World) => world.squads.filter((squad) => squad.ownerId === 'p2' && squad.hp > 0).length;
+  const rivalNodes = (world: World) => world.nodes.filter((node) => node.kind === 'metal' && node.ownerId === 'p2').length;
+
+  it('keeps the easy rival small, slow and away from the player nodes', () => {
+    const world = play('easy', 900);
+    expect(rivalShips(world)).toBeLessThanOrEqual(6);
+    expect(world.nodes.filter((node) => node.ownerId === 'p1' && node.kind === 'metal')).toHaveLength(2);
+  });
+
+  it('lets harder rivals build more and expand faster', () => {
+    expect(rivalShips(play('medium', 600))).toBeGreaterThan(rivalShips(play('easy', 600)));
+    expect(rivalNodes(play('hard', 200))).toBeGreaterThan(rivalNodes(play('medium', 200)));
+  });
+});

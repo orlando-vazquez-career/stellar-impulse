@@ -1,11 +1,44 @@
 import { FLEET_CAP, UNIT_COSTS } from '../economia.js';
 import type { PlayerId, Position, UnitKind, World } from '../index.js';
 
-/** Enemy squads this close to the rival base make the whole fleet fall back. */
-const THREAT_RADIUS = 6;
-/** The fleet waits at home until it has this many combat ships, then pushes as a group. */
-const ATTACK_GROUP = 3;
-const BUILD_ORDER: readonly UnitKind[] = ['interceptor', 'frigate', 'interceptor', 'bomber', 'frigate', 'explorer'];
+export type RivalDifficulty = 'easy' | 'medium' | 'hard';
+
+/**
+ * Difficulty only changes how the rival plays, never what it knows or earns:
+ * same vision, same Metal, same rules as the human.
+ */
+interface RivalProfile {
+  /** Enemy squads this close to the rival base make the fleet fall back. */
+  threatRadius: number;
+  /** The fleet waits at home until it has this many combat ships, then pushes as a group. */
+  attackGroup: number;
+  /** Ships the rival keeps alive at most (never above the shared FLEET_CAP). */
+  fleetLimit: number;
+  /** Minimum ticks between launches: a slow hangar for the easy rival. */
+  buildSpacingTicks: number;
+  /** Whether it raids Metal nodes the player already owns. */
+  raidsPlayer: boolean;
+  /** With this many combat ships it splits off a raiding party (0 = never). */
+  raidSplitAt: number;
+  /** With this many combat ships it expands to two nodes at once (0 = never). */
+  expandSplitAt: number;
+  buildOrder: readonly UnitKind[];
+}
+
+export const RIVAL_PROFILES: Readonly<Record<RivalDifficulty, RivalProfile>> = Object.freeze({
+  easy: {
+    threatRadius: 4, attackGroup: 5, fleetLimit: 6, buildSpacingTicks: 150, raidsPlayer: false, raidSplitAt: 0, expandSplitAt: 0,
+    buildOrder: ['interceptor', 'frigate', 'interceptor', 'explorer'],
+  },
+  medium: {
+    threatRadius: 6, attackGroup: 3, fleetLimit: FLEET_CAP, buildSpacingTicks: 0, raidsPlayer: true, raidSplitAt: 0, expandSplitAt: 0,
+    buildOrder: ['interceptor', 'frigate', 'interceptor', 'bomber', 'frigate', 'explorer'],
+  },
+  hard: {
+    threatRadius: 8, attackGroup: 2, fleetLimit: FLEET_CAP, buildSpacingTicks: 0, raidsPlayer: true, raidSplitAt: 6, expandSplitAt: 4,
+    buildOrder: ['interceptor', 'bomber', 'frigate', 'interceptor', 'bomber', 'frigate'],
+  },
+});
 
 const manhattan = (a: Position, b: Position): number => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 const byDistanceFrom = (origin: Position) => (a: Position & { id: string }, b: Position & { id: string }) =>
@@ -16,21 +49,37 @@ const byDistanceFrom = (origin: Position) => (a: Position & { id: string }, b: P
  * attack or retreat; this only picks where each ship heads when it has nothing in sight.
  * It reads what the rival may know: its own fleet, node ownership and enemies inside its vision.
  */
-export function rivalGoals(world: World, rival: PlayerId, canSee: (target: Position) => boolean): Map<string, Position> {
+export function rivalGoals(world: World, rival: PlayerId, canSee: (target: Position) => boolean,
+  difficulty: RivalDifficulty = 'medium'): Map<string, Position> {
+  const profile = RIVAL_PROFILES[difficulty];
   const base = world.players[rival].base;
   const fleet = world.squads.filter((unit) => unit.ownerId === rival && unit.hp > 0);
   const combat = fleet.filter((unit) => unit.kind !== 'explorer');
   const goals = new Map<string, Position>();
   const threatened = world.squads.some((unit) => unit.ownerId !== rival && unit.hp > 0
-    && manhattan(unit, base) <= THREAT_RADIUS && canSee(unit));
-  const targets = world.nodes.filter((node) => node.kind === 'metal' && node.ownerId !== rival)
+    && manhattan(unit, base) <= profile.threatRadius && canSee(unit));
+  const targets = world.nodes.filter((node) => node.kind === 'metal' && node.ownerId !== rival
+    && (profile.raidsPlayer || node.ownerId === null))
     .sort(byDistanceFrom(base));
   let front: Position;
   if (threatened) front = base;
   else if (world.core.open) front = world.core;
-  else if (combat.length < ATTACK_GROUP) front = targets[0] && manhattan(targets[0], base) <= 8 ? targets[0] : base;
+  else if (combat.length < profile.attackGroup) front = targets[0] && manhattan(targets[0], base) <= 8 ? targets[0] : base;
   else front = targets[0] ?? world.core;
-  for (const unit of combat) goals.set(unit.id, { x: front.x, y: front.y });
+  // Hard: a big enough fleet sends its newest ships to raid the player's own Metal.
+  const raidTarget = world.nodes.filter((node) => node.kind === 'metal' && node.ownerId !== null && node.ownerId !== rival)
+    .sort(byDistanceFrom(base))[0];
+  const raiders = !threatened && !world.core.open && raidTarget && profile.raidSplitAt > 0 && combat.length >= profile.raidSplitAt
+    ? new Set(combat.slice(-Math.floor(combat.length / 2)).map((unit) => unit.id)) : new Set<string>();
+  // Hard: while the core is closed, a mid-sized fleet takes the two nearest nodes in parallel.
+  const second = targets[1];
+  const expanding = !threatened && !world.core.open && second && front === targets[0]
+    && profile.expandSplitAt > 0 && combat.length >= profile.expandSplitAt;
+  combat.forEach((unit, index) => {
+    const goal = raiders.has(unit.id) && raidTarget ? raidTarget
+      : expanding && index % 2 === 1 ? second : front;
+    goals.set(unit.id, { x: goal.x, y: goal.y });
+  });
   // Scouts look ahead: the next uncontested node, then the core.
   const scoutTarget = targets[1] ?? targets[0] ?? world.core;
   for (const unit of fleet) if (unit.kind === 'explorer') goals.set(unit.id, { x: scoutTarget.x, y: scoutTarget.y });
@@ -38,10 +87,12 @@ export function rivalGoals(world: World, rival: PlayerId, canSee: (target: Posit
 }
 
 /** Next ship the rival orders, or null to keep saving. Cycles a fixed build order. */
-export function rivalProduction(world: World, rival: PlayerId): UnitKind | null {
+export function rivalProduction(world: World, rival: PlayerId, difficulty: RivalDifficulty = 'medium'): UnitKind | null {
+  const profile = RIVAL_PROFILES[difficulty];
   if (world.production[rival]) return null;
   const alive = world.squads.filter((unit) => unit.ownerId === rival && unit.hp > 0).length;
-  if (alive >= FLEET_CAP) return null;
-  const kind = BUILD_ORDER[world.built[rival] % BUILD_ORDER.length]!;
+  if (alive >= Math.min(FLEET_CAP, profile.fleetLimit)) return null;
+  if (world.tick < (world.built[rival] + 1) * profile.buildSpacingTicks) return null;
+  const kind = profile.buildOrder[world.built[rival] % profile.buildOrder.length]!;
   return world.players[rival].metal >= UNIT_COSTS[kind] ? kind : null;
 }

@@ -115,7 +115,7 @@ function coreState(view: PlayerView): CoreState {
  * Presentation adapter backed by the authoritative `training` room: one human against the
  * server rival (or a second human who joins the same room). The browser only sends intentions.
  */
-export function createServerGameplayAdapter(serverUrl: string): GameplayPresentationAdapter {
+export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy' | 'medium' | 'hard' = 'medium'): GameplayPresentationAdapter {
   let snapshot = blankSnapshot();
   let latest: PlayerView | null = null;
   let room: Room | null = null;
@@ -256,7 +256,7 @@ export function createServerGameplayAdapter(serverUrl: string): GameplayPresenta
 
   void (async () => {
     try {
-      const joined = await new Client(serverUrl).create('training');
+      const joined = await new Client(serverUrl).create('training', { difficulty });
       if (destroyed) { void joined.leave(); return; }
       room = joined;
       joined.onMessage('view', onView);

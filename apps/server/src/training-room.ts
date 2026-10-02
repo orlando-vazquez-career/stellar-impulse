@@ -1,5 +1,5 @@
 import { Room, type Client } from '@colyseus/core';
-import { createSectorWorld, applyCommand, runTrainingRival, stepWorld, type AiMemory, type PlayerId } from '@impulso/sim';
+import { createSectorWorld, applyCommand, runTrainingRival, stepWorld, type AiMemory, type PlayerId, type RivalDifficulty } from '@impulso/sim';
 import { viewFor } from '@impulso/state';
 
 export class TrainingRoom extends Room {
@@ -9,8 +9,12 @@ export class TrainingRoom extends Room {
   private usedSeats = new Set<PlayerId>();
   private rates = new Map<string, { tick: number; count: number }>();
   private enemyMemory = new Map<string, AiMemory>();
+  private difficulty: RivalDifficulty = 'medium';
 
-  onCreate() {
+  /** The room creator picks the rival's difficulty; anything unexpected falls back to medium. */
+  onCreate(options?: unknown) {
+    const requested = typeof options === 'object' && options !== null ? (options as { difficulty?: unknown }).difficulty : undefined;
+    if (requested === 'easy' || requested === 'medium' || requested === 'hard') this.difficulty = requested;
     this.setPrivate(true);
     this.onMessage('command', (client, command: unknown) => {
       const player = this.seats.get(client.sessionId);
@@ -26,7 +30,7 @@ export class TrainingRoom extends Room {
     });
     this.setSimulationInterval(() => {
       if (!this.usedSeats.has('p2')) {
-        const rival = runTrainingRival(this.world, this.enemyMemory);
+        const rival = runTrainingRival(this.world, this.enemyMemory, this.difficulty);
         this.enemyMemory = new Map(rival.memories);
         this.world = rival.world;
       }
