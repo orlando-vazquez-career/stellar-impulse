@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { openApp } from './helpers';
 
 test('plays Sector 01 against the server rival and builds a ship', async ({ page }) => {
-  await page.goto('/');
+  await openApp(page, '/');
   await page.getByLabel('Identificador de comandante').fill('Vega');
   await page.getByRole('button', { name: 'Continuar como invitado' }).click();
   await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -19,7 +20,7 @@ test('plays Sector 01 against the server rival and builds a ship', async ({ page
 });
 
 test('double click on a ship selects every ship of its class on screen', async ({ page }) => {
-  await page.goto('/');
+  await openApp(page, '/');
   await page.getByLabel('Identificador de comandante').fill('Vega');
   await page.getByRole('button', { name: 'Continuar como invitado' }).click();
   await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -50,4 +51,13 @@ test('double click on a ship selects every ship of its class on screen', async (
     return;
   }
   throw new Error('No Interceptor found on screen');
+});
+
+test('login gate leads straight to a new training once the commander has an alias', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.li-viewport canvas')).toBeVisible();
+  await page.getByRole('button', { name: 'Crear entrenamiento' }).click();
+  await page.getByLabel('Identificador de comandante').fill('Vega');
+  await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+  await expect(page.getByRole('heading', { name: 'Configura la operación.' })).toBeVisible();
 });
