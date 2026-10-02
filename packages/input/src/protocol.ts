@@ -8,6 +8,9 @@ export type EnvelopeResult =
 export type JoinResult =
   | { ok: true; name: string }
   | { ok: false; reason: 'invalid_join' | 'unsupported_version' };
+export type CampaignJoinResult =
+  | { ok: true; name: string; token?: string }
+  | { ok: false; reason: 'invalid_join' | 'unsupported_version' };
 export type TechResult = { ok: true; techId: string } | { ok: false; reason: 'invalid_tech' };
 
 const DEFAULT_NAME = 'Comandante';
@@ -63,8 +66,16 @@ export function parseJoinOptions(value: unknown): JoinResult {
   return parseVersionedJoinOptions(value, PROTOCOL_VERSION);
 }
 
-export function parseCampaignJoinOptions(value: unknown): JoinResult {
-  return parseVersionedJoinOptions(value, CAMPAIGN_PROTOCOL_VERSION);
+export function parseCampaignJoinOptions(value: unknown): CampaignJoinResult {
+  const fields = plainFields(value);
+  if (!fields) return { ok: false, reason: 'invalid_join' };
+  if (fields.protocolVersion !== CAMPAIGN_PROTOCOL_VERSION) return { ok: false, reason: 'unsupported_version' };
+  if (!onlyKeys(fields, ['protocolVersion', 'name', 'token'])) return { ok: false, reason: 'invalid_join' };
+  const parsed = parseVersionedJoinOptions({ protocolVersion: fields.protocolVersion, name: fields.name }, CAMPAIGN_PROTOCOL_VERSION);
+  if (!parsed.ok) return parsed;
+  if (fields.token === undefined) return parsed;
+  if (typeof fields.token !== 'string' || fields.token.length > 256) return { ok: false, reason: 'invalid_join' };
+  return { ...parsed, token: fields.token };
 }
 
 export function parseReady(body: unknown): boolean {

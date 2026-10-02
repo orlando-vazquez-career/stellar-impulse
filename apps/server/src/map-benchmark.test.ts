@@ -10,6 +10,7 @@ import {
 } from '@impulso/sim';
 import { battlefieldViewFor } from '@impulso/state';
 import { createGameServer } from './app.js';
+import { AuthService } from './auth.js';
 import { CampaignRoom } from './campaign-room.js';
 import * as campaigns from './campaign/machine.js';
 
@@ -23,7 +24,12 @@ const SEARCH_BUDGET_PER_TICK = 32768;
 const PORT = 32_000 + Math.floor(Math.random() * 900);
 const URL = `http://127.0.0.1:${PORT}`;
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
-const joins = (name: string) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name });
+const auth = new AuthService();
+const tokens = {
+  Ana: auth.register('ana-benchmark@example.com', 'secret-1234').token,
+  Beto: auth.register('beto-benchmark@example.com', 'secret-1234').token,
+};
+const joins = (name: 'Ana' | 'Beto') => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name] });
 
 function random(seed: number) {
   let state = seed >>> 0;
@@ -114,7 +120,7 @@ async function sendAndMeasure(room: Room, body: ReturnType<typeof command>): Pro
 }
 
 async function networkCase(obstacles: boolean) {
-  const server = createGameServer({ campaign: {
+  const server = createGameServer({ auth, campaign: {
     countdownMs: 0, sectors: 1, reconnectWindowMs: 5_000,
     createSector: () => fixture(obstacles),
   } });

@@ -3,12 +3,18 @@ import { Client, type Room } from '@colyseus/sdk';
 import { CAMPAIGN_PROTOCOL_VERSION } from '@impulso/input';
 import { decodeBattlefieldMask, type BattlefieldView } from '@impulso/state';
 import { createGameServer } from './app.js';
+import { AuthService } from './auth.js';
 
 const PORT = 31_000 + Math.floor(Math.random() * 900);
 const URL = `http://127.0.0.1:${PORT}`;
-const options = (name: string) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name });
+const auth = new AuthService();
+const tokens = {
+  Ana: auth.register('ana-map@example.com', 'secret-1234').token,
+  Beto: auth.register('beto-map@example.com', 'secret-1234').token,
+};
+const options = (name: 'Ana' | 'Beto') => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name] });
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
-const server = createGameServer({ campaign: {
+const server = createGameServer({ auth, campaign: {
   countdownMs: 0, reconnectWindowMs: 5_000, resumeCountdownMs: 100,
 } });
 

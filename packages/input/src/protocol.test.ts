@@ -30,6 +30,8 @@ describe('campaign v2 alongside legacy v1', () => {
     expect(openEnvelope({ protocolVersion: 1, body })).toEqual({ ok: true, body });
     expect(openEnvelope({ protocolVersion: 2, body })).toEqual({ ok: false, reason: 'unsupported_version' });
     expect(parseCampaignJoinOptions({ protocolVersion: 2, name: 'Ana' })).toEqual({ ok: true, name: 'Ana' });
+    expect(parseCampaignJoinOptions({ protocolVersion: 2, name: 'Ana', token: 'abc' }))
+      .toEqual({ ok: true, name: 'Ana', token: 'abc' });
     expect(parseCampaignJoinOptions({ protocolVersion: 1 })).toEqual({ ok: false, reason: 'unsupported_version' });
     expect(parseJoinOptions({ protocolVersion: 1 })).toEqual({ ok: true, name: 'Comandante' });
   });

@@ -5,13 +5,20 @@ import { createBattlefieldWorld, defineMapSpec, type PlayerId } from '@impulso/s
 import { createGameServer } from './app.js';
 import { CampaignRoom } from './campaign-room.js';
 import * as campaigns from './campaign/machine.js';
+import { AuthService } from './auth.js';
 
 const PORT = 29_000 + Math.floor(Math.random() * 900);
 const URL = `http://127.0.0.1:${PORT}`;
-const joinOptions = (name: string) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name });
+const auth = new AuthService();
+const tokens = {
+  Ana: auth.register('ana-campaign@example.com', 'secret-1234').token,
+  Beto: auth.register('beto-campaign@example.com', 'secret-1234').token,
+};
+const joinOptions = (name: 'Ana' | 'Beto') => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name] });
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
 
 const server = createGameServer({
+  auth,
   campaign: { countdownMs: 150, transitionMs: 300, resultsMs: 300, resumeCountdownMs: 150, reconnectWindowMs: 3_000 },
 });
 beforeAll(async () => { await server.listen(PORT, '127.0.0.1'); });
