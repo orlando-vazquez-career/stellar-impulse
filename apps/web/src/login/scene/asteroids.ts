@@ -24,6 +24,9 @@ interface Meteor {
   vy: number;
   life: number;
   age: number;
+  tailLength: number;
+  width: number;
+  colorType: 'warm' | 'cyan' | 'gold';
 }
 
 export interface AsteroidField {
@@ -74,8 +77,8 @@ function rockSprite(rng: Rng, size: number, lit: string, dark: string): HTMLCanv
 }
 
 /**
- * Cinturón de asteroides en dos planos de profundidad (pasando detrás de la
- * nave estrellada) más meteoros ocasionales que cruzan la escena con estela.
+ * Cinturón de asteroides en dos planos de profundidad más cometas y meteoros
+ * frecuentes que cruzan aleatoriamente la escena con estelas luminosas.
  */
 export function createAsteroidField(rng: Rng, sprites: BlobSprites): AsteroidField {
   const variants = [
@@ -107,24 +110,43 @@ export function createAsteroidField(rng: Rng, sprites: BlobSprites): AsteroidFie
     }
   }
 
-  const meteors: Meteor[] = [
-    { alive: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, age: 0 },
-    { alive: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, age: 0 },
-  ];
-  let nextMeteorIn = 2.5;
+  // Pool ampliado de cometas para permitir múltiples estelas simultáneas
+  const METEOR_CAPACITY = 10;
+  const meteors: Meteor[] = Array.from({ length: METEOR_CAPACITY }, () => ({
+    alive: false,
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    life: 0,
+    age: 0,
+    tailLength: 0.28,
+    width: 2.4,
+    colorType: 'warm',
+  }));
+
+  let nextMeteorIn = 1.0;
 
   function spawnMeteor(): void {
     const meteor = meteors.find((entry) => !entry.alive);
     if (!meteor) return;
     meteor.alive = true;
     meteor.age = 0;
-    meteor.life = range(rng, 1.4, 2.2);
-    meteor.x = range(rng, DESIGN_W * 0.45, DESIGN_W * 1.05);
-    meteor.y = range(rng, -40, 60);
-    const speed = range(rng, 520, 760);
-    const angle = range(rng, Math.PI * 0.62, Math.PI * 0.72);
+    meteor.life = range(rng, 1.3, 2.4);
+    // Posición de entrada aleatoria a lo largo de la parte superior y derecha
+    meteor.x = range(rng, DESIGN_W * 0.05, DESIGN_W * 1.15);
+    meteor.y = range(rng, -50, 90);
+
+    const speed = range(rng, 580, 890);
+    // Trayectoria diagonal descendente hacia la izquierda
+    const angle = range(rng, Math.PI * 0.58, Math.PI * 0.74);
     meteor.vx = Math.cos(angle) * speed;
     meteor.vy = Math.sin(angle) * speed;
+    meteor.tailLength = range(rng, 0.22, 0.36);
+    meteor.width = range(rng, 1.8, 3.4);
+
+    const colorRoll = rng();
+    meteor.colorType = colorRoll < 0.45 ? 'warm' : colorRoll < 0.75 ? 'cyan' : 'gold';
   }
 
   return {
@@ -137,17 +159,26 @@ export function createAsteroidField(rng: Rng, sprites: BlobSprites): AsteroidFie
         if (rock.y < -90) rock.y = DESIGN_H + 60;
         if (rock.y > DESIGN_H + 90) rock.y = -60;
       }
+
+      // Intervalos de generación más frecuentes y con probabilidad de cometas en parejas
       nextMeteorIn -= dt;
       if (nextMeteorIn <= 0) {
         spawnMeteor();
-        nextMeteorIn = range(rng, 4, 9);
+        // 35% de probabilidad de generar un segundo cometa en ráfaga rápida
+        if (rng() < 0.35) {
+          spawnMeteor();
+        }
+        nextMeteorIn = range(rng, 0.7, 1.9);
       }
+
       for (const meteor of meteors) {
         if (!meteor.alive) continue;
         meteor.age += dt;
         meteor.x += meteor.vx * dt;
         meteor.y += meteor.vy * dt;
-        if (meteor.age >= meteor.life || meteor.y > DESIGN_H + 120) meteor.alive = false;
+        if (meteor.age >= meteor.life || meteor.y > DESIGN_H + 140 || meteor.x < -120) {
+          meteor.alive = false;
+        }
       }
     },
 
@@ -163,26 +194,46 @@ export function createAsteroidField(rng: Rng, sprites: BlobSprites): AsteroidFie
       }
       ctx.globalAlpha = 1;
 
-      // Meteoros con estela: cruzan por delante del cinturón, detrás de la nave.
+      // Cometas con estelas luminosas (cruzan por delante del cinturón y detrás de la nave)
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
       for (const meteor of meteors) {
         if (!meteor.alive) continue;
-        const fade = 1 - meteor.age / meteor.life;
-        const tailX = meteor.x - meteor.vx * 0.24;
-        const tailY = meteor.y - meteor.vy * 0.24;
+        const progress = meteor.age / meteor.life;
+        const fade = progress < 0.15 ? progress / 0.15 : Math.max(0, (1 - progress) / 0.85);
+
+        const tailX = meteor.x - meteor.vx * meteor.tailLength;
+        const tailY = meteor.y - meteor.vy * meteor.tailLength;
+
         const trail = ctx.createLinearGradient(meteor.x, meteor.y, tailX, tailY);
-        trail.addColorStop(0, `rgba(255, 236, 190, ${0.9 * fade})`);
-        trail.addColorStop(0.35, `rgba(255, 158, 96, ${0.5 * fade})`);
-        trail.addColorStop(1, 'rgba(255, 122, 89, 0)');
+        if (meteor.colorType === 'cyan') {
+          trail.addColorStop(0, `rgba(230, 255, 255, ${0.95 * fade})`);
+          trail.addColorStop(0.3, `rgba(113, 229, 220, ${0.65 * fade})`);
+          trail.addColorStop(1, 'rgba(40, 140, 255, 0)');
+        } else if (meteor.colorType === 'gold') {
+          trail.addColorStop(0, `rgba(255, 255, 220, ${0.95 * fade})`);
+          trail.addColorStop(0.3, `rgba(242, 205, 121, ${0.65 * fade})`);
+          trail.addColorStop(1, 'rgba(255, 120, 40, 0)');
+        } else {
+          trail.addColorStop(0, `rgba(255, 240, 210, ${0.95 * fade})`);
+          trail.addColorStop(0.3, `rgba(255, 160, 100, ${0.6 * fade})`);
+          trail.addColorStop(1, 'rgba(255, 90, 50, 0)');
+        }
+
         ctx.strokeStyle = trail;
-        ctx.lineWidth = 2.6;
+        ctx.lineWidth = meteor.width;
         ctx.beginPath();
         ctx.moveTo(meteor.x, meteor.y);
         ctx.lineTo(tailX, tailY);
         ctx.stroke();
-        ctx.globalAlpha = 0.85 * fade;
-        ctx.drawImage(sprites.glow, meteor.x - 12, meteor.y - 12, 24, 24);
-        ctx.globalAlpha = 1;
+
+        // Cabeza luminosa del cometa
+        ctx.globalAlpha = Math.min(1, 0.9 * fade);
+        const glowSprite = meteor.colorType === 'cyan' ? sprites.glow : sprites.fire;
+        const glowSize = 22 * (meteor.width / 2.4);
+        ctx.drawImage(glowSprite, meteor.x - glowSize / 2, meteor.y - glowSize / 2, glowSize, glowSize);
       }
+      ctx.restore();
     },
   };
 }
