@@ -11,6 +11,7 @@ export interface LoginScreenProps {
   alias: string;
   onAliasChange?: (alias: string) => void;
   onContinueGuest?: (alias: string) => void;
+  onLogin?: (email: string, password: string) => Promise<void>;
   busy?: boolean;
   notice?: string;
   onCreateTraining?: (alias: string) => void;
@@ -32,6 +33,7 @@ export function LoginScreen(props: LoginScreenProps) {
     alias,
     onAliasChange,
     onContinueGuest,
+    onLogin,
     busy = false,
     notice = '',
     onCreateTraining = () => {},
@@ -89,6 +91,7 @@ export function LoginScreen(props: LoginScreenProps) {
             alias={alias}
             onAliasChange={onAliasChange}
             onContinueGuest={onContinueGuest}
+            onLogin={onLogin}
             busy={busy}
             notice={notice}
             ui={ui}

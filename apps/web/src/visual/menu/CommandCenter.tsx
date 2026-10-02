@@ -57,6 +57,7 @@ function MenuCard({
 
 export function CommandCenter({
   alias,
+  accountEmail,
   onCreateRoom,
   onJoinRoom,
   onHangar,
@@ -64,6 +65,7 @@ export function CommandCenter({
   onSignOut,
 }: {
   alias: string;
+  accountEmail?: string;
   onCreateRoom(): void;
   onJoinRoom(): void;
   onHangar(): void;
@@ -102,7 +104,7 @@ export function CommandCenter({
         <Brand />
         <div className="vi-header-actions">
           <LanguageToggle />
-          <button className="vi-text-button" onClick={onSignOut}>{t('signOut')}</button>
+          <button className="vi-text-button" onClick={onSignOut}>{t(accountEmail ? 'accountLogout' : 'signOut')}</button>
         </div>
       </header>
 
@@ -129,7 +131,7 @@ export function CommandCenter({
 
       <footer className="vi-screen__footer">
         <span>{t('commander')} // {alias.toUpperCase()}</span>
-        <span>{t('localConnection')}</span>
+        <span>{accountEmail || t('localConnection')}</span>
       </footer>
     </main>
   );

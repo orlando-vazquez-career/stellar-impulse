@@ -444,6 +444,17 @@
 
 /* ---------- Responsive y accesibilidad ---------- */
 
+.li-account {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(113, 229, 220, 0.25);
+}
+
+.li-account .li-alias-label { margin: 0; }
+.li-account .li-btn { margin-top: 5px; }
+
 @media (max-width: 768px) {
   .li-panel-wrap {
     right: 16px;

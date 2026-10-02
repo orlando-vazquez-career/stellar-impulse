@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { MusicPlayer } from './music';
 import { AccessScreen } from './access/AccessScreen';
+import { clearSession, logoutAccount, restoreAccount, sessionToken, type AccountUser } from '../auth/client';
+import { readPilotAlias } from '../login/pilot-alias';
 import { GameplayScreen } from './game/GameplayScreen';
 import { HangarScreen } from './hangar/HangarScreen';
 import { LanguageProvider, useI18n } from './i18n';
@@ -24,12 +26,42 @@ function VisualPrototypeContent() {
   const { t } = useI18n();
   const [screen, setScreen] = useState<Screen>('access');
   const [alias, setAlias] = useState('');
+  const [account, setAccount] = useState<AccountUser | null>(null);
+  const [sessionBusy, setSessionBusy] = useState(() => Boolean(sessionToken()));
+  const [sessionNotice, setSessionNotice] = useState<'' | 'accountUnavailable' | 'accountLogoutFailed'>('');
   const [joinCode, setJoinCode] = useState('');
   const [lobbyMode, setLobbyMode] = useState<LobbyMode>('create');
   const [preferences, setPreferences] = useState(loadVisualPreferences);
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
   const [map, setMap] = useState<TrainingMapId>('espiral');
   const music = useRef<MusicPlayer | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void restoreAccount().then((user) => {
+      if (!active || !user) return;
+      setAccount(user);
+      setAlias(readPilotAlias() || user.email.split('@')[0]!.slice(0, 24));
+      setScreen('command');
+    }).catch(() => {
+      if (!active) return;
+      clearSession();
+      setSessionNotice('accountUnavailable');
+    }).finally(() => { if (active) setSessionBusy(false); });
+    return () => { active = false; };
+  }, []);
+
+  async function signOut() {
+    setSessionBusy(true);
+    setAccount(null);
+    setAlias('');
+    setJoinCode('');
+    setSessionNotice('');
+    setScreen('access');
+    try { await logoutAccount(); }
+    catch { setSessionNotice('accountLogoutFailed'); }
+    finally { setSessionBusy(false); }
+  }
 
   // One background player for the whole app; browsers only start audio after a gesture.
   useEffect(() => {
@@ -62,11 +94,14 @@ function VisualPrototypeContent() {
 
   return <div className={`visual-app ${accessibilityClasses}`} data-color-profile={preferences.accessibility.colorProfile}>
     {screen === 'access' && <AccessScreen
+      sessionBusy={sessionBusy}
+      sessionNotice={sessionNotice ? t(sessionNotice) : ''}
+      onSignedIn={(user, value) => { setAccount(user); setAlias(value); setSessionNotice(''); setScreen('command'); }}
       onContinue={(value) => { setAlias(value); setScreen('command'); }}
       onCreateTraining={(value) => { setAlias(value); setLobbyMode('create'); setScreen('lobby'); }}
       onJoinRoom={(code, value) => { setAlias(value); setJoinCode(code); setLobbyMode('join'); setScreen('lobby'); }}
     />}
-    {screen === 'command' && <CommandCenter alias={alias} onCreateRoom={() => { setLobbyMode('create'); setScreen('lobby'); }} onJoinRoom={() => { setLobbyMode('join'); setScreen('lobby'); }} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => { setAlias(''); setScreen('access'); }} />}
+    {screen === 'command' && <CommandCenter alias={alias} accountEmail={account?.email} onCreateRoom={() => { setLobbyMode('create'); setScreen('lobby'); }} onJoinRoom={() => { setLobbyMode('join'); setScreen('lobby'); }} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => void signOut()} />}
     {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} onBack={() => setScreen('command')} onExploreMap={() => { selectMap('sector-01'); setScreen('map'); }} onDeploy={(chosen, chosenMap) => { setDifficulty(chosen); setMap(chosenMap); setScreen('gameplay'); }} />}
     {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
     {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} />}

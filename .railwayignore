@@ -1,0 +1,13 @@
+.git
+.local
+.vercel
+node_modules
+**/node_modules
+**/dist
+**/data
+.env
+.env.*
+test-results
+playwright-report
+coverage
+contracts/target
