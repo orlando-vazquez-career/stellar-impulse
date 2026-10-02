@@ -1,3 +1,4 @@
+// Interface sounds from Diego's original command atlas (PR #10), shared by the visual client.
 import { useState } from 'react';
 
 const SILENCE = 0.0001;

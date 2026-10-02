@@ -281,7 +281,7 @@
 .vi-briefing__data dt {
   color: #71e5dc;
   font-family: var(--vi-display);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
@@ -324,7 +324,7 @@
 .vi-room > header > div span {
   color: #7593a8;
   font-family: var(--vi-display);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
 }
@@ -512,7 +512,7 @@
 .vi-commander small {
   overflow: hidden;
   color: #8faec2;
-  font-size: 11.5px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -596,7 +596,7 @@
 
 .vi-side-select button small {
   color: #8faec2;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .vi-side-select button b {
@@ -659,8 +659,12 @@
 
 .vi-difficulty button small {
   color: #8faec2;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.35;
+}
+
+.vi-map-select {
+  grid-template-columns: repeat(2, 1fr);
 }
 
 /* Controles de listo y despliegue */
@@ -740,6 +744,7 @@
 /* Footer del lobby */
 .vi-lobby .vi-screen__footer {
   position: relative;
+  inset: auto;
   z-index: 10;
   width: min(1200px, calc(100% - 70px));
   margin: 0 auto;
@@ -786,7 +791,7 @@
     min-height: 0;
   }
   .vi-map-preview {
-    height: 190px;
+    height: 140px;
   }
   .vi-map-preview__field {
     width: min(240px, 70%);
@@ -807,6 +812,23 @@
   }
   .vi-difficulty button {
     min-height: 56px;
+  }
+  .vi-lobby-card > header {
+    min-height: 54px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .vi-room__section h3,
+  .vi-side-select legend,
+  .vi-difficulty legend {
+    margin-bottom: 6px;
+  }
+  .vi-lobby__content {
+    padding-bottom: 14px;
+  }
+  .vi-lobby .vi-screen__footer {
+    padding-top: 8px;
+    padding-bottom: 12px;
   }
 }
 

@@ -4,6 +4,7 @@ import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
+import type { TrainingMapId } from '../map/sector-map';
 import './lobby.css';
 
 export type LobbyMode = 'create' | 'join';
@@ -14,6 +15,10 @@ const DIFFICULTIES: { value: RivalDifficulty; label: string; hint: string }[] = 
   { value: 'medium', label: 'Media', hint: 'Se expande rápido y pelea por todo.' },
   { value: 'hard', label: 'Difícil', hint: 'Toma dos nodos a la vez y asalta los tuyos.' },
 ];
+const MAPS: { value: TrainingMapId; label: string; hint: string }[] = [
+  { value: 'espiral', label: 'Espiral Estelar', hint: '58×58. Carriles de impulso, nebulosas y núcleo con escudo.' },
+  { value: 'sector-01', label: 'Sector 01', hint: '29×29. Mapa compacto con rampas y meseta central.' },
+];
 type FleetSide = 'blue' | 'red';
 
 export function PreparationLobby({
@@ -22,21 +27,24 @@ export function PreparationLobby({
   onBack,
   onExploreMap,
   onDeploy,
+  initialJoinCode = '',
 }: {
   alias: string;
   mode: LobbyMode;
   onBack(): void;
   onExploreMap(): void;
-  onDeploy(difficulty: RivalDifficulty): void;
+  onDeploy(difficulty: RivalDifficulty, map: TrainingMapId): void;
+  initialJoinCode?: string;
 }) {
   const { t } = useI18n();
   const sound = useSpaceSound();
   const canvas = useRef<HTMLCanvasElement>(null);
 
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
+  const [map, setMap] = useState<TrainingMapId>('espiral');
   const [side, setSide] = useState<FleetSide>('blue');
   const [ready, setReady] = useState(false);
-  const [joinCode, setJoinCode] = useState('');
+  const [joinCode, setJoinCode] = useState(initialJoinCode.toUpperCase());
   const [joinedCode, setJoinedCode] = useState(mode === 'create' ? 'ST-0427' : '');
   const joined = Boolean(joinedCode);
 
@@ -115,12 +123,12 @@ export function PreparationLobby({
                 <i className="vi-map-preview__blue" />
                 <i className="vi-map-preview__red" />
               </div>
-              <span>SECTOR 01 // {t('mapValue')}</span>
+              <span>{map === 'espiral' ? 'ESPIRAL ESTELAR' : `SECTOR 01 // ${t('mapValue')}`}</span>
             </div>
             <dl className="vi-briefing__data">
               <div>
                 <dt>{t('map')}</dt>
-                <dd>{t('mapValue')}</dd>
+                <dd>{map === 'espiral' ? 'Espiral Estelar' : t('mapValue')}</dd>
               </div>
               <div>
                 <dt>{t('objective')}</dt>
@@ -145,6 +153,24 @@ export function PreparationLobby({
             >
               Explorar mapa Tiled
             </button>
+                {mode === 'create' && (
+                  <fieldset className="vi-difficulty vi-map-select">
+                    <legend>Mapa</legend>
+                    {MAPS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={map === option.value ? 'is-selected' : ''}
+                        aria-pressed={map === option.value}
+                        onMouseEnter={() => hover(420)}
+                        onClick={() => { sound.playSelect(); setMap(option.value); }}
+                      >
+                        <strong>{option.label}</strong>
+                        <small>{option.hint}</small>
+                      </button>
+                    ))}
+                  </fieldset>
+                )}
           </section>
 
           <section className="vi-lobby-card vi-room" aria-labelledby="room-title">
@@ -290,7 +316,7 @@ export function PreparationLobby({
                     }}
                     onClick={() => {
                       sound.playEnter();
-                      onDeploy(difficulty);
+                      onDeploy(difficulty, map);
                     }}
                   >
                     {t('launchOperation')}

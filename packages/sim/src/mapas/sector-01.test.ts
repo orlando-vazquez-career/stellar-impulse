@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { applyCommand, createSectorWorld, stepWorld } from '../index.js';
+import { applyCommand, createSectorWorld, createWorldOn, stepWorld } from '../index.js';
 import { findPath } from '../maps/pathfinding.js';
 import { canCrossHeight, type RampDirection } from './alturas.js';
 import { leerSuperficie } from './leer-tiled.js';
@@ -41,7 +41,7 @@ describe('sector 01', () => {
   });
 
   it('keeps ships on the surface, blocks occupied cells, and separates metal from capture', () => {
-    const world = createSectorWorld();
+    const world = createWorldOn(SECTOR_01);
     const voidCell = world.surface?.walkable.findIndex((open) => !open) ?? -1;
     const blocked = applyCommand(world, 'p1', {
       seq: 1, type: 'move', squadId: 'p1-interceptor', x: voidCell % world.width, y: Math.floor(voidCell / world.width),
@@ -73,7 +73,7 @@ describe('sector 01', () => {
     expect(mining.nodes.find((node) => node.id === metal.id)?.ownerId).toBe('p1');
 
     const capture = world.nodes.find((node) => node.kind === 'capture')!;
-    let holding = createSectorWorld();
+    let holding = createWorldOn(SECTOR_01);
     holding.squads[0]!.x = capture.x;
     holding.squads[0]!.y = capture.y;
     for (let tick = 0; tick < holding.rules.nodeCaptureTicks; tick += 1) holding = stepWorld(holding);

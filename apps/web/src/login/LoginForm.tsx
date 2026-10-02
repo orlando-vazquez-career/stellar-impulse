@@ -145,6 +145,7 @@ export function LoginForm(props: LoginFormProps) {
               <div className="li-join-row">
                 <input
                   id="li-room-code"
+                  form="li-join-form"
                   value={code}
                   onChange={(event) => setCode(event.target.value)}
                   maxLength={64}
@@ -153,10 +154,10 @@ export function LoginForm(props: LoginFormProps) {
                   required
                 />
                 <button
-                  type="button"
+                  type="submit"
+                  form="li-join-form"
                   className="li-btn"
                   disabled={locked || !code.trim()}
-                  onClick={(e) => join(e)}
                 >
                   {ui.pending === 'join' ? 'Entrando…' : 'Entrar'}
                 </button>
@@ -190,6 +191,8 @@ export function LoginForm(props: LoginFormProps) {
           )}
         </div>
       </form>
+      {/* Keep joining independent from the alias form without changing the panel layout. */}
+      <form id="li-join-form" onSubmit={join} />
 
       <p className="li-notice" role="status">{notice}</p>
       <p className="li-chain">{chainStatus}</p>

@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../i18n';
 import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
+import { useSpaceSound } from '../../login/sound';
+import { createCommandSpaceScene } from '../menu/command-space';
 import { freshDefaultVisualPreferences, type ControlAction, type VisualPreferences } from './preferences';
 import './settings.css';
 
@@ -20,11 +22,39 @@ function ToggleSetting({ title, detail, checked, onChange }: { title: string; de
 
 export function SettingsScreen({ preferences, onBack, onSave }: { preferences: VisualPreferences; onBack(): void; onSave(preferences: VisualPreferences): void }) {
   const { locale, setLocale, t } = useI18n();
+  const sound = useSpaceSound();
+  const canvas = useRef<HTMLCanvasElement>(null);
   const [category, setCategory] = useState<SettingsCategory>('audio');
   const [draft, setDraft] = useState<VisualPreferences>(() => ({
     audio: { ...preferences.audio }, controls: { ...preferences.controls }, accessibility: { ...preferences.accessibility },
   }));
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!canvas.current) return;
+    const scene = createCommandSpaceScene(canvas.current);
+    scene.start();
+    if (preferences.accessibility.reducedMotion) scene.stop();
+
+    const onResize = () => scene.resize();
+    const onPointer = (event: PointerEvent) => {
+      scene.setPointer(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        (event.clientY / window.innerHeight) * 2 - 1,
+      );
+    };
+    window.addEventListener('resize', onResize);
+    if (!preferences.accessibility.reducedMotion) window.addEventListener('pointermove', onPointer);
+    return () => {
+      scene.stop();
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('pointermove', onPointer);
+    };
+  }, [preferences.accessibility.reducedMotion]);
+
+  const soundEnabled = !draft.audio.muted && draft.audio.master > 0 && draft.audio.effects > 0;
+  const hover = () => { if (soundEnabled) sound.playHover({ pitch: 560 }); };
+  const select = () => { if (soundEnabled) sound.playSelect(); };
 
   const categories: Array<{ id: SettingsCategory; label: string; glyph: string }> = [
     { id: 'audio', label: t('audio'), glyph: '◖' },
@@ -38,23 +68,26 @@ export function SettingsScreen({ preferences, onBack, onSave }: { preferences: V
 
   const markDirty = () => setSaved(false);
   const save = () => {
+    if (soundEnabled) sound.playEnter({ pitch: 392 });
     onSave(draft);
     setSaved(true);
   };
   const restore = () => {
+    select();
     setDraft(freshDefaultVisualPreferences());
     markDirty();
   };
 
   return <main className="vi-settings vi-screen">
-    <header className="vi-screen__header"><Brand /><div className="vi-header-actions"><LanguageToggle /><button className="vi-text-button" onClick={onBack}>← {t('backToCommand')}</button></div></header>
+    <canvas ref={canvas} className="vi-settings-canvas" aria-hidden="true" />
+    <header className="vi-screen__header"><Brand /><div className="vi-header-actions"><LanguageToggle /><button className="vi-text-button" onMouseEnter={hover} onClick={() => { select(); onBack(); }}>← {t('backToCommand')}</button></div></header>
     <section className="vi-settings__content">
       <div className="vi-settings__heading"><div><p className="vi-eyebrow">{t('settingsEyebrow')}</p><h1>{t('settingsTitle')}</h1></div><p>{t('settingsBody')}</p></div>
 
       <div className="vi-settings__workspace">
         <nav className="vi-settings__nav" aria-label={t('settings')}>
           <span>{t('settingsLocalNote')}</span>
-          {categories.map((item, index) => <button key={item.id} className={category === item.id ? 'is-active' : ''} onClick={() => setCategory(item.id)} aria-pressed={category === item.id}>
+          {categories.map((item, index) => <button key={item.id} className={category === item.id ? 'is-active' : ''} onMouseEnter={hover} onClick={() => { select(); setCategory(item.id); }} aria-pressed={category === item.id}>
             <i>{item.glyph}</i><strong>{item.label}</strong><small>0{index + 1}</small>
           </button>)}
         </nav>
@@ -96,7 +129,7 @@ export function SettingsScreen({ preferences, onBack, onSave }: { preferences: V
             </div>
           </>}
 
-          <footer><button className="vi-settings__restore" onClick={restore}>{t('restoreDefaults')}</button><div>{saved && <output>{t('settingsSaved')}</output>}<button className="vi-settings__save" onClick={save}>{t('saveSettings')}<span>→</span></button></div></footer>
+          <footer><button className="vi-settings__restore" onMouseEnter={hover} onClick={restore}>{t('restoreDefaults')}</button><div>{saved && <output>{t('settingsSaved')}</output>}<button className="vi-settings__save" onMouseEnter={hover} onClick={save}>{t('saveSettings')}<span>→</span></button></div></footer>
         </section>
       </div>
     </section>

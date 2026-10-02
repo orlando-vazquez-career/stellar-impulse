@@ -52,3 +52,21 @@ describe('Visual Sector 01 Tiled map', () => {
     expect(path.length).toBeGreaterThan(2);
   });
 });
+
+describe('map selection', () => {
+  it('switches every live binding to Espiral Estelar and back', async () => {
+    const map = await import('./sector-map');
+    map.selectMap('espiral');
+    expect(map.activeMapId).toBe('espiral');
+    expect(map.sectorMap.width).toBe(58);
+    expect(map.sectorSurface.width).toBe(58);
+    expect(map.ISO_WORLD_WIDTH).toBe(58 * map.TILE_WIDTH);
+    expect(map.mapImageUrl('tilesets/img/suelo.png')).toBeTruthy();
+    expect(map.mapImageUrl('tilesets/img/base_jugador.png')).toBeTruthy();
+    const point = map.cellToPixel(map.sectorSurface.bases.p1);
+    expect(map.cellAtPixel(point.x, point.y)).toEqual(map.sectorSurface.bases.p1);
+    map.selectMap('sector-01');
+    expect(map.sectorMap.width).toBe(29);
+    expect(map.mapImageUrl('stellar-plataformas.png')).toBeTruthy();
+  });
+});

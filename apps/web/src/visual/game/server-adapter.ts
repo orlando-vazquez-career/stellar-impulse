@@ -1,7 +1,7 @@
 import { Client, type Room } from '@colyseus/sdk';
 import { FLEET_CAP } from '@impulso/sim';
 import { UNIT_STATS, type PlayerView, type UnitKind } from '@impulso/state';
-import { sectorSurface } from '../map/sector-map';
+import { sectorSurface, type TrainingMapId } from '../map/sector-map';
 import type {
   CoreState, GameplayEvent, GameplayPresentationAdapter, GameplayViewModel, PresentationIntent, SquadOwner, SquadViewModel,
 } from './model';
@@ -115,7 +115,8 @@ function coreState(view: PlayerView): CoreState {
  * Presentation adapter backed by the authoritative `training` room: one human against the
  * server rival (or a second human who joins the same room). The browser only sends intentions.
  */
-export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy' | 'medium' | 'hard' = 'medium'): GameplayPresentationAdapter {
+export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy' | 'medium' | 'hard' = 'medium',
+  map: TrainingMapId = 'espiral'): GameplayPresentationAdapter {
   let snapshot = blankSnapshot();
   let latest: PlayerView | null = null;
   let room: Room | null = null;
@@ -256,7 +257,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
 
   void (async () => {
     try {
-      const joined = await new Client(serverUrl).create('training', { difficulty });
+      const joined = await new Client(serverUrl).create('training', { difficulty, map });
       if (destroyed) { void joined.leave(); return; }
       room = joined;
       joined.onMessage('view', onView);

@@ -1,11 +1,14 @@
 import { Room, type Client } from '@colyseus/core';
 import { parseCommand } from '@impulso/input';
-import { createSectorWorld, applyCommand, runTrainingRival, stepWorld, type AiMemory, type PlayerId, type RivalDifficulty } from '@impulso/sim';
+import { createSectorWorld, applyCommand, runTrainingRival, stepWorld, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId } from '@impulso/sim';
 import { viewFor } from '@impulso/state';
+
+/** Diego's Espiral Estelar is the training map unless the creator asks for Sector 01. */
+const DEFAULT_MAP: TrainingMapId = 'espiral';
 
 export class TrainingRoom extends Room {
   maxClients = 2;
-  private world = createSectorWorld();
+  private world = createSectorWorld(DEFAULT_MAP);
   private seats = new Map<string, PlayerId>();
   private usedSeats = new Set<PlayerId>();
   private rates = new Map<string, { tick: number; count: number }>();
@@ -25,10 +28,12 @@ export class TrainingRoom extends Room {
     client.send('rejected', { reason, message: messages[reason] ?? 'No puedo hacer eso.' });
   }
 
-  /** The room creator picks the rival's difficulty; anything unexpected falls back to medium. */
+  /** The room creator picks the map and the rival's difficulty; anything unexpected falls back to the defaults. */
   onCreate(options?: unknown) {
-    const requested = typeof options === 'object' && options !== null ? (options as { difficulty?: unknown }).difficulty : undefined;
+    const fields = typeof options === 'object' && options !== null ? options as { difficulty?: unknown; map?: unknown } : {};
+    const requested = fields.difficulty;
     if (requested === 'easy' || requested === 'medium' || requested === 'hard') this.difficulty = requested;
+    if (fields.map === 'espiral' || fields.map === 'sector-01') this.world = createSectorWorld(fields.map);
     this.setPrivate(true);
     this.onMessage('command', (client, command: unknown) => {
       const player = this.seats.get(client.sessionId);

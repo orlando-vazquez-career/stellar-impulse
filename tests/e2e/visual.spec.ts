@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openApp } from './helpers';
 
 async function gamePoint(page: import('@playwright/test').Page, x: number, y: number) {
   // The minimap camera rect carries the visible world origin and zoom (Phaser zooms around the centre).
@@ -16,13 +17,13 @@ async function gamePoint(page: import('@playwright/test').Page, x: number, y: nu
 
 test.describe('visual interface foundation', () => {
   test('opens Visual as the only main entry and keeps the legacy lobby out', async ({ page }) => {
-    await page.goto('/');
+    await openApp(page, '/');
     await expect(page.getByRole('heading', { name: 'Toma el mando.' })).toBeVisible();
     await expect(page.locator('.panel--modes')).toHaveCount(0);
   });
 
   test('inspects the real Sector 01 Tiled map from Visual', async ({ page }) => {
-    await page.goto('/');
+    await openApp(page, '/');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -54,7 +55,7 @@ test.describe('visual interface foundation', () => {
   });
 
   test('supports the guest flow and bilingual copy', async ({ page }) => {
-    await page.goto('/visual?adapter=mock');
+    await openApp(page, '/visual?adapter=mock');
 
     await expect(page.getByRole('heading', { name: 'Toma el mando.' })).toBeVisible();
     await page.getByRole('button', { name: 'EN', exact: true }).click();
@@ -83,7 +84,7 @@ test.describe('visual interface foundation', () => {
 
   test('keeps HUD modules inside 1366×768 without overlap', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual?adapter=mock');
+    await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -157,7 +158,7 @@ test.describe('visual interface foundation', () => {
     const consoleErrors: string[] = [];
     page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual?adapter=mock');
+    await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -211,7 +212,7 @@ test.describe('visual interface foundation', () => {
 
   test('pans the game camera with WASD without activating attack', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual?adapter=mock');
+    await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -241,7 +242,7 @@ test.describe('visual interface foundation', () => {
 
   test('selects with left click and moves with right click', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual?adapter=mock');
+    await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -280,7 +281,7 @@ test.describe('visual interface foundation', () => {
 
   test('selects several allied ships by dragging and orders them together', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual?adapter=mock');
+    await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -315,7 +316,7 @@ test.describe('visual interface foundation', () => {
   });
 
   test('supports the simulated join-room path', async ({ page }) => {
-    await page.goto('/visual?adapter=mock');
+    await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Unirse a una sala/ }).click();
@@ -329,7 +330,7 @@ test.describe('visual interface foundation', () => {
 
   test('saves local control and accessibility settings', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual?adapter=mock');
+    await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Ajustes/ }).click();
@@ -359,7 +360,7 @@ test.describe('visual interface foundation', () => {
 
   test('previews and saves a cosmetic-only hangar loadout', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual?adapter=mock');
+    await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Hangar/ }).click();

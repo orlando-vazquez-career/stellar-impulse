@@ -3,7 +3,6 @@ import { GlitchPanel } from './GlitchPanel';
 import { LoginForm } from './LoginForm';
 import { initialLoginUi, reduceLoginUi } from './login-state';
 import { createLoginScene } from './scene';
-import { useLoginMusic } from './use-login-music';
 import { Brand } from '../visual/shared/Brand';
 import { LanguageToggle } from '../visual/shared/LanguageToggle';
 import loginCss from './login.css?inline';
@@ -44,7 +43,6 @@ export function LoginScreen(props: LoginScreenProps) {
   } = props;
   const canvas = useRef<HTMLCanvasElement>(null);
   const [ui, dispatch] = useReducer(reduceLoginUi, undefined, initialLoginUi);
-  useLoginMusic();
 
   useEffect(() => {
     const element = canvas.current;

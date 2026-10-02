@@ -22,7 +22,8 @@ export { BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, REPAIR_RADIUS, STARTING_META
 export type { ProductionOrder, ProductionState } from './economia.js';
 export { leerSuperficie } from './mapas/leer-tiled.js';
 export { findPath as findTiledPath } from './maps/pathfinding.js';
-import type { Superficie } from './mapas/leer-tiled.js';
+import { ESPIRAL } from './mapas/espiral.js';
+import type { SectorLeido, Superficie } from './mapas/leer-tiled.js';
 
 export { defineMapSpec, MAX_MAP_SIDE, MAX_MAP_CELLS } from './maps/types.js';
 export type { MapCell, MapObjective, MapSpec } from './maps/types.js';
@@ -193,19 +194,34 @@ const STARTING_FLEET: readonly { kind: UnitKind; dx: number; dy: number }[] = [
 export const GUARDIAN_AGGRO_RADIUS = 3;
 /** Guardians move one cell every this many ticks (slower than an Interceptor). */
 const GUARDIAN_MOVE_TICKS = 9;
-export function createSectorWorld(): World {
-  const sector = SECTOR_01;
+/** Training maps by id: Diego's Espiral Estelar (58×58) and the original Sector 01 (29×29). */
+export const TRAINING_MAPS = Object.freeze({ espiral: ESPIRAL, 'sector-01': SECTOR_01 });
+export type TrainingMapId = keyof typeof TRAINING_MAPS;
+export function createSectorWorld(map: TrainingMapId = 'sector-01'): World {
+  return createWorldOn(TRAINING_MAPS[map]);
+}
+export function createWorldOn(sector: SectorLeido): World {
   const node = (input: { id: string; kind: 'metal' | 'capture'; x: number; y: number }): ResourceNode => ({
     id: input.id, kind: input.kind, x: input.x, y: input.y,
     guardianId: `${input.id}-guardian`, ownerId: null, progress: { p1: 0, p2: 0 },
   });
   const metals = sector.metals.map((cell, index) => node({ id: `metal-${index + 1}`, kind: 'metal', x: cell.x, y: cell.y }));
   // p2 mirrors p1 through the map centre, so both fleets face the same terrain.
-  const fleet = (player: PlayerId) => STARTING_FLEET.map(({ kind, dx, dy }) => {
+  // p2 mirrors p1 around its base; on any map a blocked spot falls back to the nearest open cell.
+  const fleet = (player: PlayerId) => {
     const base = sector.bases[player];
-    const sign = player === 'p1' ? 1 : -1;
-    return createSquad(`${player}-${kind}`, player, kind, { x: base.x + sign * dx, y: base.y + sign * dy });
-  });
+    const used = new Set<string>();
+    const open = (cell: Position) => sector.walkable[cell.y * sector.width + cell.x] === true;
+    return STARTING_FLEET.map(({ kind, dx, dy }) => {
+      const sign = player === 'p1' ? 1 : -1;
+      const preferred = { x: base.x + sign * dx, y: base.y + sign * dy };
+      const inside = preferred.x >= 0 && preferred.y >= 0 && preferred.x < sector.width && preferred.y < sector.height;
+      const cell = inside && open(preferred) && !used.has(`${preferred.x},${preferred.y}`) ? preferred
+        : launchCell(base, sector.width, sector.height, open, (point) => used.has(`${point.x},${point.y}`)) ?? base;
+      used.add(`${cell.x},${cell.y}`);
+      return createSquad(`${player}-${kind}`, player, kind, cell);
+    });
+  };
   return {
     schemaVersion: 1, mode: 'training', tick: 0, width: sector.width, height: sector.height,
     obstacles: [],

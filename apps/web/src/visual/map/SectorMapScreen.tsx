@@ -4,12 +4,13 @@ import { Brand } from '../shared/Brand';
 import { cellAtPixel, cellToPixel, MAP_ORIGIN_Y, routeAcrossSector, sectorMap, sectorSurface, TILE_HEIGHT, TILE_WIDTH } from './sector-map';
 import './sector-map.css';
 
-const CANVAS_WIDTH = sectorMap.width * TILE_WIDTH;
-const CANVAS_HEIGHT = (sectorMap.width + sectorMap.height) * TILE_HEIGHT / 2 + MAP_ORIGIN_Y + 32;
 type Cell = { x: number; y: number };
 
 export function SectorMapScreen({ onBack }: { onBack(): void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // The inspector edits Sector 01; the caller selects it before mounting.
+  const CANVAS_WIDTH = sectorMap.width * TILE_WIDTH;
+  const CANVAS_HEIGHT = (sectorMap.width + sectorMap.height) * TILE_HEIGHT / 2 + MAP_ORIGIN_Y + 32;
   const [selected, setSelected] = useState<Cell>(sectorSurface.bases.p1);
   const [pilot, setPilot] = useState<Cell>(sectorSurface.bases.p1);
   const [route, setRoute] = useState<Cell[]>([]);

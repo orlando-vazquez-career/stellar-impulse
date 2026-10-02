@@ -6,15 +6,8 @@ import { LanguageToggle } from '../shared/LanguageToggle';
 import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
 import type { CameraView, CoreState, GameplayAction, GameplayPresentationAdapter, GameplayViewModel } from './model';
-import { sectorMap, sectorSurface } from '../map/sector-map';
+import { activeMapId, sectorMap, sectorSurface } from '../map/sector-map';
 import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH } from './phaser/isometric';
-
-const GRID_COLUMNS = sectorMap.width;
-const GRID_ROWS = sectorMap.height;
-const CORE_CELL = sectorSurface.core;
-const BASE_CELLS = { blue: sectorSurface.bases.p1, red: sectorSurface.bases.p2 };
-const FLOOR_CELLS = sectorSurface.walkable.flatMap((walkable, index) => walkable
-  ? [{ x: index % GRID_COLUMNS, y: Math.floor(index / GRID_COLUMNS) }] : []);
 
 function formatTime(seconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -67,28 +60,48 @@ function TopControls({ onResetCamera, onDevelopment, onLeave }: { onResetCamera(
 }
 
 const MINIMAP_SIZE = 172;
-const MINIMAP_SCALE = MINIMAP_SIZE / ISO_WORLD_WIDTH;
-const MINIMAP_OFFSET = { x: 4, y: 4 + (MINIMAP_SIZE - ISO_WORLD_HEIGHT * MINIMAP_SCALE) / 2 };
 const OWNER_FILL = { blue: '#36a9ff', red: '#ff4f64', neutral: '#f2b84b' } as const;
+
+/** Minimap scale and floor cells for the active map, rebuilt only when the map changes. */
+let layout: { mapId: string; scale: number; offset: { x: number; y: number }; floor: { x: number; y: number; path: string }[]; terrainPath: string } | null = null;
+function minimapLayout() {
+  if (layout?.mapId === activeMapId) return layout;
+  const scale = MINIMAP_SIZE / ISO_WORLD_WIDTH;
+  const offset = { x: 4, y: 4 + (MINIMAP_SIZE - ISO_WORLD_HEIGHT * scale) / 2 };
+  layout = { mapId: activeMapId, scale, offset, floor: [], terrainPath: '' };
+  layout.floor = sectorSurface.walkable.flatMap((walkable, index) => {
+    if (!walkable) return [];
+    const x = index % sectorMap.width;
+    const y = Math.floor(index / sectorMap.width);
+    return [{ x, y, path: miniDiamond(x, y) }];
+  });
+  layout.terrainPath = layout.floor.map((cell) => cell.path).join(' ');
+  return layout;
+}
 
 /** Same isometric projection as the battlefield, shrunk to the minimap. */
 function miniPoint(gridX: number, gridY: number) {
+  const { scale, offset } = minimapLayout();
   const iso = cellToIso(gridX, gridY);
-  return { x: MINIMAP_OFFSET.x + iso.x * MINIMAP_SCALE, y: MINIMAP_OFFSET.y + iso.y * MINIMAP_SCALE };
+  return { x: offset.x + iso.x * scale, y: offset.y + iso.y * scale };
 }
 
 function miniDiamond(x: number, y: number) {
   const center = miniPoint(x, y);
-  const hw = TILE_HALF_WIDTH * MINIMAP_SCALE + 0.15;
-  const hh = TILE_HALF_HEIGHT * MINIMAP_SCALE + 0.15;
-  return `${center.x},${center.y - hh} ${center.x + hw},${center.y} ${center.x},${center.y + hh} ${center.x - hw},${center.y}`;
+  const { scale } = minimapLayout();
+  const hw = TILE_HALF_WIDTH * scale + 0.15;
+  const hh = TILE_HALF_HEIGHT * scale + 0.15;
+  return `M${center.x},${center.y - hh} L${center.x + hw},${center.y} L${center.x},${center.y + hh} L${center.x - hw},${center.y} Z`;
 }
 
 function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; cameraView: CameraView | null; onPanMap(x: number, y: number): void }) {
   const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
   const route = view.moveOrder?.squadId === view.selectedSquadId ? view.moveOrder : null;
-  const seen = (cell: { x: number; y: number }) => !view.visibleCells || view.visibleCells[cell.y * GRID_COLUMNS + cell.x] === true;
+  const { scale: MINIMAP_SCALE, offset: MINIMAP_OFFSET, floor, terrainPath } = minimapLayout();
+  const core = sectorSurface.core;
+  const bases = { blue: sectorSurface.bases.p1, red: sectorSurface.bases.p2 };
+  const seen = (cell: { x: number; y: number }) => !view.visibleCells || view.visibleCells[cell.y * sectorMap.width + cell.x] === true;
   return <Panel className={`vi-minimap ${collapsed ? 'is-collapsed' : ''}`}>
     <header><strong>{t('minimap')}</strong><button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></header>
     {!collapsed && <button className="vi-minimap__pan" aria-label={t('minimapPan')} onClick={(event) => {
@@ -99,12 +112,13 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
       if (cell) onPanMap(Math.round(cell.x), Math.round(cell.y));
     }}><svg viewBox="0 0 180 180" role="img" aria-label={t('minimap')}>
       <rect className="map-boundary" x="4" y="4" width="172" height="172" />
-      {FLOOR_CELLS.map((cell) => <polygon key={`${cell.x},${cell.y}`} points={miniDiamond(cell.x, cell.y)}
-        fill={seen(cell) ? '#5b95c4' : '#34587a'} />)}
+      {/* Batch terrain into two paths so every server view does not reconcile thousands of SVG elements. */}
+      <path d={terrainPath} fill="#34587a" />
+      <path d={view.visibleCells ? floor.filter(seen).map((cell) => cell.path).join(' ') : terrainPath} fill="#5b95c4" />
       {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); return <rect key={node.id} x={point.x - 2.2} y={point.y - 2.2} width="4.4" height="4.4"
         transform={`rotate(45 ${point.x} ${point.y})`} fill={node.owner ? OWNER_FILL[node.owner] : '#8aa0b8'} />; })}
-      <circle className="map-core" cx={miniPoint(CORE_CELL.x, CORE_CELL.y).x} cy={miniPoint(CORE_CELL.x, CORE_CELL.y).y} r="4" />
-      {Object.entries(BASE_CELLS).map(([owner, cell]) => { const point = miniPoint(cell.x, cell.y); return <rect key={owner}
+      <circle className="map-core" cx={miniPoint(core.x, core.y).x} cy={miniPoint(core.x, core.y).y} r="4" />
+      {Object.entries(bases).map(([owner, cell]) => { const point = miniPoint(cell.x, cell.y); return <rect key={owner}
         x={point.x - 5} y={point.y - 3.5} width="10" height="7" fill={owner === 'blue' ? OWNER_FILL.blue : OWNER_FILL.red} />; })}
       {route && <polyline className="map-move-route" points={route.route.map((cell) => { const point = miniPoint(cell.x, cell.y); return `${point.x},${point.y}`; }).join(' ')} />}
       {view.squads.filter((squad) => squad.visible).map((squad) => {
@@ -113,7 +127,7 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
           fill={squad.owner === 'neutral' ? OWNER_FILL.neutral : undefined} />;
       })}
       {route && <circle className="map-destination" cx={miniPoint(route.destination.x, route.destination.y).x} cy={miniPoint(route.destination.x, route.destination.y).y} r="3" />}
-      {cameraView && <rect className="map-camera" data-world-x={cameraView.worldX} data-world-y={cameraView.worldY} data-zoom={cameraView.zoom}
+      {cameraView && <rect className="map-camera" data-iso-width={ISO_WORLD_WIDTH} data-iso-height={ISO_WORLD_HEIGHT} data-world-x={cameraView.worldX} data-world-y={cameraView.worldY} data-zoom={cameraView.zoom}
         x={MINIMAP_OFFSET.x + cameraView.worldX * MINIMAP_SCALE} y={MINIMAP_OFFSET.y + cameraView.worldY * MINIMAP_SCALE}
         width={cameraView.width * ISO_WORLD_WIDTH * MINIMAP_SCALE} height={cameraView.height * ISO_WORLD_HEIGHT * MINIMAP_SCALE} />}
     </svg></button>}

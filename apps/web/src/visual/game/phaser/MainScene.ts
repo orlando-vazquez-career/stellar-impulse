@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
 import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '../model';
 import type { GridPoint } from './grid';
-import { planSectorMove, sectorMap, sectorSurface } from '../../map/sector-map';
-import atlasUrl from '../../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/stellar-plataformas.png';
+import { activeMapId, HIDDEN_LAYERS, mapImageUrl, planSectorMove, sectorMap, sectorSurface, TILE_WIDTH, type Tileset } from '../../map/sector-map';
 import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT } from './isometric';
 
-const GRID_COLUMNS = sectorMap.width;
+/** Tiled stores flip flags in the top bits of every gid. */
+const GID_MASK = 0x1fffffff;
+/** Draw order: terrain layers, then node rings, then ships and map structures sorted by screen y, then overlays. */
+const DEPTH = { layer: 10000, nodes: 90000, units: 100000, route: 200000, core: 200001, selection: 300000 } as const;
 /** Multiplicative tint for tiles outside vision: dark, but the terrain stays readable. */
 const FOG_TINT = 0x4a5566;
 /** Camera zoom limits: the farthest view still frames a fight; a little closer for detail. */
@@ -14,8 +16,6 @@ export const ZOOM_MIN = 1.5;
 export const ZOOM_MAX = 2;
 /** Two clicks on the same ship within this window select its whole class on screen. */
 const DOUBLE_CLICK_MS = 350;
-const GRID_ROWS = sectorMap.height;
-const CORE_CELL = sectorSurface.core;
 
 const color = {
   background: 0x080e18,
@@ -102,12 +102,19 @@ export class MainScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.spritesheet('sector-atlas', atlasUrl, { frameWidth: 64, frameHeight: 48 });
-    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => this.onError('No se pudo cargar el atlas de Sector 01.'));
+    for (const tileset of sectorMap.tilesets) {
+      const sheet = mapImageUrl(tileset.image);
+      if (sheet) this.load.spritesheet(textureKey(tileset)!, sheet, { frameWidth: tileset.tilewidth, frameHeight: tileset.tileheight });
+      for (const tile of tileset.tiles ?? []) {
+        const url = mapImageUrl(tile.image);
+        if (url) this.load.image(textureKey(tileset, tile.id)!, url);
+      }
+    }
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => this.onError('No se pudo cargar el arte del mapa.'));
   }
 
   create() {
-    if (sectorMap.orientation !== 'isometric' || !this.textures.exists('sector-atlas')) {
+    if (sectorMap.orientation !== 'isometric') {
       this.onError('El mapa del sector no tiene el tamaño esperado.');
       return;
     }
@@ -117,10 +124,10 @@ export class MainScene extends Phaser.Scene {
     const margin = 360;
     this.cameras.main.setBounds(-margin, -margin, ISO_WORLD_WIDTH + margin * 2, ISO_WORLD_HEIGHT + margin * 2);
     this.terrain = this.add.graphics().setDepth(0);
-    this.route = this.add.graphics().setDepth(20000);
-    this.selectionBox = this.add.graphics().setScrollFactor(0).setDepth(30000);
-    this.core = this.add.graphics().setDepth(20001);
-    this.nodeMarks = this.add.graphics().setDepth(15000);
+    this.route = this.add.graphics().setDepth(DEPTH.route);
+    this.selectionBox = this.add.graphics().setScrollFactor(0).setDepth(DEPTH.selection);
+    this.core = this.add.graphics().setDepth(DEPTH.core);
+    this.nodeMarks = this.add.graphics().setDepth(DEPTH.nodes);
 
     this.drawTerrain();
     this.drawCore();
@@ -165,7 +172,7 @@ export class MainScene extends Phaser.Scene {
 
   resetCamera() {
     this.cameras.main.setZoom(ZOOM_DEFAULT);
-    const cell = cellToIso(CORE_CELL.x, CORE_CELL.y);
+    const cell = cellToIso(sectorSurface.core.x, sectorSurface.core.y);
     this.cameras.main.centerOn(cell.x, cell.y);
     this.refreshCameraView();
   }
@@ -174,7 +181,7 @@ export class MainScene extends Phaser.Scene {
   centerOnCell(x: number, y: number): boolean {
     const camera = this.cameras?.main;
     if (!camera || !this.created) return false;
-    const cell = cellToIso(Phaser.Math.Clamp(x, 0, GRID_COLUMNS - 1), Phaser.Math.Clamp(y, 0, GRID_ROWS - 1));
+    const cell = cellToIso(Phaser.Math.Clamp(x, 0, sectorMap.width - 1), Phaser.Math.Clamp(y, 0, sectorMap.height - 1));
     camera.centerOn(cell.x, cell.y);
     this.refreshCameraView();
     return true;
@@ -200,28 +207,57 @@ export class MainScene extends Phaser.Scene {
   private drawTerrain() {
     const graphics = this.terrain;
     if (!graphics) return;
-    sectorMap.layers.filter((layer) => layer.visible).forEach((layer, layerIndex) => {
-      for (let y = 0; y < GRID_ROWS; y++) for (let x = 0; x < GRID_COLUMNS; x++) {
-        const gid = layer.data[y * GRID_COLUMNS + x];
+    const columns = sectorMap.width;
+    sectorMap.layers.filter((layer) => layer.visible && layer.data && !HIDDEN_LAYERS.has(layer.name)).forEach((layer, layerIndex) => {
+      for (let y = 0; y < sectorMap.height; y++) for (let x = 0; x < columns; x++) {
+        const gid = layer.data[y * columns + x]! & GID_MASK;
         if (!gid) continue;
         const point = cellToIso(x, y);
-        const tileset = [...sectorMap.tilesets].reverse().find((set) => set.firstgid <= gid);
-        if (tileset?.image === 'stellar-plataformas.png') {
-          const image = this.add.image(point.x, point.y + TILE_HALF_HEIGHT - tileset.tileheight / 2,
-            'sector-atlas', gid - tileset.firstgid).setDepth(layerIndex * 2000 + (x + y) * 32 + x);
-          (this.tileImages[y * GRID_COLUMNS + x] ??= []).push(image);
-        } else {
+        const tileset = tilesetFor(gid);
+        const key = tileset && textureKey(tileset);
+        if (!tileset || !key || !this.textures.exists(key)) {
           graphics.fillStyle(0x0a1726, 1);
           graphics.fillRect(point.x - 32, point.y - 16, 64, 32);
+          continue;
         }
+        // Tiled anchors an isometric tile image at the bottom of its cell, left edge on the cell's left corner.
+        const offset = tileset.tileoffset ?? { x: 0, y: 0 };
+        const image = this.add.image(point.x - TILE_WIDTH / 2 + offset.x + tileset.tilewidth / 2,
+          point.y + TILE_HALF_HEIGHT + offset.y, key, gid - tileset.firstgid)
+          .setOrigin(0.5, 1).setDepth(DEPTH.layer * layerIndex + (x + y) * 32 + x);
+        (this.tileImages[y * columns + x] ??= []).push(image);
       }
     });
+    this.drawMapObjects();
+  }
+
+  /** Tile objects (bases, pillars, wrecks…) placed in Tiled object layers, bottom-anchored at their point. */
+  private drawMapObjects() {
+    for (const layer of sectorMap.layers) {
+      if (!layer.visible || !layer.objects) continue;
+      for (const object of layer.objects) {
+        if (!object.gid || object.visible === false) continue;
+        const gid = object.gid & GID_MASK;
+        const tileset = tilesetFor(gid);
+        const key = tileset && textureKey(tileset, gid - tileset.firstgid);
+        if (!key || !this.textures.exists(key)) continue;
+        // Object positions are in tile-height pixels along both isometric axes.
+        const cellX = object.x / TILE_HALF_HEIGHT / 2;
+        const cellY = object.y / TILE_HALF_HEIGHT / 2;
+        const point = cellToIso(cellX, cellY);
+        const image = this.add.image(point.x, point.y - TILE_HALF_HEIGHT, key)
+          .setDisplaySize(object.width, object.height).setOrigin(0.5, 1).setDepth(DEPTH.units + point.y - TILE_HALF_HEIGHT);
+        const col = Phaser.Math.Clamp(Math.floor(cellX), 0, sectorMap.width - 1);
+        const row = Phaser.Math.Clamp(Math.floor(cellY), 0, sectorMap.height - 1);
+        (this.tileImages[row * sectorMap.width + col] ??= []).push(image);
+      }
+    }
   }
 
   private drawCore() {
     const graphics = this.core;
     if (!graphics) return;
-    const center = cellToIso(CORE_CELL.x, CORE_CELL.y);
+    const center = cellToIso(sectorSurface.core.x, sectorSurface.core.y);
     const hue = coreColor(this.snapshot.core.state);
     graphics.clear();
     graphics.fillStyle(0x071420, 0.8);
@@ -260,7 +296,7 @@ export class MainScene extends Phaser.Scene {
   /** Darken the tile art of every cell outside the player's current vision. Only changed cells are touched. */
   private drawFog() {
     const cells = this.snapshot.visibleCells;
-    const total = GRID_COLUMNS * GRID_ROWS;
+    const total = sectorMap.width * sectorMap.height;
     for (let index = 0; index < total; index++) {
       const visible = cells ? cells[index] === true : true;
       if (this.fogShown && this.fogShown[index] === visible) continue;
@@ -302,7 +338,7 @@ export class MainScene extends Phaser.Scene {
       visual.hull.rotation = Math.atan2(point.y - previous.y, point.x - previous.x) + Math.PI / 2;
       this.tweens.killTweensOf(visual.container);
       this.tweens.add({ targets: visual.container, x: point.x, y: point.y, duration: 50, ease: 'Linear' });
-      visual.container.setDepth(16000 + point.y);
+      visual.container.setDepth(DEPTH.units + point.y);
     }
   }
 
@@ -312,7 +348,7 @@ export class MainScene extends Phaser.Scene {
     const neutral = squad.owner === 'neutral';
     const primary = allied ? color.blue : neutral ? color.neutral : color.red;
     const light = allied ? color.blueLight : neutral ? color.neutralLight : color.redLight;
-    const container = this.add.container(point.x, point.y).setDepth(16000 + point.y);
+    const container = this.add.container(point.x, point.y).setDepth(DEPTH.units + point.y);
     const selection = this.add.graphics();
     selection.lineStyle(2, light, 0.98);
     selection.strokeEllipse(0, 9, 90, 46);
@@ -384,7 +420,7 @@ export class MainScene extends Phaser.Scene {
       ? planSectorMove({ x: selected.gridX, y: selected.gridY }, this.hoverPoint) : [];
     const ordered = this.snapshot.moveOrder?.squadId === selected.id ? this.snapshot.moveOrder.route : [];
     const path = preview.length > 1 ? preview : ordered;
-    if (this.hoverPoint && !sectorSurface.walkable[Math.round(this.hoverPoint.y) * GRID_COLUMNS + Math.round(this.hoverPoint.x)]) {
+    if (this.hoverPoint && !sectorSurface.walkable[Math.round(this.hoverPoint.y) * sectorMap.width + Math.round(this.hoverPoint.x)]) {
       const blocked = cellToIso(this.hoverPoint.x, this.hoverPoint.y);
       graphics.lineStyle(2, color.red, 0.9);
       graphics.strokeEllipse(blocked.x, blocked.y, 52, 28);
@@ -563,4 +599,14 @@ export class MainScene extends Phaser.Scene {
       this.refreshCameraView();
     });
   }
+}
+
+function tilesetFor(gid: number): Tileset | undefined {
+  return [...sectorMap.tilesets].reverse().find((set) => set.firstgid <= gid);
+}
+
+/** Texture key of a strip tileset, or of one image tile inside a collection tileset. */
+function textureKey(tileset: Tileset, tile?: number): string | null {
+  if (tile === undefined) return tileset.image ? `${activeMapId}:${tileset.firstgid}` : null;
+  return tileset.image ? null : `${activeMapId}:${tileset.firstgid}:${tile}`;
 }

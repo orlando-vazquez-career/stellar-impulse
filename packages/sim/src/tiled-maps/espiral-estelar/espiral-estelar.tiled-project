@@ -1,0 +1,171 @@
+{
+  "automappingRulesFile": "",
+  "commands": [],
+  "compatibilityVersion": 1100,
+  "extensionsPath": "extensions",
+  "folders": [
+    "."
+  ],
+  "propertyTypes": [
+    {
+      "id": 1,
+      "name": "Terreno",
+      "type": "enum",
+      "storageType": "string",
+      "values": [
+        "empty",
+        "nebula",
+        "asteroid",
+        "boost",
+        "slow",
+        "blocked"
+      ],
+      "valuesAsFlags": false
+    },
+    {
+      "id": 2,
+      "name": "spawn",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#2F7FD8",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "owner",
+          "type": "int",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "pronexo",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#E04848",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "index",
+          "type": "int",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "pilar",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#E8B730",
+      "drawFill": true,
+      "members": []
+    },
+    {
+      "id": 5,
+      "name": "barrera",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#30B8E8",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "hp",
+          "type": "int",
+          "value": 500
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "mob_spawn",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#8C6A4A",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "count",
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "recurso",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#F0A030",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "amount",
+          "type": "int",
+          "value": 300
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "agujero",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#3CC870",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "pairId",
+          "type": "string",
+          "value": "A"
+        },
+        {
+          "name": "cycleSeconds",
+          "type": "int",
+          "value": 90
+        },
+        {
+          "name": "openSeconds",
+          "type": "int",
+          "value": 30
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "asteroid_gate",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#A07850",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "cycleSeconds",
+          "type": "int",
+          "value": 60
+        },
+        {
+          "name": "openSeconds",
+          "type": "int",
+          "value": 20
+        }
+      ]
+    }
+  ]
+}

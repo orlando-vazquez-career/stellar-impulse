@@ -13,8 +13,9 @@ test('training server remains available to two clients after the old web lobby i
         const timeout = setTimeout(() => reject(new Error('training view timeout')), 5000);
         second.onMessage('view', (snapshot: PlayerView) => { clearTimeout(timeout); resolve(snapshot); });
       });
-      expect(view.width).toBe(29);
-      expect(view.height).toBe(29);
+      // Espiral Estelar is the default training map.
+      expect(view.width).toBe(58);
+      expect(view.height).toBe(58);
       expect(view.playerId).toBe('p2');
     } finally {
       await second.leave();
@@ -24,9 +25,22 @@ test('training server remains available to two clients after the old web lobby i
   }
 });
 
+test('opens Sector 01 when the lobby asks for it', async () => {
+  const room = await new Client('http://127.0.0.1:2567').create('training', { map: 'sector-01' });
+  try {
+    const view = await new Promise<PlayerView>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('training view timeout')), 5000);
+      room.onMessage('view', (snapshot: PlayerView) => { clearTimeout(timeout); resolve(snapshot); });
+    });
+    expect(view.width).toBe(29);
+  } finally {
+    await room.leave();
+  }
+});
+
 test('accepts a move and stop order, acknowledges them, and explains rejected actions', async () => {
   const client = new Client('http://127.0.0.1:2567');
-  const room = await client.create('training');
+  const room = await client.create('training', { map: 'sector-01' });
   const next = <T>(type: string): Promise<T> => new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`${type} timeout`)), 5000);
     const off = room.onMessage(type, (value: T) => { clearTimeout(timeout); off(); resolve(value); });
