@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { MusicPlayer } from './music';
 import { AccessScreen } from './access/AccessScreen';
-import { LoginScreen } from '../login/LoginScreen';
 import { GameplayScreen } from './game/GameplayScreen';
 import { HangarScreen } from './hangar/HangarScreen';
 import { LanguageProvider, useI18n } from './i18n';
@@ -19,17 +18,13 @@ import '@fontsource/rajdhani/latin-600.css';
 import '@fontsource/rajdhani/latin-700.css';
 import './visual.css';
 
-type Screen = 'login' | 'access' | 'command' | 'lobby' | 'map' | 'hangar' | 'settings' | 'gameplay';
+type Screen = 'access' | 'command' | 'lobby' | 'map' | 'hangar' | 'settings' | 'gameplay';
 
 function VisualPrototypeContent() {
   const { t } = useI18n();
-  // Yamil's animated gate opens the game; the alias screen follows when no commander is set yet.
-  const [screen, setScreen] = useState<Screen>('login');
-  const [afterAccess, setAfterAccess] = useState<Screen>('command');
+  const [screen, setScreen] = useState<Screen>('access');
   const [alias, setAlias] = useState('');
   const [joinCode, setJoinCode] = useState('');
-  const [chainStatus, setChainStatus] = useState('Stellar Testnet');
-  const [chainBusy, setChainBusy] = useState(false);
   const [lobbyMode, setLobbyMode] = useState<LobbyMode>('create');
   const [preferences, setPreferences] = useState(loadVisualPreferences);
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
@@ -59,22 +54,6 @@ function VisualPrototypeContent() {
     return () => { document.title = previousTitle; };
   }, []);
 
-  /** Go somewhere that needs a commander alias, asking for it first if there is none. */
-  const withAlias = (destination: Screen) => {
-    if (alias) setScreen(destination);
-    else { setAfterAccess(destination); setScreen('access'); }
-  };
-  const connectWallet = async () => {
-    setChainBusy(true);
-    try {
-      const chain = await import('@impulso/chain');
-      const wallet = await chain.connectFreighterTestnet();
-      setChainStatus(`Wallet conectada · ${wallet.address.slice(0, 8)}…${wallet.address.slice(-8)}`);
-    } catch (error) {
-      setChainStatus(error instanceof Error ? error.message : 'No se pudo conectar la wallet.');
-    } finally { setChainBusy(false); }
-  };
-
   const accessibilityClasses = [
     preferences.accessibility.highContrast && 'is-high-contrast',
     preferences.accessibility.reducedMotion && 'is-reduced-motion',
@@ -82,13 +61,12 @@ function VisualPrototypeContent() {
   ].filter(Boolean).join(' ');
 
   return <div className={`visual-app ${accessibilityClasses}`} data-color-profile={preferences.accessibility.colorProfile}>
-    {screen === 'login' && <LoginScreen alias={alias || 'INVITADO'} busy={false} notice="" chainStatus={chainStatus} chainBusy={chainBusy}
-      onCreateTraining={() => { setLobbyMode('create'); withAlias('lobby'); }}
-      onJoinRoom={(code) => { setJoinCode(code); setLobbyMode('join'); withAlias('lobby'); }}
-      onConnectWallet={() => void connectWallet()}
-      onOpenAtlas={() => withAlias('command')} />}
-    {screen === 'access' && <AccessScreen onContinue={(value) => { setAlias(value); setScreen(afterAccess); }} />}
-    {screen === 'command' && <CommandCenter alias={alias} onCreateRoom={() => { setLobbyMode('create'); setScreen('lobby'); }} onJoinRoom={() => { setLobbyMode('join'); setScreen('lobby'); }} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => { setAlias(''); setAfterAccess('command'); setScreen('access'); }} />}
+    {screen === 'access' && <AccessScreen
+      onContinue={(value) => { setAlias(value); setScreen('command'); }}
+      onCreateTraining={(value) => { setAlias(value); setLobbyMode('create'); setScreen('lobby'); }}
+      onJoinRoom={(code, value) => { setAlias(value); setJoinCode(code); setLobbyMode('join'); setScreen('lobby'); }}
+    />}
+    {screen === 'command' && <CommandCenter alias={alias} onCreateRoom={() => { setLobbyMode('create'); setScreen('lobby'); }} onJoinRoom={() => { setLobbyMode('join'); setScreen('lobby'); }} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => { setAlias(''); setScreen('access'); }} />}
     {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} onBack={() => setScreen('command')} onExploreMap={() => { selectMap('sector-01'); setScreen('map'); }} onDeploy={(chosen, chosenMap) => { setDifficulty(chosen); setMap(chosenMap); setScreen('gameplay'); }} />}
     {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
     {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} />}

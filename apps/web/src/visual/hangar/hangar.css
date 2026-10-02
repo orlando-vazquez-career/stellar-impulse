@@ -1,72 +1,808 @@
-.vi-hangar { overflow: hidden; }
-.vi-hangar__content { width: min(1180px, calc(100% - 80px)); margin: 0 auto; padding: clamp(30px, 5vh, 58px) 0 68px; }
-.vi-hangar__heading { display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 54px; align-items: end; }
-.vi-hangar__heading h1 { margin-top: 7px; font-family: var(--vi-display); font-size: clamp(40px, 4vw, 60px); font-weight: 600; line-height: .95; letter-spacing: -.025em; }
-.vi-hangar__heading > div:last-child { display: grid; gap: 9px; }
-.vi-hangar__heading p { color: var(--vi-muted); font-size: 14px; line-height: 1.65; }
-.vi-hangar__heading > div:last-child > span { display: flex; align-items: center; gap: 8px; color: var(--vi-success); font-family: var(--vi-display); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
-.vi-hangar__heading > div:last-child > span i { width: 6px; height: 6px; border-radius: 50%; background: var(--vi-success); }
-.vi-hangar__workspace { height: 530px; margin-top: 28px; display: grid; grid-template-columns: minmax(390px, .88fr) minmax(560px, 1.12fr); gap: 14px; }
-.vi-ship-preview, .vi-collection { min-width: 0; min-height: 0; border: 1px solid var(--vi-border); background: var(--vi-panel); }
-.vi-ship-preview { display: grid; grid-template-rows: 70px minmax(0, 1fr) auto; }
-.vi-ship-preview > header, .vi-collection > header { padding: 13px 18px; border-bottom: 1px solid var(--vi-border); display: flex; align-items: center; justify-content: space-between; }
-.vi-ship-preview > header span { color: var(--vi-muted); font-family: var(--vi-display); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
-.vi-ship-preview > header h2, .vi-collection > header h2 { font-family: var(--vi-display); font-size: 20px; }
-.vi-ship-preview > header b { color: var(--vi-blue-light); font-family: var(--vi-display); font-size: 25px; }
-.vi-ship-stage { position: relative; min-height: 0; display: grid; place-items: center; overflow: hidden; background-color: #080e18; background-image: radial-gradient(circle, rgb(131 212 255 / 16%) 0 1px, transparent 1.5px); background-size: 56px 56px; }
-.vi-ship-stage::before { content: ''; position: absolute; width: 310px; height: 150px; border: 1px solid rgb(58 74 98 / 55%); border-radius: 50%; transform: rotate(-9deg); }
-.vi-ship-stage::after { content: ''; position: absolute; width: 215px; height: 215px; border: 1px dashed rgb(58 74 98 / 35%); border-radius: 50%; }
-.vi-ship-model { position: relative; z-index: 2; width: 210px; height: 142px; filter: drop-shadow(0 16px 18px rgb(0 0 0 / 45%)); transform: rotate(-2deg); }
-.vi-ship-model__body { position: absolute; top: 8px; left: 77px; width: 56px; height: 126px; background: linear-gradient(90deg, color-mix(in srgb, var(--hangar-hull) 70%, #172335), var(--hangar-hull), color-mix(in srgb, var(--hangar-hull) 65%, #101a29)); clip-path: polygon(50% 0, 88% 67%, 72% 100%, 28% 100%, 12% 67%); }
-.vi-ship-model__wing { position: absolute; top: 53px; width: 91px; height: 62px; background: color-mix(in srgb, var(--hangar-hull) 64%, #101a29); }
-.vi-ship-model__wing--left { left: 0; clip-path: polygon(100% 0, 100% 100%, 0 82%, 56% 25%); }
-.vi-ship-model__wing--right { right: 0; clip-path: polygon(0 0, 0 100%, 100% 82%, 44% 25%); }
-.vi-ship-model > span { position: absolute; z-index: 3; top: 58px; left: 91px; color: var(--hangar-insignia); font-size: 27px; text-shadow: 0 0 12px var(--hangar-insignia); }
-.vi-ship-trail { position: absolute; z-index: 1; top: calc(50% + 48px); width: 19px; height: 105px; background: linear-gradient(var(--hangar-trail), transparent); filter: blur(5px); opacity: .75; transform: rotate(4deg); transform-origin: top; }
-.vi-ship-trail--left { margin-left: -39px; }
-.vi-ship-trail--right { margin-left: 39px; transform: rotate(-4deg); }
-.vi-ship-orbit { position: absolute; z-index: 3; width: 255px; height: 92px; border-bottom: 1px solid rgb(131 212 255 / 42%); border-radius: 50%; transform: rotate(-6deg); }
-.vi-loadout-summary { padding: 13px 16px; border-top: 1px solid var(--vi-border); }
-.vi-loadout-summary > strong { color: var(--vi-muted); font-family: var(--vi-display); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
-.vi-loadout-summary > div { margin-top: 9px; display: grid; grid-template-columns: repeat(3, 1fr); }
-.vi-loadout-summary > div span { padding: 0 10px; border-right: 1px solid var(--vi-border); display: grid; }
-.vi-loadout-summary > div span:first-child { padding-left: 0; }
-.vi-loadout-summary > div span:last-child { border-right: 0; }
-.vi-loadout-summary small { color: var(--vi-muted); font-size: 12px; }
-.vi-loadout-summary b { overflow: hidden; font-family: var(--vi-display); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.vi-loadout-summary p { margin-top: 10px; color: var(--vi-muted); font-size: 12px; }
-.vi-collection { display: grid; grid-template-rows: 70px 52px minmax(0, 1fr) auto; }
-.vi-collection > header > div { display: flex; align-items: center; gap: 13px; }
-.vi-collection > header > div > span { color: var(--vi-blue-light); font-family: var(--vi-display); font-size: 27px; }
-.vi-collection > header > small { color: var(--vi-success); font-family: var(--vi-display); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
-.vi-collection > nav { padding: 7px 12px; border-bottom: 1px solid var(--vi-border); display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-.vi-collection > nav button { border: 1px solid transparent; background: transparent; color: var(--vi-muted); font-family: var(--vi-display); font-size: 14px; }
-.vi-collection > nav button:hover, .vi-collection > nav button.is-active { border-color: var(--vi-blue); background: var(--vi-surface-raised); color: var(--vi-text); }
-.vi-cosmetic-grid { min-height: 0; padding: 11px 12px; display: grid; gap: 7px; overflow-y: auto; }
-.vi-cosmetic-grid > button { min-height: 72px; padding: 9px 10px; border: 1px solid var(--vi-border); display: grid; grid-template-columns: 42px 1fr auto; gap: 11px; align-items: center; background: #0d1522; text-align: left; }
-.vi-cosmetic-grid > button:hover:not(:disabled), .vi-cosmetic-grid > button.is-equipped { border-color: var(--vi-blue-light); background: var(--vi-surface-raised); }
-.vi-cosmetic-grid > button.is-locked { opacity: .42; cursor: not-allowed; }
-.vi-cosmetic-grid > button > i { width: 40px; height: 40px; border: 7px solid rgb(7 11 20 / 38%); box-shadow: 0 0 0 1px var(--vi-border); }
-.vi-cosmetic-grid > button > span { min-width: 0; display: grid; gap: 2px; }
-.vi-cosmetic-grid > button strong { font-family: var(--vi-display); font-size: 16px; }
-.vi-cosmetic-grid > button small { overflow: hidden; color: var(--vi-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.vi-cosmetic-grid > button em { color: var(--vi-muted); font-family: var(--vi-display); font-size: 12px; font-style: normal; text-transform: uppercase; }
-.vi-cosmetic-grid > button.is-equipped em { color: var(--vi-success); }
-.vi-collection__footer { padding: 10px 13px; border-top: 1px solid var(--vi-border); }
-.vi-collection__footer > p { color: var(--vi-muted); font-size: 12px; }
-.vi-collection__footer > div { margin-top: 9px; display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
-.vi-collection__footer output { color: var(--vi-success); font-size: 12px; }
-.vi-collection__footer button { min-width: 202px; min-height: 42px; padding: 0 13px; border: 1px solid var(--vi-blue); display: flex; align-items: center; justify-content: space-between; background: var(--vi-blue); color: #06111d; font-family: var(--vi-display); font-size: 16px; font-weight: 700; }
+/* ==========================================================================
+   HANGAR DE FLOTA - ESTILO CYBERPUNK ESPACIAL
+   ========================================================================== */
+
+.vi-hangar {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #03070c;
+  color: var(--vi-text);
+  font-family: var(--vi-body);
+}
+
+/* Lienzo de espacio profundo con nebulosas verdes y estrellas titilantes */
+.vi-hangar-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Anillo orbital táctico de fondo */
+.vi-hangar::before {
+  content: '';
+  position: absolute;
+  left: -8vw;
+  bottom: -18vw;
+  width: 58vw;
+  height: 58vw;
+  border: 1px dashed rgba(113, 229, 220, 0.18);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 6vw rgba(16, 185, 129, 0.03),
+    0 0 0 12vw rgba(113, 229, 220, 0.015),
+    0 0 50px rgba(113, 229, 220, 0.06);
+  pointer-events: none;
+  z-index: 1;
+  animation: vi-hangar-orbit 110s linear infinite;
+}
+
+/* Líneas de escaneo del holograma táctico */
+.vi-hangar::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(113, 229, 220, 0.018) 0 1px,
+    transparent 1px 3px
+  );
+  mix-blend-mode: screen;
+  z-index: 1;
+}
+
+@keyframes vi-hangar-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes vi-hangar-ring-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes vi-ship-float {
+  0%, 100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(-1deg);
+  }
+}
+
+@keyframes vi-trail-pulse {
+  0% {
+    opacity: 0.65;
+    height: 98px;
+    filter: blur(4px);
+  }
+  100% {
+    opacity: 0.95;
+    height: 115px;
+    filter: blur(5px);
+  }
+}
+
+.vi-hangar .vi-screen__header {
+  position: relative;
+  z-index: 10;
+  background: linear-gradient(180deg, rgba(3, 7, 12, 0.85) 0%, transparent 100%);
+}
+
+.vi-hangar__content {
+  position: relative;
+  z-index: 2;
+  width: min(1200px, calc(100% - 60px));
+  margin: 0 auto;
+  padding: clamp(16px, 2.8vh, 36px) 0 clamp(24px, 4vh, 48px);
+}
+
+/* Encabezado del Hangar */
+.vi-hangar__heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 32px;
+  align-items: end;
+}
+
+.vi-hangar__heading .vi-eyebrow {
+  display: inline-block;
+  margin: 0 0 6px;
+  padding: 3px 12px;
+  border: 1px solid rgba(113, 229, 220, 0.55);
+  background: rgba(113, 229, 220, 0.06);
+  color: #a3f6ee !important;
+  font-family: var(--vi-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-shadow: 0 0 12px rgba(113, 229, 220, 0.8);
+  box-shadow: 0 0 16px rgba(113, 229, 220, 0.16), inset 0 0 8px rgba(113, 229, 220, 0.08);
+}
+
+.vi-hangar__heading h1 {
+  margin: 2px 0 0;
+  color: #edf4f8;
+  font-family: var(--vi-display);
+  font-size: clamp(32px, 3.4vw, 48px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0.5px;
+  text-shadow:
+    -1px 0 rgba(16, 185, 129, 0.4),
+    1px 0 rgba(0, 255, 240, 0.4),
+    0 0 22px rgba(113, 229, 220, 0.4);
+}
+
+.vi-hangar__heading > div:last-child {
+  display: grid;
+  gap: 8px;
+}
+
+.vi-hangar__heading p {
+  margin: 0;
+  color: #8faec2;
+  font-size: 13.5px;
+  line-height: 1.55;
+  text-shadow: 0 0 10px rgba(113, 229, 220, 0.1);
+}
+
+.vi-hangar__heading > div:last-child > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 3px 12px;
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.08);
+  border-radius: 999px;
+  color: #34d399;
+  font-family: var(--vi-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+.vi-hangar__heading > div:last-child > span i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+/* Espacio de trabajo (Grid de paneles) */
+.vi-hangar__workspace {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: minmax(370px, 0.86fr) minmax(540px, 1.14fr);
+  gap: 16px;
+  height: clamp(460px, 57vh, 530px);
+}
+
+/* Tarjetas Holográficas Cyberpunk */
+.vi-ship-preview,
+.vi-collection {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: linear-gradient(160deg, rgba(8, 22, 33, 0.94), rgba(4, 15, 23, 0.9));
+  border: 1px solid rgba(113, 229, 220, 0.38);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  box-shadow:
+    0 0 32px rgba(113, 229, 220, 0.08),
+    inset 0 0 20px rgba(113, 229, 220, 0.04);
+}
+
+/* Micro-marcas HUD en las esquinas */
+.vi-ship-preview::before,
+.vi-collection::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  border-top: 2px solid #71e5dc;
+  border-left: 2px solid #71e5dc;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.vi-ship-preview > header,
+.vi-collection > header {
+  min-height: 56px;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(113, 229, 220, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(113, 229, 220, 0.03);
+}
+
+.vi-ship-preview > header span {
+  color: #71e5dc;
+  font-family: var(--vi-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.vi-ship-preview > header h2,
+.vi-collection > header h2 {
+  color: #edf4f8;
+  font-family: var(--vi-display);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.vi-ship-preview > header b {
+  color: #a3f6ee;
+  font-family: var(--vi-display);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-shadow: 0 0 12px rgba(113, 229, 220, 0.7);
+}
+
+/* Vista previa de nave (Escenario 3D simulado) */
+.vi-ship-preview {
+  display: grid;
+  grid-template-rows: 56px minmax(0, 1fr) auto;
+}
+
+.vi-ship-stage {
+  position: relative;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: radial-gradient(circle at center, rgba(16, 185, 129, 0.09) 0%, rgba(4, 14, 22, 0.95) 75%);
+  background-image:
+    linear-gradient(rgba(113, 229, 220, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(113, 229, 220, 0.07) 1px, transparent 1px);
+  background-size: 32px 32px;
+  border-bottom: 1px solid rgba(113, 229, 220, 0.18);
+}
+
+.vi-ship-stage::before {
+  content: '';
+  position: absolute;
+  width: 300px;
+  height: 150px;
+  border: 1px solid rgba(113, 229, 220, 0.35);
+  border-radius: 50%;
+  transform: rotate(-10deg);
+  box-shadow: 0 0 24px rgba(113, 229, 220, 0.1);
+  pointer-events: none;
+}
+
+.vi-ship-stage::after {
+  content: '';
+  position: absolute;
+  width: 210px;
+  height: 210px;
+  border: 1px dashed rgba(16, 185, 129, 0.28);
+  border-radius: 50%;
+  animation: vi-hangar-ring-spin 40s linear infinite;
+  pointer-events: none;
+}
+
+.vi-ship-orbit {
+  position: absolute;
+  z-index: 3;
+  width: 250px;
+  height: 90px;
+  border-bottom: 2px solid rgba(113, 229, 220, 0.65);
+  border-radius: 50%;
+  transform: rotate(-6deg);
+  filter: drop-shadow(0 0 10px rgba(113, 229, 220, 0.6));
+  pointer-events: none;
+}
+
+/* Modelo de nave Interceptor AX-7 */
+.vi-ship-model {
+  position: relative;
+  z-index: 2;
+  width: 200px;
+  height: 138px;
+  filter:
+    drop-shadow(0 18px 24px rgba(0, 0, 0, 0.85))
+    drop-shadow(0 0 16px rgba(113, 229, 220, 0.22));
+  animation: vi-ship-float 5s ease-in-out infinite;
+}
+
+.vi-ship-model__body {
+  position: absolute;
+  top: 6px;
+  left: 74px;
+  width: 52px;
+  height: 124px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--hangar-hull) 65%, #081524),
+    var(--hangar-hull),
+    color-mix(in srgb, var(--hangar-hull) 60%, #06101c)
+  );
+  clip-path: polygon(50% 0, 88% 67%, 72% 100%, 28% 100%, 12% 67%);
+  box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.35);
+}
+
+.vi-ship-model__wing {
+  position: absolute;
+  top: 50px;
+  width: 88px;
+  height: 60px;
+  background: linear-gradient(
+    180deg,
+    var(--hangar-hull),
+    color-mix(in srgb, var(--hangar-hull) 55%, #050e18)
+  );
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+}
+
+.vi-ship-model__wing--left {
+  left: 0;
+  clip-path: polygon(100% 0, 100% 100%, 0 82%, 56% 25%);
+}
+
+.vi-ship-model__wing--right {
+  right: 0;
+  clip-path: polygon(0 0, 0 100%, 100% 82%, 44% 25%);
+}
+
+.vi-ship-model > span {
+  position: absolute;
+  z-index: 3;
+  top: 54px;
+  left: 87px;
+  color: var(--hangar-insignia);
+  font-size: 26px;
+  text-shadow:
+    0 0 14px var(--hangar-insignia),
+    0 0 28px var(--hangar-insignia);
+}
+
+/* Estelas de propulsión */
+.vi-ship-trail {
+  position: absolute;
+  z-index: 1;
+  top: calc(50% + 42px);
+  width: 20px;
+  height: 100px;
+  background: linear-gradient(var(--hangar-trail), transparent);
+  filter: blur(4px);
+  opacity: 0.85;
+  transform: rotate(4deg);
+  transform-origin: top;
+  animation: vi-trail-pulse 1.8s ease-in-out infinite alternate;
+}
+
+.vi-ship-trail--left {
+  margin-left: -37px;
+}
+
+.vi-ship-trail--right {
+  margin-left: 37px;
+  transform: rotate(-4deg);
+}
+
+/* Resumen del equipamiento actual */
+.vi-loadout-summary {
+  padding: 11px 16px;
+  background: rgba(5, 14, 22, 0.85);
+  border-top: 1px solid rgba(113, 229, 220, 0.18);
+}
+
+.vi-loadout-summary > strong {
+  color: #71e5dc;
+  font-family: var(--vi-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px rgba(113, 229, 220, 0.5);
+}
+
+.vi-loadout-summary > div {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.vi-loadout-summary > div span {
+  padding: 0 8px;
+  border-right: 1px solid rgba(113, 229, 220, 0.15);
+  display: grid;
+  gap: 1px;
+}
+
+.vi-loadout-summary > div span:first-child {
+  padding-left: 0;
+}
+
+.vi-loadout-summary > div span:last-child {
+  border-right: 0;
+}
+
+.vi-loadout-summary small {
+  color: #8faec2;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.vi-loadout-summary b {
+  overflow: hidden;
+  color: #edf4f8;
+  font-family: var(--vi-display);
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vi-loadout-summary p {
+  margin: 7px 0 0;
+  color: #7593a8;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* Panel de Colección */
+.vi-collection {
+  display: grid;
+  grid-template-rows: 56px 48px minmax(0, 1fr) auto;
+}
+
+.vi-collection > header > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vi-collection > header > div > span {
+  color: #71e5dc;
+  font-family: var(--vi-display);
+  font-size: 24px;
+  font-weight: 700;
+  text-shadow: 0 0 12px rgba(113, 229, 220, 0.8);
+}
+
+.vi-collection > header > small {
+  padding: 3px 10px;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.08);
+  border-radius: 999px;
+  color: #34d399;
+  font-family: var(--vi-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+/* Pestañas de categoría */
+.vi-collection > nav {
+  padding: 6px 14px;
+  border-bottom: 1px solid rgba(113, 229, 220, 0.2);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: rgba(4, 12, 19, 0.6);
+}
+
+.vi-collection > nav button {
+  padding: 7px 8px;
+  background: rgba(8, 20, 30, 0.7);
+  border: 1px solid rgba(113, 229, 220, 0.25);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  color: #8faec2;
+  font-family: var(--vi-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.vi-collection > nav button:hover {
+  border-color: #71e5dc;
+  color: #a3f6ee;
+  background: rgba(16, 40, 56, 0.85);
+  box-shadow: 0 0 14px rgba(113, 229, 220, 0.2);
+}
+
+.vi-collection > nav button.is-active {
+  border-color: #71e5dc;
+  background: linear-gradient(160deg, rgba(16, 185, 129, 0.2), rgba(113, 229, 220, 0.12));
+  color: #edf4f8;
+  box-shadow: 0 0 16px rgba(113, 229, 220, 0.3), inset 0 0 10px rgba(113, 229, 220, 0.1);
+  text-shadow: 0 0 8px rgba(113, 229, 220, 0.8);
+}
+
+/* Lista de cosméticos */
+.vi-cosmetic-grid {
+  min-height: 0;
+  padding: 10px 14px;
+  display: grid;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.vi-cosmetic-grid > button {
+  min-height: 64px;
+  padding: 8px 12px;
+  background: rgba(6, 18, 28, 0.88);
+  border: 1px solid rgba(113, 229, 220, 0.28);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.vi-cosmetic-grid > button:hover:not(:disabled) {
+  border-color: #71e5dc;
+  background: rgba(12, 34, 50, 0.95);
+  transform: translateY(-1px);
+  box-shadow: 0 0 18px rgba(113, 229, 220, 0.2);
+}
+
+.vi-cosmetic-grid > button.is-equipped {
+  border-color: #10b981;
+  background: linear-gradient(160deg, rgba(16, 185, 129, 0.18), rgba(6, 26, 36, 0.92));
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.25), inset 0 0 12px rgba(16, 185, 129, 0.08);
+}
+
+.vi-cosmetic-grid > button.is-locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: rgba(113, 229, 220, 0.12);
+  background: rgba(4, 10, 16, 0.7);
+}
+
+.vi-cosmetic-grid > button > i {
+  width: 40px;
+  height: 40px;
+  border: 2px solid rgba(113, 229, 220, 0.6);
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+  box-shadow: 0 0 12px currentColor, inset 0 0 8px rgba(0, 0, 0, 0.6);
+}
+
+.vi-cosmetic-grid > button > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.vi-cosmetic-grid > button strong {
+  color: #edf4f8;
+  font-family: var(--vi-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+
+.vi-cosmetic-grid > button small {
+  overflow: hidden;
+  color: #8faec2;
+  font-size: 11.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vi-cosmetic-grid > button em {
+  font-family: var(--vi-display);
+  font-size: 11px;
+  font-weight: 700;
+  font-style: normal;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: #71e5dc;
+  background: rgba(113, 229, 220, 0.08);
+  border: 1px solid rgba(113, 229, 220, 0.35);
+  text-shadow: 0 0 8px rgba(113, 229, 220, 0.6);
+}
+
+.vi-cosmetic-grid > button.is-equipped em {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+  text-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+}
+
+.vi-cosmetic-grid > button.is-locked em {
+  color: #f2cd79;
+  background: rgba(242, 205, 121, 0.08);
+  border: 1px solid rgba(242, 205, 121, 0.3);
+  text-shadow: 0 0 8px rgba(242, 205, 121, 0.4);
+}
+
+/* Pie de panel de colección */
+.vi-collection__footer {
+  padding: 10px 16px;
+  border-top: 1px solid rgba(113, 229, 220, 0.2);
+  background: rgba(4, 12, 19, 0.85);
+}
+
+.vi-collection__footer > p {
+  margin: 0;
+  color: #7593a8;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.vi-collection__footer > div {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.vi-collection__footer output {
+  color: #10b981;
+  font-family: var(--vi-display);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-shadow: 0 0 10px rgba(16, 185, 129, 0.8);
+}
+
+.vi-collection__footer button {
+  min-width: 200px;
+  min-height: 42px;
+  padding: 0 16px;
+  background: linear-gradient(120deg, #71e5dc, #10b981);
+  border: 1px solid #71e5dc;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  color: #03070c;
+  font-family: var(--vi-display);
+  font-size: 14.5px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.vi-collection__footer button:hover {
+  background: linear-gradient(120deg, #a3f6ee, #34d399);
+  box-shadow: 0 0 28px rgba(113, 229, 220, 0.6), inset 0 0 14px rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+/* Footer de pantalla */
+.vi-hangar .vi-screen__footer {
+  position: relative;
+  z-index: 10;
+  width: min(1200px, calc(100% - 60px));
+  margin: 0 auto;
+  padding: 12px 0 20px;
+  display: flex;
+  justify-content: space-between;
+  color: #7593a8;
+  font-family: var(--vi-display);
+  font-size: 11.5px;
+  letter-spacing: 2px;
+  border-top: 1px solid rgba(113, 229, 220, 0.15);
+}
+
+.vi-hangar .vi-screen__footer span:first-child {
+  color: #f2cd79;
+  text-shadow: 0 0 8px rgba(242, 205, 121, 0.4);
+}
+
+.vi-hangar .vi-screen__footer span:last-child {
+  color: #71e5dc;
+  text-shadow: 0 0 8px rgba(113, 229, 220, 0.4);
+}
+
+/* ==========================================================================
+   RESPONSIVE & PANTALLAS COMPACTAS
+   ========================================================================== */
 
 @media (max-height: 800px) {
-  .vi-hangar__content { padding-top: 19px; }
-  .vi-hangar__heading h1 { font-size: 40px; }
-  .vi-hangar__heading p { font-size: 12px; }
-  .vi-hangar__workspace { height: 505px; margin-top: 17px; }
+  .vi-hangar__content {
+    padding-top: 12px;
+    padding-bottom: 16px;
+  }
+  .vi-hangar__heading h1 {
+    font-size: 34px;
+  }
+  .vi-hangar__heading p {
+    font-size: 11.5px;
+  }
+  .vi-hangar__workspace {
+    height: 440px;
+    margin-top: 12px;
+  }
+  .vi-ship-preview > header,
+  .vi-collection > header {
+    min-height: 48px;
+    padding: 8px 14px;
+  }
+  .vi-ship-preview > header h2,
+  .vi-collection > header h2 {
+    font-size: 17px;
+  }
+  .vi-ship-preview > header b,
+  .vi-collection > header > div > span {
+    font-size: 19px;
+  }
+  .vi-collection > nav {
+    padding: 4px 10px;
+  }
+  .vi-collection > nav button {
+    padding: 5px 6px;
+    font-size: 11.5px;
+  }
+  .vi-cosmetic-grid {
+    padding: 6px 10px;
+    gap: 5px;
+  }
+  .vi-cosmetic-grid > button {
+    min-height: 54px;
+    padding: 6px 8px;
+  }
+  .vi-loadout-summary {
+    padding: 8px 12px;
+  }
+  .vi-collection__footer {
+    padding: 8px 12px;
+  }
 }
 
 @media (max-width: 1180px) {
-  .vi-hangar__content { width: calc(100% - 48px); }
-  .vi-hangar__heading { grid-template-columns: 1fr 370px; gap: 34px; }
-  .vi-hangar__workspace { grid-template-columns: minmax(350px, .8fr) minmax(520px, 1.2fr); }
+  .vi-hangar__content {
+    width: calc(100% - 40px);
+  }
+  .vi-hangar__heading {
+    grid-template-columns: 1fr 350px;
+    gap: 24px;
+  }
+  .vi-hangar__workspace {
+    grid-template-columns: minmax(320px, 0.8fr) minmax(480px, 1.2fr);
+  }
+}
+
+@media (max-width: 860px) {
+  .vi-hangar__heading {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .vi-hangar__workspace {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .vi-ship-preview {
+    min-height: 390px;
+  }
+  .vi-collection {
+    min-height: 480px;
+  }
 }

@@ -1,4 +1,4 @@
-// Interface sounds from Diego's original command atlas (PR #10), kept for the login screen.
+// Interface sounds from Diego's original command atlas (PR #10), shared by the visual client.
 import { useState } from 'react';
 
 const SILENCE = 0.0001;
@@ -12,7 +12,7 @@ interface Tone {
   volume: number;
 }
 
-interface Pitched {
+export interface Pitched {
   pitch: number;
 }
 
@@ -29,12 +29,12 @@ export class SpaceSound {
     return this.#enabled;
   }
 
-  playHover(mode: Pitched) {
+  playHover(mode: Pitched = { pitch: 523 }) {
     this.#sweep({ from: mode.pitch, to: mode.pitch * 1.5, duration: 0.22, wave: 'sine', volume: 0.07 });
     this.#sweep({ from: mode.pitch * 2, to: mode.pitch * 3, duration: 0.14, wave: 'triangle', volume: 0.02 });
   }
 
-  playEnter(mode: Pitched) {
+  playEnter(mode: Pitched = { pitch: 392 }) {
     this.#sweep({ from: 70, to: 38, duration: 0.9, wave: 'sine', volume: 0.16 });
     this.#sweep({ from: mode.pitch / 2, to: mode.pitch * 2, duration: 0.7, wave: 'sawtooth', volume: 0.03 });
   }
@@ -86,5 +86,11 @@ export function useSpaceSound() {
   function toggle() {
     setEnabled(sound.toggle());
   }
-  return { enabled, toggle, playHover: sound.playHover.bind(sound), playEnter: sound.playEnter.bind(sound), playSelect: sound.playSelect.bind(sound) };
+  return {
+    enabled,
+    toggle,
+    playHover: sound.playHover.bind(sound),
+    playEnter: sound.playEnter.bind(sound),
+    playSelect: sound.playSelect.bind(sound),
+  };
 }

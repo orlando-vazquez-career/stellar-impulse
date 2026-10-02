@@ -56,8 +56,27 @@ test('double click on a ship selects every ship of its class on screen', async (
 test('login gate leads straight to a new training once the commander has an alias', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.li-viewport canvas')).toBeVisible();
-  await page.getByRole('button', { name: 'Crear entrenamiento' }).click();
+  await expect(page.getByRole('button', { name: 'Crear entrenamiento' })).toBeDisabled();
   await page.getByLabel('Identificador de comandante').fill('Vega');
-  await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+  await page.getByRole('button', { name: 'Crear entrenamiento' }).click();
   await expect(page.getByRole('heading', { name: 'Configura la operación.' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Espiral Estelar 58/ })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('carries the room code from the login into the preparation lobby', async ({ page }) => {
+  await openApp(page);
+  await page.getByLabel('Identificador de comandante').fill('Vega');
+  await page.getByRole('button', { name: 'Unirse con código' }).click();
+  await page.getByLabel('Código de sala').fill('ab12');
+  await page.getByLabel('Código de sala').press('Enter');
+  await expect(page.getByRole('heading', { name: 'Accede a la operación.' })).toBeVisible();
+  await expect(page.getByLabel('Código de sala')).toHaveValue('AB12');
+});
+
+test('can continue as a guest while the empty room-code form is open', async ({ page }) => {
+  await openApp(page);
+  await page.getByLabel('Identificador de comandante').fill('Vega');
+  await page.getByRole('button', { name: 'Unirse con código' }).click();
+  await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+  await expect(page.getByRole('heading', { name: 'Comandante Vega, el sector espera.' })).toBeVisible();
 });

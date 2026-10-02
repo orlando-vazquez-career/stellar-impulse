@@ -3,28 +3,44 @@ import { GlitchPanel } from './GlitchPanel';
 import { LoginForm } from './LoginForm';
 import { initialLoginUi, reduceLoginUi } from './login-state';
 import { createLoginScene } from './scene';
+import { Brand } from '../visual/shared/Brand';
+import { LanguageToggle } from '../visual/shared/LanguageToggle';
 import loginCss from './login.css?inline';
 
-interface LoginScreenProps {
+export interface LoginScreenProps {
   alias: string;
-  busy: boolean;
-  notice: string;
-  onCreateTraining: () => void;
-  onJoinRoom: (code: string) => void;
-  onConnectWallet: () => void;
-  chainStatus: string;
-  chainBusy: boolean;
-  /** Si existe, muestra el acceso al atlas de mando debajo del panel. */
+  onAliasChange?: (alias: string) => void;
+  onContinueGuest?: (alias: string) => void;
+  busy?: boolean;
+  notice?: string;
+  onCreateTraining?: (alias: string) => void;
+  onJoinRoom?: (code: string, alias: string) => void;
+  onConnectWallet?: () => void;
+  chainStatus?: string;
+  chainBusy?: boolean;
+  /** Si existe, muestra el acceso al centro de mando debajo del panel. */
   onOpenAtlas?: () => void;
 }
 
 /**
- * Puerta de entrada del juego: la nave ardiendo en primer plano, asteroides
- * detrás, y el panel-holograma del login a la derecha. Ocupa el viewport
- * completo y desaparece cuando llega la vista del juego.
+ * Puerta de entrada principal del juego: la nave ardiendo en primer plano,
+ * asteroides detrás, y el panel-holograma cyberpunk del login a la derecha.
+ * Ocupa el viewport completo e inicia toda la experiencia de Impulso Stellar.
  */
 export function LoginScreen(props: LoginScreenProps) {
-  const { alias, busy, notice, onCreateTraining, onJoinRoom, onConnectWallet, chainStatus, chainBusy, onOpenAtlas } = props;
+  const {
+    alias,
+    onAliasChange,
+    onContinueGuest,
+    busy = false,
+    notice = '',
+    onCreateTraining = () => {},
+    onJoinRoom = () => {},
+    onConnectWallet = () => {},
+    chainStatus = 'Stellar Testnet',
+    chainBusy = false,
+    onOpenAtlas,
+  } = props;
   const canvas = useRef<HTMLCanvasElement>(null);
   const [ui, dispatch] = useReducer(reduceLoginUi, undefined, initialLoginUi);
 
@@ -63,10 +79,16 @@ export function LoginScreen(props: LoginScreenProps) {
     <div className="li-viewport">
       <style>{loginCss}</style>
       <canvas ref={canvas} className="li-canvas" aria-hidden="true" />
+      <header className="li-topbar">
+        <Brand />
+        <LanguageToggle />
+      </header>
       <div className="li-panel-wrap">
         <GlitchPanel>
           <LoginForm
             alias={alias}
+            onAliasChange={onAliasChange}
+            onContinueGuest={onContinueGuest}
             busy={busy}
             notice={notice}
             ui={ui}

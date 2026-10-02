@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@colyseus/sdk": "0.18.3",
+    "@impulso/chain": "workspace:*",
     "@impulso/state": "workspace:*",
     "@impulso/sim": "workspace:*",
     "@fontsource/inter": "^5.3.0",
