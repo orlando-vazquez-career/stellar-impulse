@@ -48,6 +48,13 @@ export interface CameraView {
   height: number;
 }
 
+export interface BattlefieldVisibilityView {
+  width: number;
+  height: number;
+  visible: boolean[];
+  explored: boolean[];
+}
+
 export interface GameplayViewModel {
   tick: number;
   sector: number;
@@ -65,6 +72,8 @@ export interface GameplayViewModel {
     fleetCap: number;
   };
   squads: SquadViewModel[];
+  /** Server-owned entity visibility; terrain remains available as the base map. */
+  visibility?: BattlefieldVisibilityView;
   core: CoreViewModel;
   enemiesVisible: boolean;
   clockRunning: boolean;

@@ -1,10 +1,11 @@
 import { Client, type Room } from '@colyseus/sdk';
-import type {
-  BattlefieldOwnSquad,
-  BattlefieldPublicSquad,
-  BattlefieldView,
-  PlayerView,
-  VisibleSquad,
+import {
+  decodeBattlefieldMask,
+  type BattlefieldOwnSquad,
+  type BattlefieldPublicSquad,
+  type BattlefieldView,
+  type PlayerView,
+  type VisibleSquad,
 } from '@impulso/state';
 import type { BattlefieldCommand } from '@impulso/input';
 import type {
@@ -21,6 +22,36 @@ interface StopCommand { seq: number; type: 'stop'; squadId: string }
 type TrainingCommand = MoveCommand | AttackCommand | StopCommand;
 type BattlefieldSquad = BattlefieldPublicSquad | BattlefieldOwnSquad;
 const PROTOCOL_VERSION = 2;
+
+interface BattlefieldMapMetadata {
+  protocolVersion: number;
+  mapId: string;
+  version: number;
+  width: number;
+  height: number;
+  cellSize: number;
+  walkable: boolean[];
+  opaque: boolean[];
+  level?: unknown[];
+  ramp?: unknown[];
+}
+
+function isValidMapMetadata(value: unknown): value is BattlefieldMapMetadata {
+  if (!value || typeof value !== 'object') return false;
+  const map = value as Partial<BattlefieldMapMetadata>;
+  const width = map.width;
+  const height = map.height;
+  if (typeof width !== 'number' || typeof height !== 'number'
+    || !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) return false;
+  const cells = width * height;
+  return map.protocolVersion === PROTOCOL_VERSION
+    && map.mapId === 'sector-01'
+    && Number.isSafeInteger(map.version)
+    && Array.isArray(map.walkable) && map.walkable.length === cells
+    && Array.isArray(map.opaque) && map.opaque.length === cells
+    && (!map.level || map.level.length === cells)
+    && (!map.ramp || map.ramp.length === cells);
+}
 
 const DEFAULT_RULES = {
   tickRate: 10,
@@ -219,6 +250,12 @@ export function mapBattlefieldView(view: BattlefieldView, previous: GameplayView
       energy: 0, energyRate: 0, fleet: ownIds.length, fleetCap: Math.max(ownIds.length, 1),
     },
     squads: view.squads.map((unit) => mapBattlefieldSquad(view, unit, effectiveSelectedIds)),
+    visibility: {
+      width: view.width,
+      height: view.height,
+      visible: decodeBattlefieldMask(view.visible),
+      explored: decodeBattlefieldMask(view.explored),
+    },
     core: {
       state: core.state,
       progress: Math.max(0, Math.min(100, core.progress)),
@@ -299,6 +336,7 @@ export function createNetworkGameplayAdapter(alias: string, serverUrl = 'http://
   let snapshot = emptySnapshot();
   let room: Room | null = null;
   let latestView: BattlefieldView | null = null;
+  let latestMap: BattlefieldMapMetadata | null = null;
   let nextSequence = 1;
   let connectionAttempt = 0;
   let disposed = false;
@@ -332,9 +370,20 @@ export function createNetworkGameplayAdapter(alias: string, serverUrl = 'http://
           return;
         }
         room = joinedRoom;
-        room.onMessage('map', () => undefined);
+        room.onMessage('map', (message: unknown) => {
+          if (!isValidMapMetadata(message)) {
+            setFeedback('El mapa recibido no es compatible con esta operación.');
+            return;
+          }
+          latestMap = message;
+        });
         room.onMessage('view', (view: BattlefieldView) => {
           if (disposed) return;
+          if (latestMap && (latestMap.mapId !== view.mapId || latestMap.version !== view.mapVersion
+            || latestMap.width !== view.width || latestMap.height !== view.height)) {
+            setFeedback('El mapa del servidor no coincide con la vista recibida.');
+            return;
+          }
           latestView = view;
           nextSequence = Math.max(nextSequence, (view.players[view.playerId].lastSequence ?? 0) + 1);
           snapshot = mapBattlefieldView(view, snapshot);
@@ -376,6 +425,7 @@ export function createNetworkGameplayAdapter(alias: string, serverUrl = 'http://
       connectionAttempt += 1;
       const currentRoom = room;
       room = null;
+      latestMap = null;
       if (currentRoom) void currentRoom.leave();
       listeners.clear();
     },

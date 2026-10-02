@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { BattlefieldView } from '@impulso/state';
+import { decodeBattlefieldMask, type BattlefieldView } from '@impulso/state';
 import { battlefieldCommandsForIntent, mapBattlefieldView } from './network-adapter';
 
 const view = (overrides: Partial<BattlefieldView> = {}): BattlefieldView => ({
@@ -23,6 +23,12 @@ const view = (overrides: Partial<BattlefieldView> = {}): BattlefieldView => ({
   ...overrides,
 });
 
+function mask(indices: number[]) {
+  const data = Array(Math.ceil(29 * 29 / 8)).fill(0);
+  for (const index of indices) data[index >>> 3] |= 1 << (index & 7);
+  return { encoding: 'bitset-lsb0' as const, width: 29, height: 29, data };
+}
+
 describe('network gameplay adapter', () => {
   it('maps an authoritative battlefield view into the Phaser presentation model', () => {
     const snapshot = mapBattlefieldView(view());
@@ -32,6 +38,21 @@ describe('network gameplay adapter', () => {
     });
     expect(snapshot.moveOrder).toMatchObject({ squadId: 'p1-interceptor', destination: { x: 5, y: 25 }, route: [{ x: 4, y: 25 }] });
     expect(snapshot.resources.metal).toBe(4);
+  });
+
+  it('preserves the server visibility masks for base-map and unit-vision rendering', () => {
+    const visibleMask = mask([25 * 29 + 3]);
+    const exploredMask = mask([25 * 29 + 3, 14 * 29 + 14]);
+    const snapshot = mapBattlefieldView(view({
+      visible: visibleMask,
+      explored: exploredMask,
+    }));
+    expect(snapshot.visibility).toEqual({
+      width: 29,
+      height: 29,
+      visible: decodeBattlefieldMask(visibleMask),
+      explored: decodeBattlefieldMask(exploredMask),
+    });
   });
 
   it('turns presentation intents into authoritative group commands', () => {

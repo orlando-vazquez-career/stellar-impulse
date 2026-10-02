@@ -193,6 +193,10 @@ export class MainScene extends Phaser.Scene {
   private drawCore() {
     const graphics = this.core;
     if (!graphics) return;
+    if (!this.isCellVisible(CORE_CELL.x, CORE_CELL.y)) {
+      graphics.clear();
+      return;
+    }
     const center = cellToIso(CORE_CELL.x, CORE_CELL.y);
     const hue = coreColor(this.snapshot.core.state);
     graphics.clear();
@@ -208,6 +212,12 @@ export class MainScene extends Phaser.Scene {
       graphics.arc(center.x, center.y + 9, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.snapshot.core.progress / 100);
       graphics.strokePath();
     }
+  }
+
+  private isCellVisible(x: number, y: number): boolean {
+    const visibility = this.snapshot.visibility;
+    if (!visibility) return this.snapshot.clockRunning || this.snapshot.squads.length > 0;
+    return visibility.visible[y * visibility.width + x] === true;
   }
 
 

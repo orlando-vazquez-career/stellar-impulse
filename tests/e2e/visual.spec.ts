@@ -65,6 +65,7 @@ test.describe('visual interface foundation', () => {
     await page.getByLabel('Estoy listo para desplegar').check();
     await page.getByRole('button', { name: 'Iniciar operación' }).click();
 
+    await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-gameplay-mode', 'server');
     await expect(page.getByLabel('Campo táctico Phaser')).toBeVisible();
     await expect(page.locator('.vi-phaser canvas')).toBeVisible();
     await expect(page.getByLabel('HUD táctico')).toBeVisible();
@@ -82,9 +83,7 @@ test.describe('visual interface foundation', () => {
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
     await page.getByLabel('Estoy listo para desplegar').check();
-    await page.getByRole('button', { name: 'Probar nave autoritativa' }).click();
-
-    await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-gameplay-mode', 'server');
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
     await expect(page.locator('.vi-squad')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('.map-ally')).toHaveCount(1);
@@ -115,7 +114,7 @@ test.describe('visual interface foundation', () => {
     expect(lobbyLayout.clearsFooter).toBe(true);
 
     await page.getByLabel('Estoy listo para desplegar').check();
-    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await page.getByRole('button', { name: 'Entrenamiento local' }).click();
 
     const layout = await page.evaluate(() => {
       const selectors = ['.vi-resources', '.vi-sector-status', '.vi-top-controls', '.vi-minimap', '.vi-squad', '.vi-actions'];
@@ -170,7 +169,7 @@ test.describe('visual interface foundation', () => {
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
     await page.getByLabel('Estoy listo para desplegar').check();
-    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await page.getByRole('button', { name: 'Entrenamiento local' }).click();
     const field = page.locator('.vi-phaser canvas');
     await expect(field).toBeVisible();
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
@@ -224,7 +223,7 @@ test.describe('visual interface foundation', () => {
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
     await page.getByLabel('Estoy listo para desplegar').check();
-    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await page.getByRole('button', { name: 'Entrenamiento local' }).click();
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
     await page.mouse.move(680, 400);
     const camera = page.locator('.map-camera');
@@ -254,7 +253,7 @@ test.describe('visual interface foundation', () => {
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
     await page.getByLabel('Estoy listo para desplegar').check();
-    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await page.getByRole('button', { name: 'Entrenamiento local' }).click();
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
 
     const beta = await gamePoint(page, 13, 15);
@@ -292,7 +291,7 @@ test.describe('visual interface foundation', () => {
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
     await page.getByLabel('Estoy listo para desplegar').check();
-    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await page.getByRole('button', { name: 'Entrenamiento local' }).click();
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
 
     const first = await gamePoint(page, 12, 13);

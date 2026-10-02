@@ -7,7 +7,7 @@ import './lobby.css';
 export type LobbyMode = 'create' | 'join';
 type FleetSide = 'blue' | 'red';
 
-export function PreparationLobby({ alias, mode, onBack, onExploreMap, onDeploy, onDeployServer }: { alias: string; mode: LobbyMode; onBack(): void; onExploreMap(): void; onDeploy(): void; onDeployServer(): void }) {
+export function PreparationLobby({ alias, mode, onBack, onExploreMap, onDeploy, onDeployLocal }: { alias: string; mode: LobbyMode; onBack(): void; onExploreMap(): void; onDeploy(): void; onDeployLocal(): void }) {
   const { t } = useI18n();
   const [side, setSide] = useState<FleetSide>('blue');
   const [ready, setReady] = useState(false);
@@ -74,7 +74,7 @@ export function PreparationLobby({ alias, mode, onBack, onExploreMap, onDeploy, 
             <div className="vi-ready-controls">
               <label><input type="checkbox" checked={ready} onChange={(event) => setReady(event.target.checked)} /><span><strong>{t('readyConfirmation')}</strong><small>{t('launchHint')}</small></span></label>
               <button className="vi-primary" disabled={!ready} onClick={onDeploy}>{t('launchOperation')}<span aria-hidden="true">→</span></button>
-              <button className="vi-server-deploy" disabled={!ready} onClick={onDeployServer}>Probar nave autoritativa <span aria-hidden="true">↗</span></button>
+              <button className="vi-server-deploy" disabled={!ready} onClick={onDeployLocal}>{t('localTraining')} <span aria-hidden="true">↗</span></button>
             </div>
           </>}
         </section>

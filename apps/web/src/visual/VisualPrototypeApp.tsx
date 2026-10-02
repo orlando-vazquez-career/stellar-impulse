@@ -41,7 +41,7 @@ function VisualPrototypeContent() {
   return <div className={`visual-app ${accessibilityClasses}`} data-color-profile={preferences.accessibility.colorProfile}>
     {screen === 'access' && <AccessScreen onContinue={(value) => { setAlias(value); setScreen('command'); }} />}
     {screen === 'command' && <CommandCenter alias={alias} onCreateRoom={() => { setLobbyMode('create'); setScreen('lobby'); }} onJoinRoom={() => { setLobbyMode('join'); setScreen('lobby'); }} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => { setAlias(''); setScreen('access'); }} />}
-    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} onBack={() => setScreen('command')} onExploreMap={() => setScreen('map')} onDeploy={() => { setGameplayMode('local'); setScreen('gameplay'); }} onDeployServer={() => { setGameplayMode('server'); setScreen('gameplay'); }} />}
+    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} onBack={() => setScreen('command')} onExploreMap={() => setScreen('map')} onDeploy={() => { setGameplayMode('server'); setScreen('gameplay'); }} onDeployLocal={() => { setGameplayMode('local'); setScreen('gameplay'); }} />}
     {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
     {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} />}
     {screen === 'settings' && <SettingsScreen preferences={preferences} onBack={() => setScreen('command')} onSave={(nextPreferences) => { saveVisualPreferences(nextPreferences); setPreferences(nextPreferences); }} />}

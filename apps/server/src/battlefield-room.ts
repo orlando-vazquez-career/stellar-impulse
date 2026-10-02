@@ -43,7 +43,7 @@ export class BattlefieldRoom extends Room {
       if (!player) return;
       this.readySeats.add(player);
       this.sendMapAndView(client, player);
-      if (!this.simulationStarted && this.readySeats.size === 2) {
+      if (!this.simulationStarted && this.readySeats.size > 0) {
         this.simulationStarted = true;
         this.setSimulationInterval(() => this.step(), TICK_MS);
       }

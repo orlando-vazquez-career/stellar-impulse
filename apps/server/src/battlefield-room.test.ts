@@ -87,4 +87,50 @@ describe('battlefield room', () => {
       await b.leave();
     }
   });
+
+  it('starts the authoritative tick after one client completes the ready handshake', async () => {
+    const client = new Client(URL);
+    const room = await client.joinOrCreate('battlefield', {
+      protocolVersion: CAMPAIGN_PROTOCOL_VERSION,
+      name: 'Demo',
+    });
+    room.reconnection.enabled = false;
+    room.onMessage('view', () => undefined);
+    try {
+      const initial = next<any>(room, 'view');
+      room.send('ready');
+      const first = await initial;
+      const ticked = next<any>(room, 'view', (view) => view.tick > first.tick);
+      expect((await ticked).tick).toBeGreaterThan(first.tick);
+    } finally {
+      await room.leave();
+    }
+  });
+
+  it('moves a ship from a high-level command and publishes the authoritative position', async () => {
+    const client = new Client(URL);
+    const room = await client.joinOrCreate('battlefield', {
+      protocolVersion: CAMPAIGN_PROTOCOL_VERSION,
+      name: 'Mover',
+    });
+    room.reconnection.enabled = false;
+    room.onMessage('view', () => undefined);
+    try {
+      const initial = next<any>(room, 'view');
+      room.send('ready');
+      const first = await initial;
+      const ack = next<any>(room, 'ack');
+      const moved = next<any>(room, 'view', (view) => {
+        const ship = view.squads.find((unit: { id: string }) => unit.id === 'p1-interceptor');
+        return view.players.p1.lastSequence === 1 && Boolean(ship && (ship.x !== 3 || ship.y !== 3));
+      });
+      room.send('command', envelope({ type: 'move_group', seq: 1, squadIds: ['p1-interceptor'], x: 4, y: 3 }));
+      expect(await ack).toEqual({ protocolVersion: 2, seq: 1 });
+      const view = await moved;
+      expect(view.squads.find((unit: { id: string }) => unit.id === 'p1-interceptor')).not.toMatchObject({ x: 3, y: 3 });
+      expect(view.tick).toBeGreaterThan(first.tick);
+    } finally {
+      await room.leave();
+    }
+  });
 });
