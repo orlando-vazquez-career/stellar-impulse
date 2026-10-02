@@ -184,11 +184,14 @@ export function createWorld(): World {
     economy: false,
   };
 }
-/** Starting fleet beside each base: one ship of every class (brief v0.3, phase 1). */
+/** Starting fleet beside each base: a scout and one combat ship; the rest comes from the hangar. */
 const STARTING_FLEET: readonly { kind: UnitKind; dx: number; dy: number }[] = [
-  { kind: 'interceptor', dx: 0, dy: 0 }, { kind: 'frigate', dx: 1, dy: 0 },
-  { kind: 'bomber', dx: 0, dy: 1 }, { kind: 'explorer', dx: 1, dy: 1 },
+  { kind: 'interceptor', dx: 0, dy: 0 }, { kind: 'explorer', dx: 1, dy: 1 },
 ];
+/** Guardians charge ships within this many cells of their post and stop chasing beyond it. */
+export const GUARDIAN_AGGRO_RADIUS = 3;
+/** Guardians move one cell every this many ticks (slower than an Interceptor). */
+const GUARDIAN_MOVE_TICKS = 5;
 export function createSectorWorld(): World {
   const sector = SECTOR_01;
   const node = (input: { id: string; kind: 'metal' | 'capture'; x: number; y: number }): ResourceNode => ({
@@ -440,6 +443,32 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
     else replaceDestination(nextSquad, command);
   });
 }
+/** A guardian's post is its objective's cell. */
+function guardianPost(world: World, guardian: Guardian): Position {
+  if (guardian.objectiveId === world.core.id) return world.core;
+  return world.nodes.find((node) => node.id === guardian.objectiveId) ?? guardian;
+}
+/** Neutral guardians charge the nearest ship that enters their zone, then return to their post. */
+function moveGuardians(world: World): void {
+  if (!world.surface || world.tick % GUARDIAN_MOVE_TICKS !== 0) return;
+  for (const guardian of world.guardians) {
+    if (!guardianActive(world, guardian)) continue;
+    const post = guardianPost(world, guardian);
+    const intruder = world.squads
+      .filter((unit) => unit.hp > 0 && distance(unit, post) <= GUARDIAN_AGGRO_RADIUS)
+      .sort((a, b) => distance(a, guardian) - distance(b, guardian) || (a.id < b.id ? -1 : 1))[0];
+    if (intruder && withinReach({ diagonalReach: true }, guardian, intruder)) continue;
+    const goal = intruder ?? post;
+    if (goal.x === guardian.x && goal.y === guardian.y) continue;
+    const next = nextStep(world, guardian, goal);
+    if (!next || distance(next, post) > GUARDIAN_AGGRO_RADIUS) continue;
+    const taken = world.squads.some((unit) => unit.hp > 0 && unit.x === next.x && unit.y === next.y)
+      || world.guardians.some((other) => other.id !== guardian.id && other.hp > 0 && other.x === next.x && other.y === next.y);
+    if (taken) continue;
+    guardian.x = next.x;
+    guardian.y = next.y;
+  }
+}
 function moveSquads(world: World): void {
   for (const squad of world.squads) {
     if (squad.hp <= 0) continue;
@@ -505,6 +534,7 @@ export function stepWorld(world: World): World {
   next.core.open = next.tick >= next.rules.coreOpenTick;
   if (next.economy) runBases(next);
   moveSquads(next);
+  if (next.economy) moveGuardians(next);
   resolveCombat(next.surface ? { ...next, level: next.surface.level, diagonalReach: true } : next);
   const capture = captureContext(next);
   for (const node of next.nodes) {

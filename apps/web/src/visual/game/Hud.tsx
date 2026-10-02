@@ -7,6 +7,7 @@ import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
 import type { CameraView, CoreState, GameplayAction, GameplayPresentationAdapter, GameplayViewModel } from './model';
 import { sectorMap, sectorSurface } from '../map/sector-map';
+import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH } from './phaser/isometric';
 
 const GRID_COLUMNS = sectorMap.width;
 const GRID_ROWS = sectorMap.height;
@@ -65,35 +66,56 @@ function TopControls({ onResetCamera, onDevelopment, onLeave }: { onResetCamera(
   </div>;
 }
 
+const MINIMAP_SIZE = 172;
+const MINIMAP_SCALE = MINIMAP_SIZE / ISO_WORLD_WIDTH;
+const MINIMAP_OFFSET = { x: 4, y: 4 + (MINIMAP_SIZE - ISO_WORLD_HEIGHT * MINIMAP_SCALE) / 2 };
+const OWNER_FILL = { blue: '#36a9ff', red: '#ff4f64', neutral: '#f2b84b' } as const;
+
+/** Same isometric projection as the battlefield, shrunk to the minimap. */
+function miniPoint(gridX: number, gridY: number) {
+  const iso = cellToIso(gridX, gridY);
+  return { x: MINIMAP_OFFSET.x + iso.x * MINIMAP_SCALE, y: MINIMAP_OFFSET.y + iso.y * MINIMAP_SCALE };
+}
+
+function miniDiamond(x: number, y: number) {
+  const center = miniPoint(x, y);
+  const hw = TILE_HALF_WIDTH * MINIMAP_SCALE + 0.15;
+  const hh = TILE_HALF_HEIGHT * MINIMAP_SCALE + 0.15;
+  return `${center.x},${center.y - hh} ${center.x + hw},${center.y} ${center.x},${center.y + hh} ${center.x - hw},${center.y}`;
+}
+
 function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; cameraView: CameraView | null; onPanMap(x: number, y: number): void }) {
   const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
-  const project = (gridX: number, gridY: number) => ({ x: 4 + (gridX + 0.5) * 172 / GRID_COLUMNS, y: 4 + (gridY + 0.5) * 172 / GRID_ROWS });
   const route = view.moveOrder?.squadId === view.selectedSquadId ? view.moveOrder : null;
+  const seen = (cell: { x: number; y: number }) => !view.visibleCells || view.visibleCells[cell.y * GRID_COLUMNS + cell.x] === true;
   return <Panel className={`vi-minimap ${collapsed ? 'is-collapsed' : ''}`}>
     <header><strong>{t('minimap')}</strong><button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></header>
     {!collapsed && <button className="vi-minimap__pan" aria-label={t('minimapPan')} onClick={(event) => {
       const bounds = event.currentTarget.getBoundingClientRect();
-      const x = Math.max(0, Math.min(1, (event.clientX - bounds.left - 4) / (bounds.width - 8)));
-      const y = Math.max(0, Math.min(1, (event.clientY - bounds.top - 4) / (bounds.height - 8)));
-      onPanMap(Math.floor(x * GRID_COLUMNS), Math.floor(y * GRID_ROWS));
+      const svgX = (event.clientX - bounds.left) / bounds.width * 180;
+      const svgY = (event.clientY - bounds.top) / bounds.height * 180;
+      const cell = isoToPoint((svgX - MINIMAP_OFFSET.x) / MINIMAP_SCALE, (svgY - MINIMAP_OFFSET.y) / MINIMAP_SCALE);
+      if (cell) onPanMap(Math.round(cell.x), Math.round(cell.y));
     }}><svg viewBox="0 0 180 180" role="img" aria-label={t('minimap')}>
       <rect className="map-boundary" x="4" y="4" width="172" height="172" />
-      <path className="map-route" d="M4 90H176M90 4V176" />
-      <circle className="map-core" cx={project(CORE_CELL.x, CORE_CELL.y).x} cy={project(CORE_CELL.x, CORE_CELL.y).y} r="4" />
-      {Object.entries(BASE_CELLS).map(([owner, cell]) => { const point = project(cell.x, cell.y); const fill = owner === 'blue' ? '#36a9ff' : '#ff4f64'; return <g key={owner} fill={fill}>
-        <rect x={point.x - 6} y={point.y - 4} width="12" height="8" />
-        <circle cx={point.x - 4} cy={point.y - 5} r="2" /><circle cx={point.x + 4} cy={point.y - 5} r="2" />
-      </g>; })}
-      {FLOOR_CELLS.map((cell) => { const point = project(cell.x, cell.y); return <circle key={`${cell.x},${cell.y}`} cx={point.x} cy={point.y} r="2.2" fill="#42637d" />; })}
-      {route && <polyline className="map-move-route" points={route.route.map((cell) => { const point = project(cell.x, cell.y); return `${point.x},${point.y}`; }).join(' ')} />}
-      {(() => { const selected = view.squads.find((squad) => squad.id === view.selectedSquadId); const target = view.squads.find((squad) => squad.id === selected?.attackTargetId); if (!selected || !target) return null; const from = project(selected.gridX, selected.gridY); const to = project(target.gridX, target.gridY); return <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#ff4f64" strokeWidth="1.5" />; })()}
+      {FLOOR_CELLS.map((cell) => <polygon key={`${cell.x},${cell.y}`} points={miniDiamond(cell.x, cell.y)}
+        fill={seen(cell) ? '#5b95c4' : '#34587a'} />)}
+      {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); return <rect key={node.id} x={point.x - 2.2} y={point.y - 2.2} width="4.4" height="4.4"
+        transform={`rotate(45 ${point.x} ${point.y})`} fill={node.owner ? OWNER_FILL[node.owner] : '#8aa0b8'} />; })}
+      <circle className="map-core" cx={miniPoint(CORE_CELL.x, CORE_CELL.y).x} cy={miniPoint(CORE_CELL.x, CORE_CELL.y).y} r="4" />
+      {Object.entries(BASE_CELLS).map(([owner, cell]) => { const point = miniPoint(cell.x, cell.y); return <rect key={owner}
+        x={point.x - 5} y={point.y - 3.5} width="10" height="7" fill={owner === 'blue' ? OWNER_FILL.blue : OWNER_FILL.red} />; })}
+      {route && <polyline className="map-move-route" points={route.route.map((cell) => { const point = miniPoint(cell.x, cell.y); return `${point.x},${point.y}`; }).join(' ')} />}
       {view.squads.filter((squad) => squad.visible).map((squad) => {
-        const point = project(squad.gridX, squad.gridY);
-        return <circle key={squad.id} className={squad.owner === 'blue' ? 'map-ally' : 'map-enemy'} cx={point.x} cy={point.y} r={squad.selected ? 4 : 3} />;
+        const point = miniPoint(squad.gridX, squad.gridY);
+        return <circle key={squad.id} className={squad.owner === 'blue' ? 'map-ally' : 'map-enemy'} cx={point.x} cy={point.y} r={squad.selected ? 3.2 : 2.4}
+          fill={squad.owner === 'neutral' ? OWNER_FILL.neutral : undefined} />;
       })}
-      {route && <circle className="map-destination" cx={project(route.destination.x, route.destination.y).x} cy={project(route.destination.x, route.destination.y).y} r="4" />}
-      {cameraView && <rect className="map-camera" x={4 + cameraView.x * 172} y={4 + cameraView.y * 172} width={cameraView.width * 172} height={cameraView.height * 172} />}
+      {route && <circle className="map-destination" cx={miniPoint(route.destination.x, route.destination.y).x} cy={miniPoint(route.destination.x, route.destination.y).y} r="3" />}
+      {cameraView && <rect className="map-camera" data-world-x={cameraView.worldX} data-world-y={cameraView.worldY} data-zoom={cameraView.zoom}
+        x={MINIMAP_OFFSET.x + cameraView.worldX * MINIMAP_SCALE} y={MINIMAP_OFFSET.y + cameraView.worldY * MINIMAP_SCALE}
+        width={cameraView.width * ISO_WORLD_WIDTH * MINIMAP_SCALE} height={cameraView.height * ISO_WORLD_HEIGHT * MINIMAP_SCALE} />}
     </svg></button>}
   </Panel>;
 }

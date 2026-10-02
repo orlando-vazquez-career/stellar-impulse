@@ -12,11 +12,11 @@ const run = (world: World, ticks: number) => {
 };
 
 describe('sector economy', () => {
-  it('starts each side with one ship of every class, guarded nodes and opening Metal', () => {
+  it('starts each side with a scout and one combat ship, guarded nodes and opening Metal', () => {
     const world = createSectorWorld();
     for (const player of ['p1', 'p2'] as const) {
       expect(world.squads.filter((squad) => squad.ownerId === player).map((squad) => squad.kind).sort())
-        .toEqual(['bomber', 'explorer', 'frigate', 'interceptor']);
+        .toEqual(['explorer', 'interceptor']);
       expect(world.players[player].metal).toBe(STARTING_METAL);
     }
     expect(world.guardians.filter((guardian) => guardian.objectiveId.startsWith('metal-'))).toHaveLength(6);
@@ -30,7 +30,7 @@ describe('sector economy', () => {
     expect(ordered.world.players.p1.metal).toBe(STARTING_METAL - UNIT_COSTS.interceptor);
     expect(applyCommand(ordered.world, 'p1', produce(2, 'explorer'))).toMatchObject({ accepted: false, reason: 'production_busy' });
     const before = run(ordered.world, BUILD_TICKS.interceptor - 1);
-    expect(before.squads.filter((squad) => squad.ownerId === 'p1')).toHaveLength(4);
+    expect(before.squads.filter((squad) => squad.ownerId === 'p1')).toHaveLength(2);
     const launched = stepWorld(before);
     const ship = launched.squads.find((squad) => squad.id === 'p1-interceptor-1');
     expect(ship).toBeDefined();
@@ -58,6 +58,28 @@ describe('sector economy', () => {
     const later = run(world, 40);
     expect(later.players.p1.metal).toBe(STARTING_METAL + 2);
     expect(later.squads.find((squad) => squad.id === 'p1-interceptor')!.hp).toBeGreaterThan(50);
+  });
+});
+
+describe('guardians', () => {
+  it('charge a ship inside their zone and return to their post afterwards', () => {
+    let world = createSectorWorld();
+    const guardian = world.guardians.find((unit) => unit.objectiveId === 'metal-3')!;
+    const post = { x: guardian.x, y: guardian.y };
+    const ship = world.squads.find((squad) => squad.id === 'p1-interceptor')!;
+    // Park the ship three cells from the post along the walkable corridor.
+    const cell = [...Array(world.width * world.height).keys()]
+      .map((index) => ({ x: index % world.width, y: Math.floor(index / world.width) }))
+      .find((candidate) => world.surface!.walkable[candidate.y * world.width + candidate.x]
+        && Math.abs(candidate.x - post.x) + Math.abs(candidate.y - post.y) === 3)!;
+    ship.x = cell.x;
+    ship.y = cell.y;
+    world = run(world, 30);
+    const moved = world.guardians.find((unit) => unit.id === guardian.id)!;
+    expect(Math.abs(moved.x - post.x) + Math.abs(moved.y - post.y)).toBeGreaterThan(0);
+    world.squads = world.squads.filter((squad) => squad.id !== 'p1-interceptor');
+    world = run(world, 60);
+    expect(world.guardians.find((unit) => unit.id === guardian.id)).toMatchObject(post);
   });
 });
 

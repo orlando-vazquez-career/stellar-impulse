@@ -41,11 +41,15 @@ export interface MoveOrder {
   route: { x: number; y: number }[];
 }
 
+/** Visible world area. x/y/width/height are fractions of the isometric world; the raw fields are pixels. */
 export interface CameraView {
   x: number;
   y: number;
   width: number;
   height: number;
+  worldX: number;
+  worldY: number;
+  zoom: number;
 }
 
 export interface NodeViewModel {

@@ -1,12 +1,17 @@
 import { expect, test } from '@playwright/test';
 
 async function gamePoint(page: import('@playwright/test').Page, x: number, y: number) {
+  // The minimap camera rect carries the visible world origin and zoom (Phaser zooms around the centre).
   const camera = page.locator('.map-camera');
   const rect = await page.locator('.vi-phaser canvas').boundingBox();
   if (!rect) throw new Error('No playable canvas');
-  const scrollX = (Number(await camera.getAttribute('x')) - 4) * 1856 / 172;
-  const scrollY = (Number(await camera.getAttribute('y')) - 4) * 1040 / 172;
-  return { x: rect.x + 928 + (x - y) * 32 - scrollX, y: rect.y + 64 + (x + y) * 16 - scrollY };
+  const worldX = Number(await camera.getAttribute('data-world-x'));
+  const worldY = Number(await camera.getAttribute('data-world-y'));
+  const zoom = Number(await camera.getAttribute('data-zoom'));
+  return {
+    x: rect.x + (928 + (x - y) * 32 - worldX) * zoom,
+    y: rect.y + (64 + (x + y) * 16 - worldY) * zoom,
+  };
 }
 
 test.describe('visual interface foundation', () => {
@@ -264,8 +269,9 @@ test.describe('visual interface foundation', () => {
     await page.mouse.click(destination.x, destination.y, { button: 'right' });
     await expect(page.locator('.map-move-route')).toHaveCount(1);
     await expect(page.getByText('En movimiento')).toBeVisible();
+    // The isometric minimap turns this diagonal grid move (13,15 → 15,13) into a horizontal one.
     await expect.poll(() => betaMarker.getAttribute('cx')).not.toBe(startingX);
-    await expect.poll(() => betaMarker.getAttribute('cy')).not.toBe(startingY);
+    expect(startingY).not.toBeNull();
     const enemy = await gamePoint(page, 17, 14);
     await page.mouse.click(enemy.x, enemy.y, { button: 'right' });
     await expect(page.getByText('Atacando')).toBeVisible();

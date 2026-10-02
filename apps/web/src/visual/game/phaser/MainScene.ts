@@ -3,9 +3,15 @@ import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '.
 import type { GridPoint } from './grid';
 import { planSectorMove, sectorMap, sectorSurface } from '../../map/sector-map';
 import atlasUrl from '../../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/stellar-plataformas.png';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH } from './isometric';
+import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT } from './isometric';
 
 const GRID_COLUMNS = sectorMap.width;
+/** Multiplicative tint for tiles outside vision: dark, but the terrain stays readable. */
+const FOG_TINT = 0x4a5566;
+/** Camera zoom limits: the farthest view still frames a fight; a little closer for detail. */
+export const ZOOM_DEFAULT = 1.5;
+export const ZOOM_MIN = 1.5;
+export const ZOOM_MAX = 2;
 const GRID_ROWS = sectorMap.height;
 const CORE_CELL = sectorSurface.core;
 
@@ -61,8 +67,9 @@ export class MainScene extends Phaser.Scene {
   private selectionBox?: Phaser.GameObjects.Graphics;
   private core?: Phaser.GameObjects.Graphics;
   private nodeMarks?: Phaser.GameObjects.Graphics;
-  private fog?: Phaser.GameObjects.Graphics;
-  private fogKey = '';
+  /** Terrain images per cell, so fog can tint the real tile art instead of painting over it. */
+  private tileImages: Phaser.GameObjects.Image[][] = [];
+  private fogShown: boolean[] | null = null;
   private created = false;
   private readonly unitVisuals = new Map<string, UnitVisual>();
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -111,8 +118,7 @@ export class MainScene extends Phaser.Scene {
     this.selectionBox = this.add.graphics().setScrollFactor(0).setDepth(30000);
     this.core = this.add.graphics().setDepth(20001);
     this.nodeMarks = this.add.graphics().setDepth(15000);
-    // Above terrain and node rings, below ships (which the server already hides outside vision).
-    this.fog = this.add.graphics().setDepth(15500);
+
     this.drawTerrain();
     this.drawCore();
     this.renderSnapshot();
@@ -155,7 +161,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   resetCamera() {
-    this.cameras.main.setZoom(1);
+    this.cameras.main.setZoom(ZOOM_DEFAULT);
     const cell = cellToIso(CORE_CELL.x, CORE_CELL.y);
     this.cameras.main.centerOn(cell.x, cell.y);
     this.refreshCameraView();
@@ -176,10 +182,15 @@ export class MainScene extends Phaser.Scene {
     const cameraKey = `${Math.round(camera.scrollX)},${Math.round(camera.scrollY)},${camera.zoom},${camera.width},${camera.height}`;
     if (cameraKey === this.lastCameraView) return;
     this.lastCameraView = cameraKey;
+    // Phaser zooms around the camera centre, so the visible area is centred on scroll + half the viewport.
+    const width = camera.width / camera.zoom;
+    const height = camera.height / camera.zoom;
+    const worldX = camera.scrollX + camera.width / 2 - width / 2;
+    const worldY = camera.scrollY + camera.height / 2 - height / 2;
     this.onCameraChange({
-      x: camera.scrollX / ISO_WORLD_WIDTH, y: camera.scrollY / ISO_WORLD_HEIGHT,
-      width: camera.width / camera.zoom / ISO_WORLD_WIDTH,
-      height: camera.height / camera.zoom / ISO_WORLD_HEIGHT,
+      x: worldX / ISO_WORLD_WIDTH, y: worldY / ISO_WORLD_HEIGHT,
+      width: width / ISO_WORLD_WIDTH, height: height / ISO_WORLD_HEIGHT,
+      worldX, worldY, zoom: camera.zoom,
     });
   }
 
@@ -193,8 +204,9 @@ export class MainScene extends Phaser.Scene {
         const point = cellToIso(x, y);
         const tileset = [...sectorMap.tilesets].reverse().find((set) => set.firstgid <= gid);
         if (tileset?.image === 'stellar-plataformas.png') {
-          this.add.image(point.x, point.y + TILE_HALF_HEIGHT - tileset.tileheight / 2,
+          const image = this.add.image(point.x, point.y + TILE_HALF_HEIGHT - tileset.tileheight / 2,
             'sector-atlas', gid - tileset.firstgid).setDepth(layerIndex * 2000 + (x + y) * 32 + x);
+          (this.tileImages[y * GRID_COLUMNS + x] ??= []).push(image);
         } else {
           graphics.fillStyle(0x0a1726, 1);
           graphics.fillRect(point.x - 32, point.y - 16, 64, 32);
@@ -242,26 +254,19 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
-  /** Darken every floor cell outside the player's current vision. Redrawn only when vision changes. */
+  /** Darken the tile art of every cell outside the player's current vision. Only changed cells are touched. */
   private drawFog() {
-    const graphics = this.fog;
-    if (!graphics) return;
     const cells = this.snapshot.visibleCells;
-    const key = cells ? cells.map((seen) => (seen ? '1' : '0')).join('') : '';
-    if (key === this.fogKey) return;
-    this.fogKey = key;
-    graphics.clear();
-    if (!cells) return;
-    graphics.fillStyle(0x02060c, 0.62);
-    for (let y = 0; y < GRID_ROWS; y++) for (let x = 0; x < GRID_COLUMNS; x++) {
-      const index = y * GRID_COLUMNS + x;
-      if (cells[index] || !sectorSurface.walkable[index]) continue;
-      const center = cellToIso(x, y);
-      graphics.fillPoints(polygon([
-        { x: center.x, y: center.y - TILE_HALF_HEIGHT }, { x: center.x + TILE_HALF_WIDTH, y: center.y },
-        { x: center.x, y: center.y + TILE_HALF_HEIGHT }, { x: center.x - TILE_HALF_WIDTH, y: center.y },
-      ]), true);
+    const total = GRID_COLUMNS * GRID_ROWS;
+    for (let index = 0; index < total; index++) {
+      const visible = cells ? cells[index] === true : true;
+      if (this.fogShown && this.fogShown[index] === visible) continue;
+      for (const image of this.tileImages[index] ?? []) {
+        if (visible) image.clearTint();
+        else image.setTint(FOG_TINT);
+      }
     }
+    this.fogShown = Array.from({ length: total }, (_, index) => (cells ? cells[index] === true : true));
   }
 
   private renderSnapshot() {
@@ -515,7 +520,7 @@ export class MainScene extends Phaser.Scene {
       const camera = this.cameras.main;
       const position = this.pointerPosition(pointer);
       const before = camera.getWorldPoint(position.x, position.y);
-      camera.setZoom(Phaser.Math.Clamp(camera.zoom - deltaY * 0.001, 0.75, 1.5));
+      camera.setZoom(Phaser.Math.Clamp(camera.zoom - deltaY * 0.001, ZOOM_MIN, ZOOM_MAX));
       const after = camera.getWorldPoint(position.x, position.y);
       camera.scrollX += before.x - after.x;
       camera.scrollY += before.y - after.y;
