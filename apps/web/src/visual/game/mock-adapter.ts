@@ -30,6 +30,11 @@ const initialSnapshot: GameplayViewModel = {
   core: { state: 'locked', progress: 34, opensInSeconds: 88 },
   enemiesVisible: true,
   clockRunning: false,
+  nodes: [],
+  production: null,
+  result: null,
+  notice: null,
+  connection: 'local',
   squads: [
     {
       id: 'blue-alpha', callSign: 'Alpha', owner: 'blue', unitType: 'interceptor',

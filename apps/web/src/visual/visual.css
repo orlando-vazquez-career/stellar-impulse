@@ -330,3 +330,23 @@
 @media (prefers-reduced-motion: reduce) {
   .visual-app *, .visual-app *::before, .visual-app *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+/* Hangar, notices and match result (server-backed gameplay). */
+.vi-production { position: absolute; right: 20px; bottom: 20px; width: 220px; padding: 10px; }
+.vi-production__queue { margin: 0 5px 8px; color: var(--vi-text); font-size: 13px; }
+.vi-production__list { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.vi-production__list button { min-height: 44px; padding: 5px 7px; border: 1px solid var(--vi-border); display: grid; grid-template-columns: 1fr auto; gap: 2px 5px; align-items: center; color: var(--vi-text); text-align: left; font-size: 13px; }
+.vi-production__list button small { grid-column: 1; color: var(--vi-muted); }
+.vi-production__list button kbd { grid-row: 1 / span 2; grid-column: 2; min-width: 18px; padding: 1px 4px; border: 1px solid var(--vi-border); border-radius: 2px; color: var(--vi-muted); font-size: 11px; text-align: center; }
+.vi-production__list button:hover:not(:disabled) { border-color: var(--vi-blue); background: var(--vi-surface-raised); }
+.vi-production__list button:disabled { opacity: .4; }
+.vi-notice { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border: 1px solid var(--vi-border); background: #0d1522ee; color: var(--vi-text); font-size: 14px; pointer-events: none; }
+.vi-notice--offline { border-color: var(--vi-warning); color: var(--vi-warning); }
+.vi-result { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; background: rgb(3 8 15 / 62%); }
+.vi-result__card { width: min(440px, 90vw); padding: 28px; border: 1px solid var(--vi-blue); background: #0d1522f7; text-align: center; }
+.vi-result__card--defeat { border-color: #ff4f64; }
+.vi-result__card h2 { margin: 0 0 8px; font-family: var(--vi-display); font-size: 30px; letter-spacing: .04em; }
+.vi-result__card p { margin: 0 0 20px; color: var(--vi-muted); }
+.vi-result__card div { display: flex; justify-content: center; gap: 10px; }
+.vi-result__card button { min-height: 42px; padding: 0 18px; border: 1px solid var(--vi-border); color: var(--vi-text); }
+.vi-result__card .vi-primary { border-color: var(--vi-blue); background: var(--vi-blue); color: #04111d; font-weight: 600; }

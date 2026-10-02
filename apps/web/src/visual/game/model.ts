@@ -48,6 +48,22 @@ export interface CameraView {
   height: number;
 }
 
+export interface NodeViewModel {
+  id: string;
+  kind: 'metal' | 'capture';
+  x: number;
+  y: number;
+  owner: SquadOwner | null;
+}
+
+export interface ProductionViewModel {
+  kind: SquadType;
+  remainingSeconds: number;
+}
+
+/** local: the in-browser mock; the rest describe the link to the authoritative server. */
+export type ConnectionState = 'local' | 'connecting' | 'online' | 'offline';
+
 export interface GameplayViewModel {
   tick: number;
   sector: number;
@@ -68,6 +84,12 @@ export interface GameplayViewModel {
   core: CoreViewModel;
   enemiesVisible: boolean;
   clockRunning: boolean;
+  nodes: NodeViewModel[];
+  production: ProductionViewModel | null;
+  result: 'victory' | 'defeat' | null;
+  /** Last server rejection or connection message, already localized by key. */
+  notice: string | null;
+  connection: ConnectionState;
 }
 
 export type PresentationIntent =
@@ -83,7 +105,8 @@ export type PresentationIntent =
   | { type: 'set-selected-health'; healthPercent: number }
   | { type: 'set-resource'; resource: 'metal' | 'energy'; value: number }
   | { type: 'set-enemy-visibility'; visible: boolean }
-  | { type: 'set-clock-running'; running: boolean };
+  | { type: 'set-clock-running'; running: boolean }
+  | { type: 'produce'; kind: SquadType };
 
 export interface GameplayPresentationAdapter {
   getSnapshot(): GameplayViewModel;

@@ -1,7 +1,7 @@
 import { parseCommand } from '@impulso/input';
 import { planEnemyTurn, type EnemyScene } from './inteligencia-enemiga/training.js';
 import type { AiMemory, AiOrder, AiUnit } from './inteligencia-enemiga/types.js';
-import { advanceCapture, captureContext, guardianActive, resolveCombat } from './maps/mechanics.js';
+import { advanceCapture, captureContext, guardianActive, resolveCombat, withinReach } from './maps/mechanics.js';
 import { BATTLEFIELD_MAP } from './maps/battlefield.js';
 import { createBattlefieldWorldInternal } from './maps/world.js';
 import {
@@ -11,6 +11,13 @@ import {
 } from './mecanicas/orders.js';
 import { findPath as findSurfacePath } from './maps/pathfinding.js';
 import { SECTOR_01 } from './mapas/sector-01.js';
+import {
+  BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, launchCell, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS,
+  type ProductionState,
+} from './economia.js';
+import { rivalGoals, rivalProduction } from './inteligencia-enemiga/estrategia.js';
+export { BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS } from './economia.js';
+export type { ProductionOrder, ProductionState } from './economia.js';
 export { leerSuperficie } from './mapas/leer-tiled.js';
 export { findPath as findTiledPath } from './maps/pathfinding.js';
 import type { Superficie } from './mapas/leer-tiled.js';
@@ -57,6 +64,10 @@ export function createBattlefieldWorld(map: import('./maps/types.js').MapSpec = 
   overrides: Partial<Rules> = {}): import('./maps/world.js').BattlefieldWorld {
   return createBattlefieldWorldInternal(map, { ...TRAINING_RULES, ...overrides });
 }
+/** Playable sector 01: time to build an economy before the core opens (2:00) and a 30 s capture. */
+export const SECTOR_RULES: Readonly<Rules> = Object.freeze({
+  ...TRAINING_RULES, coreOpenTick: 1200, coreCaptureTicks: 300,
+});
 /** Design candidates only. The initial client uses TRAINING_RULES. */
 export const MVP_CANDIDATE_RULES = Object.freeze({
   ...TRAINING_RULES, coreOpenTick: 1800, coreCaptureTicks: 400,
@@ -127,12 +138,19 @@ export interface World {
   nodes: ResourceNode[];
   core: Core;
   winner: PlayerId | null;
+  /** One ship in the hangar queue per player. */
+  production: ProductionState;
+  /** Ships launched from the base, used for deterministic ids and the rival build order. */
+  built: Record<PlayerId, number>;
+  /** Base income, hangar and repairs. Off in the legacy 20×20 drill. */
+  economy: boolean;
 }
 export type CommandRejection =
   | 'invalid_command' | 'unknown_player' | 'stale_sequence'
   | 'unknown_squad' | 'not_owner' | 'squad_destroyed'
   | 'out_of_bounds' | 'blocked_destination' | 'unreachable_destination' | 'route_full' | 'match_finished'
-  | 'unknown_target' | 'friendly_target' | 'target_destroyed' | 'target_not_visible' | 'cannot_attack' | 'target_unavailable';
+  | 'unknown_target' | 'friendly_target' | 'target_destroyed' | 'target_not_visible' | 'cannot_attack' | 'target_unavailable'
+  | 'insufficient_metal' | 'fleet_full' | 'production_busy';
 export type CommandResult =
   | { accepted: true; world: World }
   | { accepted: false; reason: CommandRejection; world: World };
@@ -159,13 +177,28 @@ export function createWorld(): World {
     nodes: [{ id: 'metal-1', kind: 'metal', x: 4, y: 4, guardianId: 'metal-guardian', ownerId: null, progress: { p1: 0, p2: 0 } }],
     core: { id: 'core', x: 10, y: 10, guardianId: 'core-guardian', open: false, progress: { p1: 0, p2: 0 } },
     winner: null,
+    production: { p1: null, p2: null },
+    built: { p1: 0, p2: 0 },
+    economy: false,
   };
 }
+/** Starting fleet beside each base: one ship of every class (brief v0.3, phase 1). */
+const STARTING_FLEET: readonly { kind: UnitKind; dx: number; dy: number }[] = [
+  { kind: 'interceptor', dx: 0, dy: 0 }, { kind: 'frigate', dx: 1, dy: 0 },
+  { kind: 'bomber', dx: 0, dy: 1 }, { kind: 'explorer', dx: 1, dy: 1 },
+];
 export function createSectorWorld(): World {
   const sector = SECTOR_01;
   const node = (input: { id: string; kind: 'metal' | 'capture'; x: number; y: number }): ResourceNode => ({
     id: input.id, kind: input.kind, x: input.x, y: input.y,
     guardianId: `${input.id}-guardian`, ownerId: null, progress: { p1: 0, p2: 0 },
+  });
+  const metals = sector.metals.map((cell, index) => node({ id: `metal-${index + 1}`, kind: 'metal', x: cell.x, y: cell.y }));
+  // p2 mirrors p1 through the map centre, so both fleets face the same terrain.
+  const fleet = (player: PlayerId) => STARTING_FLEET.map(({ kind, dx, dy }) => {
+    const base = sector.bases[player];
+    const sign = player === 'p1' ? 1 : -1;
+    return createSquad(`${player}-${kind}`, player, kind, { x: base.x + sign * dx, y: base.y + sign * dy });
   });
   return {
     schemaVersion: 1, mode: 'training', tick: 0, width: sector.width, height: sector.height,
@@ -174,22 +207,26 @@ export function createSectorWorld(): World {
       width: sector.width, height: sector.height,
       walkable: [...sector.walkable], level: [...sector.level], ramp: [...sector.ramp],
     },
-    rules: { ...TRAINING_RULES },
+    rules: { ...SECTOR_RULES },
     players: {
-      p1: { id: 'p1', base: { ...sector.bases.p1 }, metal: 0, lastSequence: 0 },
-      p2: { id: 'p2', base: { ...sector.bases.p2 }, metal: 0, lastSequence: 0 },
+      p1: { id: 'p1', base: { ...sector.bases.p1 }, metal: STARTING_METAL, lastSequence: 0 },
+      p2: { id: 'p2', base: { ...sector.bases.p2 }, metal: STARTING_METAL, lastSequence: 0 },
     },
-    squads: [
-      createSquad('p1-interceptor', 'p1', 'interceptor', sector.bases.p1),
-      createSquad('p2-interceptor', 'p2', 'interceptor', sector.bases.p2),
+    squads: [...fleet('p1'), ...fleet('p2')],
+    // Neutral PvE: every Metal node and the core start guarded (brief: explore, defeat guardians, capture).
+    guardians: [
+      ...metals.map((metal) => ({ id: metal.guardianId, objectiveId: metal.id, x: metal.x, y: metal.y, hp: 60, maxHp: 60, damage: 3 })),
+      { id: 'core-guardian', objectiveId: 'core', x: sector.core.x, y: sector.core.y, hp: 160, maxHp: 160, damage: 5 },
     ],
-    guardians: [],
     nodes: [
-      ...sector.metals.map((cell, index) => node({ id: `metal-${index + 1}`, kind: 'metal', x: cell.x, y: cell.y })),
+      ...metals,
       ...sector.captures.map((cell, index) => node({ id: `capture-${index + 1}`, kind: 'capture', x: cell.x, y: cell.y })),
     ],
     core: { id: 'core', x: sector.core.x, y: sector.core.y, guardianId: 'core-guardian', open: false, progress: { p1: 0, p2: 0 } },
     winner: null,
+    production: { p1: null, p2: null },
+    built: { p1: 0, p2: 0 },
+    economy: true,
   };
 }
 export function distance(a: Position, b: Position): number {
@@ -268,6 +305,11 @@ function cloneWorld(world: World): World {
     nodes: world.nodes.map((node) => ({ ...node, progress: { ...node.progress } })),
     core: { ...world.core, progress: { ...world.core.progress } },
     surface: copySurface(world.surface),
+    production: {
+      p1: world.production.p1 ? { ...world.production.p1 } : null,
+      p2: world.production.p2 ? { ...world.production.p2 } : null,
+    },
+    built: { ...world.built },
   };
 }
 function copySurface(surface: Superficie | null): Superficie | null {
@@ -316,9 +358,12 @@ function nextStep(world: World, from: Position, to: Position): Position | null {
   }
   return findPath(from, to, world.width, world.height, world.obstacles)[1] ?? null;
 }
+/** Enemy ships and guardians hold their cell. Allies fly through each other (brief: no ship collisions). */
 function cellOccupied(world: World, cell: Position, selfId: string): boolean {
   if (!world.surface) return false;
-  const ship = world.squads.some((unit) => unit.hp > 0 && unit.id !== selfId && unit.x === cell.x && unit.y === cell.y);
+  const owner = world.squads.find((unit) => unit.id === selfId)?.ownerId;
+  const ship = world.squads.some((unit) => unit.hp > 0 && unit.id !== selfId && unit.ownerId !== owner
+    && unit.x === cell.x && unit.y === cell.y);
   const guardian = world.guardians.some((unit) => unit.hp > 0 && unit.x === cell.x && unit.y === cell.y);
   return ship || guardian;
 }
@@ -345,6 +390,15 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
   if (world.winner !== null) return reject('match_finished');
   const command = parsed.command;
   if (command.seq <= world.players[playerId].lastSequence) return reject('stale_sequence');
+  if (command.type === 'produce') {
+    if (!world.economy) return reject('invalid_command');
+    const refused = productionRefusal(world, playerId, command.kind);
+    if (refused) return reject(refused);
+    const next = cloneWorld(world);
+    next.players[playerId].lastSequence = command.seq;
+    startProduction(next, playerId, command.kind);
+    return { accepted: true, world: next };
+  }
   const squad = world.squads.find((unit) => unit.id === command.squadId);
   if (!squad) return reject('unknown_squad');
   if (squad.ownerId !== playerId) return reject('not_owner');
@@ -407,14 +461,49 @@ function moveSquads(world: World): void {
   }
   refreshArrivals(world.squads.filter((unit) => unit.hp > 0), boardOf(world));
 }
+function productionRefusal(world: World, playerId: PlayerId, kind: UnitKind): CommandRejection | null {
+  if (world.production[playerId]) return 'production_busy';
+  if (world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0).length >= FLEET_CAP) return 'fleet_full';
+  if (world.players[playerId].metal < UNIT_COSTS[kind]) return 'insufficient_metal';
+  return null;
+}
+function startProduction(world: World, playerId: PlayerId, kind: UnitKind): void {
+  world.players[playerId].metal -= UNIT_COSTS[kind];
+  world.production[playerId] = { kind, readyTick: world.tick + BUILD_TICKS[kind] };
+}
+/** Base income, hangar launches and repairs: the base guarantees a way back into the fight. */
+function runBases(world: World): void {
+  for (const playerId of ['p1', 'p2'] as const) {
+    const player = world.players[playerId];
+    if (world.tick % BASE_INCOME_TICKS === 0) player.metal += 1;
+    const order = world.production[playerId];
+    if (order && world.tick >= order.readyTick) {
+      const cell = launchCell(player.base, world.width, world.height,
+        (point) => cellOnBoard(world, point), (point) => cellOccupied(world, point, ''));
+      // A blocked hangar holds the finished ship until a launch cell frees up.
+      if (cell) {
+        world.built[playerId] += 1;
+        world.squads.push(createSquad(`${playerId}-${order.kind}-${world.built[playerId]}`, playerId, order.kind, cell));
+        world.production[playerId] = null;
+      }
+    }
+    if (world.tick % world.rules.tickRate !== 0) continue;
+    for (const squad of world.squads) {
+      if (squad.ownerId === playerId && squad.hp > 0 && squad.hp < squad.maxHp && distance(squad, player.base) <= REPAIR_RADIUS) {
+        squad.hp = Math.min(squad.maxHp, squad.hp + 2);
+      }
+    }
+  }
+}
 /** Exactly one integer tick; no clock, RNG, chain, renderer or inventory. */
 export function stepWorld(world: World): World {
   if (world.winner !== null) return world;
   const next = cloneWorld(world);
   next.tick += 1;
   next.core.open = next.tick >= next.rules.coreOpenTick;
+  if (next.economy) runBases(next);
   moveSquads(next);
-  resolveCombat(next.surface ? { ...next, level: next.surface.level } : next);
+  resolveCombat(next.surface ? { ...next, level: next.surface.level, diagonalReach: true } : next);
   const capture = captureContext(next);
   for (const node of next.nodes) {
     const captor = advanceCapture(next, node, next.rules.nodeCaptureTicks, capture);
@@ -460,7 +549,7 @@ function nearestFoe(world: World, squad: Squad, origin: Position, radius: number
 function movementDestination(world: World, squad: Squad): Position | null {
   const enemy = squad.attackTargetId ? attackTarget(world, squad.attackTargetId) : undefined;
   if (enemy && enemy.hp > 0) {
-    if (distance(squad, enemy) <= ATTACK_RANGE) return null;
+    if (withinReach({ diagonalReach: world.surface !== null }, squad, enemy)) return null;
     return enemy;
   }
   return squad.target ?? guardDestination(squad);
@@ -474,16 +563,20 @@ function clearStuckRoute(squad: Squad): void {
 function toAi(world: World, unit: Squad): AiUnit {
   return {
     id: unit.id, position: { x: unit.x, y: unit.y }, health: unit.hp, maxHealth: unit.maxHp,
-    attackRange: ATTACK_RANGE, sightRange: world.rules.visionRadius + UNIT_STATS[unit.kind].visionBonus,
+    // Diego's AI measures Manhattan distance; a diagonal neighbour is 2 on sector maps.
+    attackRange: world.surface ? 2 : ATTACK_RANGE, sightRange: world.rules.visionRadius + UNIT_STATS[unit.kind].visionBonus,
   };
 }
 function enemyScene(world: World): EnemyScene {
   const units = world.squads.filter((unit) => unit.ownerId === 'p2' && unit.hp > 0);
   const patrolByUnit: Record<string, Position[]> = {};
   const retreatByUnit: Record<string, Position> = {};
+  const goals = world.economy ? rivalGoals(world, 'p2', (target) => canSee(world, 'p2', target)) : new Map<string, Position>();
   for (const unit of units) {
     const base = world.players[unit.ownerId].base;
-    patrolByUnit[unit.id] = PATROL_OFFSETS
+    const goal = goals.get(unit.id);
+    // Without a strategic goal the ship keeps Diego's patrol around the base.
+    patrolByUnit[unit.id] = goal ? [goal] : PATROL_OFFSETS
       .map((offset) => ({ x: base.x + offset.x, y: base.y + offset.y }))
       .filter((cell) => cellOnBoard(world, cell));
     retreatByUnit[unit.id] = { ...base };
@@ -501,6 +594,19 @@ export function planTrainingEnemy(world: World, memories: ReadonlyMap<string, Ai
   orders: readonly AiOrder[];
 } {
   return planEnemyTurn(enemyScene(world), memories);
+}
+/** One full rival turn for an empty p2 seat: hangar order, then fleet orders. */
+export function runTrainingRival(world: World, memories: ReadonlyMap<string, AiMemory>): {
+  world: World; memories: ReadonlyMap<string, AiMemory>;
+} {
+  let next = world;
+  const kind = world.economy ? rivalProduction(world, 'p2') : null;
+  if (kind) {
+    next = cloneWorld(world);
+    startProduction(next, 'p2', kind);
+  }
+  const planned = planTrainingEnemy(next, memories);
+  return { world: applyEnemyOrders(next, planned.orders), memories: planned.memories };
 }
 /** Applies rival orders without touching player sequence numbers. */
 export function applyEnemyOrders(world: World, orders: readonly AiOrder[]): World {

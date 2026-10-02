@@ -1,5 +1,5 @@
 import { Room, type Client } from '@colyseus/core';
-import { createSectorWorld, applyCommand, applyEnemyOrders, planTrainingEnemy, stepWorld, type AiMemory, type PlayerId } from '@impulso/sim';
+import { createSectorWorld, applyCommand, runTrainingRival, stepWorld, type AiMemory, type PlayerId } from '@impulso/sim';
 import { viewFor } from '@impulso/state';
 
 export class TrainingRoom extends Room {
@@ -26,9 +26,9 @@ export class TrainingRoom extends Room {
     });
     this.setSimulationInterval(() => {
       if (!this.usedSeats.has('p2')) {
-        const planned = planTrainingEnemy(this.world, this.enemyMemory);
-        this.enemyMemory = new Map(planned.memories);
-        this.world = applyEnemyOrders(this.world, planned.orders);
+        const rival = runTrainingRival(this.world, this.enemyMemory);
+        this.enemyMemory = new Map(rival.memories);
+        this.world = rival.world;
       }
       this.world = stepWorld(this.world);
       for (const client of this.clients) {

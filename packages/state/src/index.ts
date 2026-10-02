@@ -21,7 +21,8 @@ export interface PlayerView {
   walkable?: boolean[];
   level?: number[];
   rules: Rules;
-  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number }>;
+  /** Metal and the hangar queue are private to their owner. */
+  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; production?: { kind: UnitKind; remainingTicks: number } | null }>;
   squads: VisibleSquad[];
   guardians: Guardian[];
   nodes: ResourceNode[];
@@ -47,6 +48,8 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     p2: { id: 'p2', base: { ...world.players.p2.base } },
   };
   players[playerId].metal = world.players[playerId].metal;
+  const order = world.production[playerId];
+  players[playerId].production = order ? { kind: order.kind, remainingTicks: Math.max(0, order.readyTick - world.tick) } : null;
   return {
     schemaVersion: 1, mode: 'training', tick: world.tick, playerId,
     width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })),

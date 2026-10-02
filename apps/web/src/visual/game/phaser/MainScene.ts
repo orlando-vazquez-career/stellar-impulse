@@ -20,6 +20,8 @@ const color = {
   blueLight: 0x83d4ff,
   red: 0xff4f64,
   redLight: 0xff9ba7,
+  neutral: 0xf2b84b,
+  neutralLight: 0xf7d774,
   core: 0xf7e77c,
   panel: 0x131d2d,
 };
@@ -58,6 +60,8 @@ export class MainScene extends Phaser.Scene {
   private route?: Phaser.GameObjects.Graphics;
   private selectionBox?: Phaser.GameObjects.Graphics;
   private core?: Phaser.GameObjects.Graphics;
+  private nodeMarks?: Phaser.GameObjects.Graphics;
+  private created = false;
   private readonly unitVisuals = new Map<string, UnitVisual>();
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private movementKeys?: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
@@ -97,11 +101,14 @@ export class MainScene extends Phaser.Scene {
     }
     this.scale.refresh();
     this.cameras.main.setBackgroundColor(color.background);
-    this.cameras.main.setBounds(0, 0, ISO_WORLD_WIDTH, ISO_WORLD_HEIGHT);
+    // Margin so a base on the map edge can still be centred below the HUD panels.
+    const margin = 360;
+    this.cameras.main.setBounds(-margin, -margin, ISO_WORLD_WIDTH + margin * 2, ISO_WORLD_HEIGHT + margin * 2);
     this.terrain = this.add.graphics().setDepth(0);
     this.route = this.add.graphics().setDepth(20000);
     this.selectionBox = this.add.graphics().setScrollFactor(0).setDepth(30000);
     this.core = this.add.graphics().setDepth(20001);
+    this.nodeMarks = this.add.graphics().setDepth(15000);
     this.drawTerrain();
     this.drawCore();
     this.renderSnapshot();
@@ -111,6 +118,7 @@ export class MainScene extends Phaser.Scene {
     window.addEventListener('pointermove', onPointerMove);
     this.resetCamera();
     this.refreshCameraView();
+    this.created = true;
     this.onReady();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.refreshCameraView, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -144,13 +152,19 @@ export class MainScene extends Phaser.Scene {
 
   resetCamera() {
     this.cameras.main.setZoom(1);
-    this.centerOnCell(CORE_CELL.x, CORE_CELL.y);
-  }
-
-  centerOnCell(x: number, y: number) {
-    const cell = cellToIso(Phaser.Math.Clamp(x, 0, GRID_COLUMNS - 1), Phaser.Math.Clamp(y, 0, GRID_ROWS - 1));
+    const cell = cellToIso(CORE_CELL.x, CORE_CELL.y);
     this.cameras.main.centerOn(cell.x, cell.y);
     this.refreshCameraView();
+  }
+
+  /** False until Phaser has created the camera; callers may retry. */
+  centerOnCell(x: number, y: number): boolean {
+    const camera = this.cameras?.main;
+    if (!camera || !this.created) return false;
+    const cell = cellToIso(Phaser.Math.Clamp(x, 0, GRID_COLUMNS - 1), Phaser.Math.Clamp(y, 0, GRID_ROWS - 1));
+    camera.centerOn(cell.x, cell.y);
+    this.refreshCameraView();
+    return true;
   }
 
   private refreshCameraView() {
@@ -206,8 +220,27 @@ export class MainScene extends Phaser.Scene {
   }
 
 
+  /** Resource nodes: a ring in the owner's colour (grey while unclaimed); Metal nodes carry a diamond. */
+  private drawNodes() {
+    const graphics = this.nodeMarks;
+    if (!graphics) return;
+    graphics.clear();
+    for (const node of this.snapshot.nodes) {
+      const center = cellToIso(node.x, node.y);
+      const hue = node.owner === 'blue' ? color.blue : node.owner === 'red' ? color.red : 0x8aa0b8;
+      graphics.lineStyle(2, hue, 0.9);
+      graphics.strokeEllipse(center.x, center.y + 9, 54, 27);
+      if (node.kind === 'metal') {
+        graphics.fillStyle(hue, 0.95);
+        graphics.fillPoints(polygon([{ x: center.x, y: center.y - 2 }, { x: center.x + 7, y: center.y + 9 },
+          { x: center.x, y: center.y + 20 }, { x: center.x - 7, y: center.y + 9 }]), true);
+      }
+    }
+  }
+
   private renderSnapshot() {
     this.drawCore();
+    this.drawNodes();
     this.drawRoute();
     const visible = new Set(this.snapshot.squads.filter((squad) => squad.visible).map((squad) => squad.id));
     for (const [id, visual] of this.unitVisuals) {
@@ -241,8 +274,9 @@ export class MainScene extends Phaser.Scene {
   private createUnit(squad: SquadViewModel): UnitVisual {
     const point = cellToIso(squad.gridX, squad.gridY);
     const allied = squad.owner === 'blue';
-    const primary = allied ? color.blue : color.red;
-    const light = allied ? color.blueLight : color.redLight;
+    const neutral = squad.owner === 'neutral';
+    const primary = allied ? color.blue : neutral ? color.neutral : color.red;
+    const light = allied ? color.blueLight : neutral ? color.neutralLight : color.redLight;
     const container = this.add.container(point.x, point.y).setDepth(16000 + point.y);
     const selection = this.add.graphics();
     selection.lineStyle(2, light, 0.98);
@@ -253,7 +287,7 @@ export class MainScene extends Phaser.Scene {
     shadow.fillStyle(0x020912, 0.7);
     shadow.fillEllipse(0, 13, 80, 30);
     const marker = this.add.graphics();
-    marker.fillStyle(allied ? 0xa4d8e5 : 0xe1a1a9, 1);
+    marker.fillStyle(allied ? 0xa4d8e5 : neutral ? 0xe6cf95 : 0xe1a1a9, 1);
     if (squad.unitType === 'interceptor') {
       marker.fillPoints(polygon([{ x: 0, y: -38 }, { x: 12, y: -1 }, { x: 34, y: 13 }, { x: 8, y: 8 },
         { x: 0, y: 17 }, { x: -8, y: 8 }, { x: -34, y: 13 }, { x: -12, y: -1 }]), true);
@@ -283,7 +317,7 @@ export class MainScene extends Phaser.Scene {
     hitFlash.fillCircle(0, -8, 28);
     hitFlash.setAlpha(0);
     const label = this.add.text(0, 31, squad.callSign.toUpperCase(), {
-      color: allied ? '#83d4ff' : '#ff9ba7', fontFamily: 'Rajdhani, sans-serif', fontSize: '15px', fontStyle: '600', letterSpacing: 2,
+      color: allied ? '#83d4ff' : neutral ? '#f7d774' : '#ff9ba7', fontFamily: 'Rajdhani, sans-serif', fontSize: '15px', fontStyle: '600', letterSpacing: 2,
     }).setOrigin(0.5, 0);
     const healthBack = this.add.rectangle(0, 51, 54, 4, color.grid).setOrigin(0.5);
     const health = this.add.rectangle(-27, 51, 54 * squad.healthPercent / 100, 4, squad.healthPercent > 35 ? 0x4ad69a : color.red).setOrigin(0, 0.5);
@@ -400,7 +434,7 @@ export class MainScene extends Phaser.Scene {
       }
       if (!pointer.rightButtonDown()) return;
       const enemy = over.map((object) => object.getData('unitId'))
-        .map((id) => this.snapshot.squads.find((squad) => squad.id === id && squad.owner === 'red' && squad.visible && squad.healthPercent > 0))
+        .map((id) => this.snapshot.squads.find((squad) => squad.id === id && squad.owner !== 'blue' && squad.visible && squad.healthPercent > 0))
         .find(Boolean);
       if (this.snapshot.selectedSquadIds.length && enemy && (this.snapshot.activeAction === null || this.snapshot.activeAction === 'attack')) {
         this.onAttackSelected(enemy.id);

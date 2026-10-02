@@ -49,7 +49,7 @@ test.describe('visual interface foundation', () => {
   });
 
   test('supports the guest flow and bilingual copy', async ({ page }) => {
-    await page.goto('/visual');
+    await page.goto('/visual?adapter=mock');
 
     await expect(page.getByRole('heading', { name: 'Toma el mando.' })).toBeVisible();
     await page.getByRole('button', { name: 'EN', exact: true }).click();
@@ -78,7 +78,7 @@ test.describe('visual interface foundation', () => {
 
   test('keeps HUD modules inside 1366×768 without overlap', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual');
+    await page.goto('/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -102,6 +102,7 @@ test.describe('visual interface foundation', () => {
 
     await page.getByLabel('Estoy listo para desplegar').check();
     await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await expect(page.locator('.vi-resources')).toBeVisible();
 
     const layout = await page.evaluate(() => {
       const selectors = ['.vi-resources', '.vi-sector-status', '.vi-top-controls', '.vi-minimap', '.vi-squad', '.vi-actions'];
@@ -151,7 +152,7 @@ test.describe('visual interface foundation', () => {
     const consoleErrors: string[] = [];
     page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual');
+    await page.goto('/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -205,7 +206,7 @@ test.describe('visual interface foundation', () => {
 
   test('pans the game camera with WASD without activating attack', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual');
+    await page.goto('/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -235,7 +236,7 @@ test.describe('visual interface foundation', () => {
 
   test('selects with left click and moves with right click', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual');
+    await page.goto('/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -273,7 +274,7 @@ test.describe('visual interface foundation', () => {
 
   test('selects several allied ships by dragging and orders them together', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual');
+    await page.goto('/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
@@ -303,12 +304,12 @@ test.describe('visual interface foundation', () => {
 
   test('shows the desktop-only warning below 1024 px', async ({ page }) => {
     await page.setViewportSize({ width: 1000, height: 800 });
-    await page.goto('/visual');
+    await page.goto('/visual?adapter=mock');
     await expect(page.getByRole('heading', { name: 'Resolución no compatible' })).toBeVisible();
   });
 
   test('supports the simulated join-room path', async ({ page }) => {
-    await page.goto('/visual');
+    await page.goto('/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Unirse a una sala/ }).click();
@@ -322,7 +323,7 @@ test.describe('visual interface foundation', () => {
 
   test('saves local control and accessibility settings', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual');
+    await page.goto('/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Ajustes/ }).click();
@@ -352,7 +353,7 @@ test.describe('visual interface foundation', () => {
 
   test('previews and saves a cosmetic-only hangar loadout', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
-    await page.goto('/visual');
+    await page.goto('/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await page.getByRole('button', { name: /Hangar/ }).click();

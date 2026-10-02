@@ -12,6 +12,15 @@ export interface MechanicsWorld {
   guardians: Guardian[];
   core: Core;
   level?: readonly number[];
+  /** Eight-way maps: a diagonal neighbour is also in weapons range. */
+  diagonalReach?: boolean;
+}
+
+/** Adjacent for combat: orthogonal only, or any of the eight neighbours on diagonal maps. */
+export function withinReach(world: Pick<MechanicsWorld, 'diagonalReach'>, a: { x: number; y: number }, b: { x: number; y: number }): boolean {
+  const dx = Math.abs(a.x - b.x);
+  const dy = Math.abs(a.y - b.y);
+  return world.diagonalReach ? Math.max(dx, dy) <= 1 : dx + dy <= 1;
 }
 
 export const guardianActive = (world: MechanicsWorld, guardian: Guardian): boolean =>
@@ -63,9 +72,10 @@ export function resolveCombat(world: MechanicsWorld): void {
   const hit = (id: string, damage: number): void => { hits.set(id, (hits.get(id) ?? 0) + damage); };
   for (const squad of squads) {
     if (UNIT_STATS[squad.kind].damage <= 0) continue;
-    const inRange = index.queryManhattan(squad, 1)
+    const inRange = index.queryManhattan(squad, world.diagonalReach ? 2 : 1)
       .map((point) => byId.get(point.id)!)
-      .filter((unit) => unit.id !== squad.id && (!('ownerId' in unit) || unit.ownerId !== squad.ownerId));
+      .filter((unit) => unit.id !== squad.id && withinReach(world, squad, unit)
+        && (!('ownerId' in unit) || unit.ownerId !== squad.ownerId));
     const target = inRange.find((unit) => unit.id === squad.attackTargetId) ?? inRange[0];
     if (target) hit(target.id, heightDamage({
       world, attacker: squad, defender: target,
@@ -73,9 +83,9 @@ export function resolveCombat(world: MechanicsWorld): void {
     }));
   }
   for (const guardian of guardians) {
-    const target = index.queryManhattan(guardian, 1)
+    const target = index.queryManhattan(guardian, world.diagonalReach ? 2 : 1)
       .map((point) => byId.get(point.id)!)
-      .find((unit) => 'ownerId' in unit && unit.hp > 0);
+      .find((unit) => 'ownerId' in unit && unit.hp > 0 && withinReach(world, guardian, unit));
     if (target) hit(target.id, heightDamage({ world, damage: guardian.damage, attacker: guardian, defender: target }));
   }
   for (const unit of [...world.squads, ...world.guardians]) unit.hp = Math.max(0, unit.hp - (hits.get(unit.id) ?? 0));

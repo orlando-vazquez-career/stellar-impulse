@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { UNIT_STATS } from '@impulso/state';
+import { UNIT_COSTS } from '@impulso/sim';
 import { useI18n } from '../i18n';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { Panel } from '../shared/Panel';
@@ -145,6 +146,38 @@ function ActionHud({ view, adapter, controls }: { view: GameplayViewModel; adapt
   </Panel>;
 }
 
+const PRODUCTION_ORDER = [
+  { kind: 'interceptor', key: '1' }, { kind: 'frigate', key: '2' }, { kind: 'bomber', key: '3' }, { kind: 'explorer', key: '4' },
+] as const;
+
+/** Base hangar: one ship at a time, paid in Metal. Hidden in the offline mock. */
+function ProductionHud({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
+  const { t } = useI18n();
+  if (view.connection === 'local') return null;
+  const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
+  const full = view.resources.fleet >= view.resources.fleetCap;
+  return <Panel className="vi-production"><span className="vi-actions__label">Hangar</span>
+    {view.production
+      ? <p className="vi-production__queue">{unitNames[view.production.kind]} · {view.production.remainingSeconds} s</p>
+      : <p className="vi-production__queue">{full ? 'Flota completa' : 'Listo para construir'}</p>}
+    <div className="vi-production__list">
+      {PRODUCTION_ORDER.map(({ kind, key }) => {
+        const cost = UNIT_COSTS[kind];
+        const disabled = !!view.production || full || view.resources.metal < cost || !!view.result;
+        return <button key={kind} disabled={disabled} onClick={() => adapter.dispatch({ type: 'produce', kind })}
+          title={`${unitNames[kind]} · ${cost} Metal`}>
+          <span>{unitNames[kind]}</span><small>{cost} M</small><kbd>{key}</kbd>
+        </button>;
+      })}
+    </div>
+  </Panel>;
+}
+
+function NoticeHud({ view }: { view: GameplayViewModel }) {
+  if (!view.notice) return null;
+  return <div className={`vi-notice vi-notice--${view.connection}`} role="status">{view.notice}</div>;
+}
+
 export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void }) {
   const { t } = useI18n();
   return <div className="vi-hud" aria-label={t('hud')}>
@@ -154,5 +187,7 @@ export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCame
     <Minimap view={view} cameraView={cameraView} onPanMap={onPanMap} />
     <SquadHud view={view} />
     <ActionHud view={view} adapter={adapter} controls={controls} />
+    <ProductionHud view={view} adapter={adapter} />
+    <NoticeHud view={view} />
   </div>;
 }
