@@ -88,7 +88,6 @@ export function LobbyScreen({ onOpenArena }: LobbyScreenProps) {
         <ModeList modes={MODES} activeId={lobby.modeId} hidden={lobby.entered} onPreview={preview} onEnter={enter} />
         <ModeDetail mode={mode} optionIndex={lobby.optionIndex} deployed={lobby.deployed} hidden={!lobby.entered} onBack={back} onPick={pick} onDeploy={deploy} />
         <div className="topbar">
-          <span>LOGIN</span>
           <SoundButton enabled={sound.enabled} onToggle={sound.toggle} />
           <AliasControl alias={alias} onSave={saveAlias} />
         </div>

@@ -18,11 +18,6 @@ interface LoginFormProps {
 
 const HOVER_PITCH = { pitch: 523 };
 
-/**
- * Formulario del canal de emergencia. Los nombres accesibles
- * ("Crear entrenamiento", "Código de sala", "Entrar") se mantienen
- * idénticos al flujo anterior para no romper las pruebas e2e.
- */
 export function LoginForm(props: LoginFormProps) {
   const { alias, busy, notice, ui, dispatch, onCreateTraining, onJoinRoom, onConnectWallet, chainStatus, chainBusy, onOpenAtlas } = props;
   const sound = useSpaceSound();
@@ -56,13 +51,10 @@ export function LoginForm(props: LoginFormProps) {
   return (
     <div className="li-form">
       <p className="li-eyebrow li-eyebrow--login">LOGIN</p>
-      <p className="li-channel">CANAL DE EMERGENCIA · SECTOR 00</p>
       <h1 className="li-title" data-text="IMPULSO STELLAR">IMPULSO STELLAR</h1>
-      <p className="li-subtitle">La nave cae. Tú sigues al mando.</p>
 
       <p className="li-alias">
         <span className="li-alias-label">Comandante</span>
-        <span className="li-alias-name">{alias || 'INVITADO'}</span>
       </p>
 
       <div className="li-actions">
@@ -110,7 +102,7 @@ export function LoginForm(props: LoginFormProps) {
 
       <p className="li-notice" role="status">{notice}</p>
       <p className="li-chain">{chainStatus}</p>
-      <p className="li-fineprint">Entrenamiento local · la wallet es opcional y nunca bloquea el vuelo.</p>
+      <p className="li-fineprint">Se parte de Stellar Impulse. Juega, gana, defiende.</p>
     </div>
   );
 }

@@ -30,7 +30,7 @@ function TrainingApp({ entry, onEntryDone, onOpenAtlas }: TrainingAppProps) {
   const [roomId, setRoomId] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('Entra como invitado. Tu primera misión: tomar el Núcleo.');
-  const [chainStatus, setChainStatus] = useState('Testnet · sin consultar');
+  const [chainStatus, setChainStatus] = useState('Testnet · ');
   const [wallet, setWallet] = useState('');
   const [chainBusy, setChainBusy] = useState(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; void room.current?.leave(); }; }, []);
@@ -99,7 +99,7 @@ function TrainingApp({ entry, onEntryDone, onOpenAtlas }: TrainingAppProps) {
   const elapsed = view ? Math.floor(view.tick / 10) : 0;
   const remaining = view ? Math.max(0, (view.rules.coreOpenTick - view.tick) / 10) : 20;
   return <div className="shell">
-    <header className="masthead"><a className="brand" href="/" aria-label="Impulso Stellar, inicio"><span className="brand-mark" aria-hidden="true">⟐</span><span>IMPULSO<small>STELLAR</small></span></a><div className="header-note">La estrategia se gana.<br/><strong>El poder no se compra.</strong></div><Status tone={roomId ? 'good' : 'neutral'}>{roomId ? 'Sala activa' : 'Prototipo inicial'}</Status></header>
+    <header className="masthead"><a className="brand" href="/" aria-label="Impulso Stellar, inicio"><span className="brand-mark" aria-hidden="true">⟐</span><span>IMPULSO<small>STELLAR</small></span></a><div className="header-note">La estrategia se gana.<br /><strong>El poder no se compra.</strong></div><Status tone={roomId ? 'good' : 'neutral'}>{roomId ? 'Sala activa' : 'Prototipo inicial'}</Status></header>
     <main>
       <section className="intro"><div><p className="eyebrow">Simulador de entrenamiento</p><h1>Tu flota. Tu decisión.</h1><p>Explora el sector, vence a sus guardianes y toma el Núcleo.</p></div><div className="sector-badge"><span>00</span><div>Sector de práctica<small>Un escenario · sin fondos reales</small></div></div></section>
       <div className="command-bar"><span className="coordinate">Sector 00 / Órbita de preparación</span><div className="resources"><span>Metal <b>{view?.players[view.playerId].metal ?? 0}</b></span><span>Tiempo <b>{String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}</b></span></div></div>
@@ -115,12 +115,12 @@ function TrainingApp({ entry, onEntryDone, onOpenAtlas }: TrainingAppProps) {
         <aside className="tactical-panel"><div className="panel-title"><h2>Plan de vuelo</h2><span>Entrenamiento</span></div>
           <ol className="objectives"><li><span>01</span><div><strong>Explora y toma Metal</strong><p>Acércate al nodo y derrota al guardián.</p></div></li><li><span>02</span><div><strong>Prepara la captura</strong><p>{view?.core.open ? 'El escudo está abierto. Elimina al guardián central.' : `El escudo se abre ${view ? 'en ' : 'a los '}${Math.ceil(remaining)} segundos.`}</p></div></li><li><span>03</span><div><strong>Defiende el Núcleo</strong><p>Mantén presencia exclusiva durante 8 segundos.</p></div></li></ol>
           <div className="squad-panel"><h3>Escuadrón seleccionado</h3><strong>{squad ? { explorer: 'Explorador', interceptor: 'Interceptor', frigate: 'Fragata', bomber: 'Bombardero' }[squad.kind] : 'Esperando despliegue'}</strong><p>{squad ? `Integridad ${squad.hp}/${squad.maxHp} · Posición ${squad.x}, ${squad.y}` : 'Una flota pequeña. Una decisión a la vez.'}</p><div className="order-buttons"><button disabled={!squad || squad.hp <= 0 || !!view?.winner} onClick={() => move(4, 4)}>Ir al nodo</button><button disabled={!squad || squad.hp <= 0 || !!view?.winner} onClick={() => { if (view) move(view.core.x, view.core.y); }}>Ir al Núcleo</button></div></div>
-          {view && <div className="capture"><label htmlFor="capture">Control del Núcleo</label><progress id="capture" value={view.core.progress[view.playerId]} max={view.rules.coreCaptureTicks}/></div>}
+          {view && <div className="capture"><label htmlFor="capture">Control del Núcleo</label><progress id="capture" value={view.core.progress[view.playerId]} max={view.rules.coreCaptureTicks} /></div>}
           <p className="notice" role="status">{notice}</p>
         </aside>
       </div>
       <section className="bottom-grid"><div className="session"><h2>Vuela acompañado</h2>{roomId ? <><p>Código de sala: <strong data-testid="room-code">{roomId}</strong></p><button onClick={() => void room.current?.leave()}>Salir de la sala</button></> : <p className="fineprint">Crea una sala o únete con un código desde la consola de acceso.</p>}<p className="fineprint">Entrenamiento efímero. Bot, reconexión y campaña completa están en desarrollo.</p></div>
-      <div className="network"><h2>Conexión Stellar</h2><p className="chain-message" role="status">{chainStatus}</p>{wallet && <p className="wallet-address" title={wallet}>{wallet.slice(0, 8)}…{wallet.slice(-8)} <button onClick={() => { setWallet(''); setChainStatus('Wallet desconectada de esta vista'); }}>Desconectar</button></p>}<div className="order-buttons"><button disabled={chainBusy} onClick={() => void queryChain()}>Comprobar red</button><button disabled={chainBusy} onClick={() => void queryChain(true)}>Conectar Freighter</button></div><p className="fineprint">Opcional para jugar. Conectar comparte tu dirección; no firma compras ni inicia sesión.</p></div></section>
+        <div className="network"><h2>Conexión Stellar</h2><p className="chain-message" role="status">{chainStatus}</p>{wallet && <p className="wallet-address" title={wallet}>{wallet.slice(0, 8)}…{wallet.slice(-8)} <button onClick={() => { setWallet(''); setChainStatus('Wallet desconectada de esta vista'); }}>Desconectar</button></p>}<div className="order-buttons"><button disabled={chainBusy} onClick={() => void queryChain()}>Comprobar red</button><button disabled={chainBusy} onClick={() => void queryChain(true)}>Conectar Freighter</button></div><p className="fineprint">Opcional para jugar. Conectar comparte tu dirección; no firma compras ni inicia sesión.</p></div></section>
     </main><footer><span>Impulso Stellar · Base inicial v0.1</span><span>Cosméticos sin ventajas. Estrategia sin atajos.</span></footer>
     {!view && <LoginScreen
       alias={readPilotAlias() || 'INVITADO'}
@@ -140,7 +140,7 @@ const visualRoute = window.location.pathname === '/visual' || window.location.pa
 function App() {
   const [screen, setScreen] = useState<'login' | 'lobby' | 'training'>('login');
   const [entry, setEntry] = useState<LoginEntry>(null);
-  const [gateChainStatus, setGateChainStatus] = useState('Testnet · sin consultar');
+  const [gateChainStatus, setGateChainStatus] = useState('Testnet - Stellar');
   const [gateChainBusy, setGateChainBusy] = useState(false);
 
   async function gateWallet() {
@@ -162,7 +162,7 @@ function App() {
   return <LoginScreen
     alias={readPilotAlias() || 'INVITADO'}
     busy={false}
-    notice="Acceso directo al entrenamiento o explora el atlas de mando."
+    notice=""
     onCreateTraining={() => { setEntry({ type: 'create' }); setScreen('training'); }}
     onJoinRoom={(code) => { setEntry({ type: 'join', code }); setScreen('training'); }}
     onConnectWallet={() => void gateWallet()}
