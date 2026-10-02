@@ -1,0 +1,385 @@
+/* Login "señal perdida": consola-holograma cyberpunk con vibración
+ * constante y ráfagas de glitch. Colores tomados de docs/design.md. */
+
+.li-viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  background: #03070c;
+}
+
+.li-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ---------- Panel holograma ---------- */
+
+.li-panel-wrap {
+  position: absolute;
+  top: 50%;
+  right: clamp(24px, 6vw, 110px);
+  transform: translateY(-50%);
+  width: min(392px, calc(100vw - 48px));
+}
+
+.li-panel {
+  position: relative;
+  padding: 34px 34px 26px;
+  background: linear-gradient(160deg, rgba(8, 19, 31, 0.92), rgba(5, 12, 20, 0.86));
+  border: 1px solid rgba(113, 229, 220, 0.38);
+  box-shadow:
+    0 0 42px rgba(113, 229, 220, 0.12),
+    inset 0 0 34px rgba(113, 229, 220, 0.05);
+}
+
+/* La vibración constante vive solo en las capas decorativas (::before/::after):
+ * el contenedor y sus botones deben permanecer estables para clics y teclado. */
+
+/* Esquinas de mira tipo HUD. */
+.li-panel::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  background:
+    linear-gradient(#71e5dc, #71e5dc) top left / 18px 2px,
+    linear-gradient(#71e5dc, #71e5dc) top left / 2px 18px,
+    linear-gradient(#71e5dc, #71e5dc) top right / 18px 2px,
+    linear-gradient(#71e5dc, #71e5dc) top right / 2px 18px,
+    linear-gradient(#71e5dc, #71e5dc) bottom left / 18px 2px,
+    linear-gradient(#71e5dc, #71e5dc) bottom left / 2px 18px,
+    linear-gradient(#71e5dc, #71e5dc) bottom right / 18px 2px,
+    linear-gradient(#71e5dc, #71e5dc) bottom right / 2px 18px;
+  background-repeat: no-repeat;
+  opacity: 0.85;
+  /* Vibración de transmisión inestable, siempre activa. */
+  animation: li-jitter 0.16s steps(2, end) infinite;
+}
+
+/* Scanlines del holograma. */
+.li-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(113, 229, 220, 0.045) 0 1px,
+    transparent 1px 3px
+  );
+  mix-blend-mode: screen;
+  animation: li-scan-drift 9s linear infinite;
+}
+
+/* Ráfaga de glitch (la activa GlitchPanel por ráfagas cortas). */
+.li-panel.is-glitching {
+  animation: li-glitch 0.12s steps(2, end) infinite;
+  border-color: rgba(113, 229, 220, 0.7);
+}
+
+.li-panel.is-glitching .li-title {
+  text-shadow:
+    -3px 0 rgba(255, 45, 120, 0.8),
+    3px 0 rgba(0, 255, 240, 0.8);
+}
+
+.li-panel.is-glitching .li-form > *:nth-child(odd) {
+  transform: translateX(1.5px);
+}
+
+.li-panel.is-glitching .li-form > *:nth-child(even) {
+  transform: translateX(-1px);
+}
+
+@keyframes li-jitter {
+  0% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0.6px, -0.4px, 0); }
+  100% { transform: translate3d(-0.5px, 0.4px, 0); }
+}
+
+@keyframes li-scan-drift {
+  from { background-position-y: 0; }
+  to { background-position-y: 120px; }
+}
+
+@keyframes li-glitch {
+  0% {
+    transform: translate3d(-2.5px, 1px, 0);
+    clip-path: polygon(0 0, 100% 0, 100% 34%, 0 34%, 0 38%, 100% 38%, 100% 100%, 0 100%);
+  }
+  33% {
+    transform: translate3d(2.5px, -1.5px, 0);
+    clip-path: polygon(0 0, 100% 0, 100% 62%, 0 62%, 0 67%, 100% 67%, 100% 100%, 0 100%);
+    opacity: 0.86;
+  }
+  66% {
+    transform: translate3d(-1px, 2px, 0);
+    clip-path: none;
+  }
+  100% {
+    transform: translate3d(1.5px, -1px, 0);
+    clip-path: polygon(0 12%, 100% 12%, 100% 88%, 0 88%);
+  }
+}
+
+/* ---------- Contenido ---------- */
+
+.li-form {
+  position: relative;
+  z-index: 1;
+}
+
+.li-eyebrow {
+  color: #71e5dc;
+  font-size: 11px;
+  letter-spacing: 3px;
+  margin: 0 0 10px;
+  opacity: 0.9;
+}
+
+.li-eyebrow--login {
+  display: inline-block;
+  margin: 0;
+  padding: 4px 12px;
+  border: 1px solid rgba(113, 229, 220, 0.55);
+  color: #a3f6ee;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 6px;
+  text-shadow: 0 0 12px rgba(113, 229, 220, 0.8);
+  box-shadow: 0 0 14px rgba(113, 229, 220, 0.18), inset 0 0 10px rgba(113, 229, 220, 0.08);
+}
+
+.li-channel {
+  color: #7593a8;
+  font-size: 10px;
+  letter-spacing: 2.5px;
+  margin: 8px 0 10px;
+}
+
+.li-title {
+  color: #edf4f8;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 5px;
+  line-height: 1.15;
+  margin: 0;
+  text-shadow:
+    -1px 0 rgba(255, 45, 120, 0.28),
+    1px 0 rgba(0, 255, 240, 0.3),
+    0 0 22px rgba(113, 229, 220, 0.35);
+  /* Parpadeo tenue de señal: mueve luz, no cajas. */
+  animation: li-signal-flicker 4.2s linear infinite;
+}
+
+@keyframes li-signal-flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.72; }
+  94% { opacity: 1; }
+  96% { opacity: 0.85; }
+  97% { opacity: 1; }
+}
+
+.li-subtitle {
+  color: #a8becd;
+  font-size: 13px;
+  margin: 10px 0 0;
+}
+
+.li-alias {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 20px 0 6px;
+  padding: 8px 12px;
+  border-left: 2px solid #f2cd79;
+  background: rgba(242, 205, 121, 0.06);
+}
+
+.li-alias-label {
+  color: #7593a8;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.li-alias-name {
+  color: #f2cd79;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.li-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.li-btn {
+  position: relative;
+  width: 100%;
+  padding: 13px 18px;
+  background: rgba(10, 26, 38, 0.85);
+  border: 1px solid rgba(113, 229, 220, 0.45);
+  border-radius: 2px;
+  color: #d8f6f1;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, transform 0.05s;
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+}
+
+.li-btn:hover:not(:disabled) {
+  background: rgba(16, 40, 56, 0.95);
+  border-color: #71e5dc;
+  box-shadow: 0 0 18px rgba(113, 229, 220, 0.35), inset 0 0 12px rgba(113, 229, 220, 0.12);
+  text-shadow: 0 0 8px rgba(113, 229, 220, 0.9);
+}
+
+.li-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.li-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.li-btn--primary {
+  background: linear-gradient(120deg, rgba(113, 229, 220, 0.22), rgba(113, 229, 220, 0.1));
+  border-color: #71e5dc;
+  color: #a3f6ee;
+}
+
+.li-btn--ghost {
+  border-color: rgba(118, 147, 168, 0.4);
+  color: #9db4c3;
+}
+
+.li-join {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed rgba(113, 229, 220, 0.3);
+  background: rgba(6, 14, 22, 0.6);
+}
+
+.li-join label {
+  color: #7593a8;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.li-join-row {
+  display: flex;
+  gap: 8px;
+}
+
+.li-join-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  background: rgba(4, 10, 16, 0.9);
+  border: 1px solid rgba(113, 229, 220, 0.35);
+  border-radius: 2px;
+  color: #edf4f8;
+  font: inherit;
+  letter-spacing: 1px;
+}
+
+.li-join-row input:focus-visible {
+  outline: 2px solid #f2cd79;
+  outline-offset: 2px;
+}
+
+.li-join-row .li-btn {
+  width: auto;
+  white-space: nowrap;
+}
+
+.li-atlas {
+  width: 100%;
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  color: #7593a8;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+  transition: color 0.15s, text-shadow 0.15s;
+}
+
+.li-atlas:hover:not(:disabled) {
+  color: #71e5dc;
+  text-shadow: 0 0 10px rgba(113, 229, 220, 0.7);
+}
+
+.li-atlas:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.li-notice {
+  min-height: 20px;
+  margin: 16px 0 0;
+  color: #f2cd79;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.li-chain {
+  margin: 8px 0 0;
+  color: #7593a8;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+.li-fineprint {
+  margin: 12px 0 0;
+  color: #4f6a7c;
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+}
+
+/* ---------- Responsive y accesibilidad ---------- */
+
+@media (max-width: 1100px) {
+  .li-panel-wrap {
+    right: 50%;
+    transform: translate(50%, -50%);
+  }
+}
+
+@media (max-width: 480px) {
+  .li-panel {
+    padding: 24px 20px 20px;
+  }
+  .li-title {
+    font-size: 20px;
+    letter-spacing: 3.5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .li-panel::before,
+  .li-panel::after,
+  .li-title,
+  .li-panel.is-glitching {
+    animation: none;
+  }
+}

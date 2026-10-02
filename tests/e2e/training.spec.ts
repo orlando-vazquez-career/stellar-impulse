@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function openTrainingArena(page: Page) {
   await page.goto('/');
+  await page.getByRole('button', { name: 'Atlas de mando' }).click();
   await page.locator('.panel--modes').getByRole('button', { name: 'Entrenamiento' }).click();
   await page.locator('.option-list').getByRole('button', { name: 'Un sector' }).click();
   await page.getByRole('button', { name: 'DESPLEGAR', exact: true }).click();
@@ -15,6 +16,7 @@ test('two browsers join, order a squad, and complete the training objective', as
   const second = await browser.newContext();
   const opponent = await second.newPage();
   await openTrainingArena(opponent);
+  await opponent.getByRole('button', { name: 'Unirse con código' }).click();
   await opponent.getByLabel('Código de sala').fill(code);
   await opponent.getByRole('button', { name: 'Entrar', exact: true }).click();
   await expect(opponent.getByTestId('room-code')).toHaveText(code);
