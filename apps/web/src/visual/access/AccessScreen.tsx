@@ -1,32 +1,41 @@
-import { useState, type FormEvent } from 'react';
-import { useI18n } from '../i18n';
-import { Brand } from '../shared/Brand';
-import { LanguageToggle } from '../shared/LanguageToggle';
+import { useState } from 'react';
+import { LoginScreen } from '../../login/LoginScreen';
 
-export function AccessScreen({ onContinue }: { onContinue(alias: string): void }) {
-  const { t } = useI18n();
+export interface AccessScreenProps {
+  onContinue: (alias: string) => void;
+  onCreateTraining?: (alias: string) => void;
+  onJoinRoom?: (code: string, alias: string) => void;
+}
+
+export function AccessScreen({ onContinue, onCreateTraining, onJoinRoom }: AccessScreenProps) {
   const [alias, setAlias] = useState('');
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const normalized = alias.trim();
-    if (normalized) onContinue(normalized);
-  };
-  return <main className="vi-access vi-screen">
-    <header className="vi-screen__header"><Brand /><LanguageToggle /></header>
-    <section className="vi-access__content">
-      <div className="vi-access__copy">
-        <p className="vi-eyebrow">{t('accessEyebrow')}</p>
-        <h1>{t('accessTitle')}</h1>
-        <p>{t('accessBody')}</p>
-      </div>
-      <form className="vi-access-card" onSubmit={submit}>
-        <div className="vi-access-card__status"><span aria-hidden="true" />{t('prototype')}</div>
-        <label htmlFor="commander-alias">{t('callsign')}</label>
-        <input id="commander-alias" value={alias} onChange={(event) => setAlias(event.target.value)} placeholder={t('callsignPlaceholder')} maxLength={24} autoComplete="off" autoFocus />
-        <button className="vi-primary" disabled={!alias.trim()}>{t('continueGuest')}<span aria-hidden="true">→</span></button>
-        <p className="vi-fineprint">{t('privacyNote')}</p>
-      </form>
-    </section>
-    <footer className="vi-screen__footer"><span>IMPULSO // UI FOUNDATION</span><span>v0.4 · TESTNET</span></footer>
-  </main>;
+  const [chainStatus, setChainStatus] = useState('Stellar Testnet');
+  const [chainBusy, setChainBusy] = useState(false);
+
+  async function handleConnectWallet() {
+    setChainBusy(true);
+    try {
+      const chain = await import('@impulso/chain');
+      const result = await chain.connectFreighterTestnet();
+      setChainStatus(`Wallet conectada · ${result.address.slice(0, 8)}…${result.address.slice(-8)}`);
+    } catch (error) {
+      setChainStatus(error instanceof Error ? error.message : 'No se pudo consultar la red.');
+    } finally {
+      setChainBusy(false);
+    }
+  }
+
+  return (
+    <LoginScreen
+      alias={alias}
+      onAliasChange={setAlias}
+      onContinueGuest={onContinue}
+      onCreateTraining={onCreateTraining ?? onContinue}
+      onJoinRoom={onJoinRoom}
+      onConnectWallet={() => void handleConnectWallet()}
+      chainStatus={chainStatus}
+      chainBusy={chainBusy}
+      onOpenAtlas={() => onContinue(alias.trim() || 'Vega')}
+    />
+  );
 }

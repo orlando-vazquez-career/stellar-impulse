@@ -58,7 +58,11 @@ function VisualPrototypeContent() {
   ].filter(Boolean).join(' ');
 
   return <div className={`visual-app ${accessibilityClasses}`} data-color-profile={preferences.accessibility.colorProfile}>
-    {screen === 'access' && <AccessScreen onContinue={(value) => { setAlias(value); setScreen('command'); }} />}
+    {screen === 'access' && <AccessScreen
+      onContinue={(value) => { setAlias(value); setScreen('command'); }}
+      onCreateTraining={(value) => { setAlias(value); setLobbyMode('create'); setScreen('lobby'); }}
+      onJoinRoom={(_code, value) => { setAlias(value); setLobbyMode('join'); setScreen('lobby'); }}
+    />}
     {screen === 'command' && <CommandCenter alias={alias} onCreateRoom={() => { setLobbyMode('create'); setScreen('lobby'); }} onJoinRoom={() => { setLobbyMode('join'); setScreen('lobby'); }} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => { setAlias(''); setScreen('access'); }} />}
     {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} onBack={() => setScreen('command')} onExploreMap={() => setScreen('map')} onDeploy={(chosen) => { setDifficulty(chosen); setScreen('gameplay'); }} />}
     {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}

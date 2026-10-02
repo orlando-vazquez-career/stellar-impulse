@@ -1,5 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import VisualPrototypeApp from './visual/VisualPrototypeApp';
+import './style.css';
 
-createRoot(document.getElementById('root')!).render(<StrictMode><VisualPrototypeApp /></StrictMode>);
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <VisualPrototypeApp />
+  </StrictMode>
+);

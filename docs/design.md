@@ -22,8 +22,18 @@ Marcas de base, guardianes y núcleo tienen siluetas diferentes.
 
 ## Flujo inicial
 
-Inicio → crear entrenamiento o introducir sala → seleccionar escuadrón → ordenar destino →
-observar combate automático → capturar → resultado → nueva sala.
+Inicio → **login "señal perdida"** (puerta de entrada) → entrenamiento directo, unirse con
+código, o pasar al atlas de mando → modo entrenamiento → crear sala o unirse con código →
+seleccionar escuadrón → ordenar destino → observar combate automático → capturar →
+resultado → nueva sala.
+
+El login es una escena procedural a viewport completo: una nave capital partida en dos
+arde en primer plano (fuegos con parpadeo, columnas de humo, chispas y micro-explosiones
+ocasionales) mientras el cinturón de asteroides cruza detrás en paralaje con el cursor.
+El panel es una consola-holograma cyberpunk que vibra y sufre ráfagas de glitch, como
+una transmisión perdiendo señal. Determinista (semilla fija), pausa en pestaña oculta y
+con `prefers-reduced-motion` se congela en un único frame. La música se monta aparte:
+basta soltar `public/audio/login-theme.mp3` y arranca con el primer gesto del usuario.
 
 Wallet es opcional y aparece fuera del área de órdenes. Consulta de red y conexión muestran
 cargando, éxito, error y red incorrecta. La ausencia de wallet nunca bloquea jugar.
@@ -48,3 +58,9 @@ Son metas; medirlas en equipo de referencia antes de declararlas cumplidas.
 Los gráficos de esta base son procedurales, sin recursos externos ni copias del material
 de inspiración. Ismael reemplazará siluetas y efectos con assets de licencia documentada.
 Cosméticos deben preservar colores de equipo, siluetas, radios y avisos.
+
+La escena del login (`apps/web/src/login/scene`) sigue la misma regla: cascos, asteroides,
+fuego, humo y grano son procedurales sobre Canvas 2D, sembrados con `createRng(20260930)`,
+y reutiliza los starfields del atlas como capa de cielo con opacidad baja. Cada sistema
+visual es un módulo independiente (fondo, asteroides, nave, post-proceso) para poder
+sustituirlo por sprites con licencia sin tocar los demás.
