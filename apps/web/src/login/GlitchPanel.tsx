@@ -20,11 +20,11 @@ export function GlitchPanel({ children }: { children: ReactNode }) {
         element.classList.add('is-glitching');
         releaseTimer = window.setTimeout(() => {
           element.classList.remove('is-glitching');
-          schedule(2800 + Math.random() * 4200);
-        }, 180 + Math.random() * 280);
+          schedule(5000);
+        }, 600);
       }, delay);
     };
-    schedule(1600 + Math.random() * 2200);
+    schedule(2500);
     return () => {
       window.clearTimeout(burstTimer);
       window.clearTimeout(releaseTimer);
