@@ -195,6 +195,7 @@
 .vi-phaser__status span { color: var(--vi-muted); font-size: 12px; }
 .vi-phaser__error { position: absolute; z-index: 4; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 12px 16px; border: 1px solid var(--vi-red); color: #ff9ba7; background: #080e18; }
 .vi-phaser__order { position: absolute; z-index: 3; top: 151px; left: 20px; padding: 8px 11px; border: 1px solid rgb(54 169 255 / 65%); color: var(--vi-blue-light); font-family: var(--vi-display); font-size: 14px; font-weight: 600; letter-spacing: .03em; pointer-events: none; background: rgb(7 11 20 / 86%); }
+.vi-command-feedback { position: absolute; z-index: 6; top: 151px; left: 20px; max-width: 360px; padding: 8px 11px; border: 1px solid rgb(255 79 100 / 72%); color: #ffb0ba; font-family: var(--vi-display); font-size: 14px; font-weight: 600; background: rgb(7 11 20 / 90%); }
 
 .vi-hud { position: absolute; z-index: 5; inset: 0; pointer-events: none; }
 .vi-hud button, .vi-hud input, .vi-hud select, .vi-hud .vi-panel { pointer-events: auto; }

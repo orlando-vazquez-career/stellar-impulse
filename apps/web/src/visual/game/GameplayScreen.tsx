@@ -2,19 +2,24 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalSt
 import { DevelopmentControls } from './DevelopmentControls';
 import { Hud } from './Hud';
 import { createMockGameplayAdapter } from './mock-adapter';
+import { createNetworkGameplayAdapter, type NetworkGameplayAdapter } from './network-adapter';
 import type { VisualPreferences } from '../settings/preferences';
 import type { CameraView } from './model';
 import type { PhaserBattlefieldHandle } from './phaser/PhaserBattlefield';
 
 const PhaserBattlefield = lazy(() => import('./phaser/PhaserBattlefield').then((module) => ({ default: module.PhaserBattlefield })));
 
-export function GameplayScreen({ preferences, onLeave }: { preferences: VisualPreferences; onLeave(): void }) {
-  const adapter = useMemo(() => createMockGameplayAdapter(), []);
+export function GameplayScreen({ alias, mode, preferences, onLeave }: { alias: string; mode: 'local' | 'server'; preferences: VisualPreferences; onLeave(): void }) {
+  const adapter = useMemo(() => mode === 'server' ? createNetworkGameplayAdapter(alias) : createMockGameplayAdapter(), [alias, mode]);
   const view = useSyncExternalStore(adapter.subscribe, adapter.getSnapshot);
   const [developmentOpen, setDevelopmentOpen] = useState(false);
   const [cameraView, setCameraView] = useState<CameraView | null>(null);
   const battlefieldRef = useRef<PhaserBattlefieldHandle>(null);
   useEffect(() => () => adapter.destroy(), [adapter]);
+  useEffect(() => {
+    if (mode !== 'server') return;
+    void (adapter as NetworkGameplayAdapter).connect();
+  }, [adapter, mode]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
@@ -27,7 +32,7 @@ export function GameplayScreen({ preferences, onLeave }: { preferences: VisualPr
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [adapter, preferences.controls]);
-  return <main className="vi-gameplay vi-screen">
+  return <main className="vi-gameplay vi-screen" data-gameplay-mode={mode}>
     <Suspense fallback={<div className="vi-phaser" aria-busy="true" />}>
       <PhaserBattlefield ref={battlefieldRef} view={view}
         onSelectSquads={(squadIds) => adapter.dispatch({ type: 'select-squads', squadIds })}

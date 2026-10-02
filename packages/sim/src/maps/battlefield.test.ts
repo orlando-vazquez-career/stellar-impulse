@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BATTLEFIELD_MAP } from './battlefield.js';
+import { BATTLEFIELD_MAP, SECTOR_01_BATTLEFIELD_MAP } from './battlefield.js';
+import { SECTOR_01 } from '../mapas/sector-01.js';
+import { findPath } from './pathfinding.js';
 import { defineMapSpec, type MapSpec } from './types.js';
 import { parseTiledJson } from './tiled.js';
 
@@ -34,6 +36,14 @@ describe('map catalog contract', () => {
       walkable: tiled.walkable, opaque: tiled.opaque });
     expect(map.walkable).toEqual([true, true, false, true]);
     expect(map.opaque).toEqual([false, false, true, false]);
+  });
+
+  it('keeps Sector 01 elevation and ramp rules in the authoritative map', () => {
+    expect(SECTOR_01_BATTLEFIELD_MAP.level).toEqual(SECTOR_01.level);
+    expect(SECTOR_01_BATTLEFIELD_MAP.ramp).toEqual(SECTOR_01.ramp);
+    const result = findPath(SECTOR_01_BATTLEFIELD_MAP, { x: 12, y: 11 }, { x: 12, y: 12 });
+    expect(result.status).toBe('found');
+    expect(result.status === 'found' ? result.path[0] : null).not.toEqual({ x: 12, y: 12 });
   });
 
   it('copies and deeply freezes catalog content', () => {

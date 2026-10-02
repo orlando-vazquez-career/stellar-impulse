@@ -8,6 +8,8 @@ import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEI
 const GRID_COLUMNS = sectorMap.width;
 const GRID_ROWS = sectorMap.height;
 const CORE_CELL = sectorSurface.core;
+const LOCAL_RENDER_STEP_MS = 50;
+const AUTHORITATIVE_RENDER_STEP_MS = 300;
 
 const color = {
   background: 0x080e18,
@@ -66,6 +68,7 @@ export class MainScene extends Phaser.Scene {
   private hoverPoint: GridPoint | null = null;
   private lastCameraView = '';
   private pointerOnCanvas = false;
+  private movementTweenMs = LOCAL_RENDER_STEP_MS;
 
   constructor(
     snapshot: GameplayViewModel,
@@ -137,6 +140,8 @@ export class MainScene extends Phaser.Scene {
   }
 
   sync(snapshot: GameplayViewModel) {
+    if (snapshot.tick > this.snapshot.tick) this.movementTweenMs = AUTHORITATIVE_RENDER_STEP_MS;
+    else if (snapshot.tick < this.snapshot.tick) this.movementTweenMs = LOCAL_RENDER_STEP_MS;
     this.snapshot = snapshot;
     if (snapshot.activeAction !== null && snapshot.activeAction !== 'move') this.hoverPoint = null;
     if (this.sys.isActive()) this.renderSnapshot();
@@ -233,7 +238,7 @@ export class MainScene extends Phaser.Scene {
       const point = cellToIso(squad.gridX, squad.gridY);
       visual.hull.rotation = Math.atan2(point.y - previous.y, point.x - previous.x) + Math.PI / 2;
       this.tweens.killTweensOf(visual.container);
-      this.tweens.add({ targets: visual.container, x: point.x, y: point.y, duration: 50, ease: 'Linear' });
+      this.tweens.add({ targets: visual.container, x: point.x, y: point.y, duration: this.movementTweenMs, ease: 'Linear' });
       visual.container.setDepth(16000 + point.y);
     }
   }

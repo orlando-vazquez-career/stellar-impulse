@@ -12,6 +12,11 @@ export interface AttackCommand {
   squadId: string;
   targetId: string;
 }
+export interface StopCommand {
+  seq: number;
+  type: 'stop';
+  squadId: string;
+}
 export interface EnqueueCommand {
   seq: number;
   type: 'enqueue';
@@ -25,7 +30,7 @@ export interface StanceCommand {
   squadId: string;
   stance: 'guard' | 'patrol' | 'attack';
 }
-export type Command = MoveCommand | AttackCommand | EnqueueCommand | StanceCommand;
+export type Command = MoveCommand | AttackCommand | StopCommand | EnqueueCommand | StanceCommand;
 export type ParseResult = { ok: true; command: Command } | { ok: false; reason: 'invalid_command' };
 
 /** Strict validation at the JSON boundary. No coercion or extra properties. */
@@ -38,6 +43,7 @@ export function parseCommand(value: unknown): ParseResult {
   const type: unknown = fields.type?.value;
   const expected = type === 'move' || type === 'enqueue' ? ['seq', 'type', 'squadId', 'x', 'y']
     : type === 'attack' ? ['seq', 'type', 'squadId', 'targetId']
+    : type === 'stop' ? ['seq', 'type', 'squadId']
     : type === 'stance' ? ['seq', 'type', 'squadId', 'stance'] : [];
   if (!expected.length || Reflect.ownKeys(value).length !== expected.length) return invalid;
   if (expected.some((key) => !fields[key] || !('value' in fields[key]))) return invalid;
@@ -55,6 +61,7 @@ export function parseCommand(value: unknown): ParseResult {
     if (typeof targetId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(targetId)) return invalid;
     return { ok: true, command: { seq, type, squadId, targetId } };
   }
+  if (type === 'stop') return { ok: true, command: { seq, type, squadId } };
   if (type !== 'move' && type !== 'enqueue') return invalid;
   const x: unknown = fields.x!.value;
   const y: unknown = fields.y!.value;

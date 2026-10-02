@@ -13,7 +13,14 @@ export interface StopCommand {
   squadIds: string[];
 }
 
-export type BattlefieldCommand = MoveGroupCommand | StopCommand;
+export interface AttackGroupCommand {
+  type: 'attack_group';
+  seq: number;
+  squadIds: string[];
+  targetId: string;
+}
+
+export type BattlefieldCommand = MoveGroupCommand | StopCommand | AttackGroupCommand;
 export type BattlefieldParseResult =
   | { ok: true; command: BattlefieldCommand }
   | { ok: false; reason: 'invalid_command' };
@@ -55,16 +62,21 @@ function squadIds(value: unknown): string[] | null {
 export function parseBattlefieldCommand(value: unknown): BattlefieldParseResult {
   try {
     const header = dataFields(value, ['type', 'seq', 'squadIds', 'x', 'y']) ??
+      dataFields(value, ['type', 'seq', 'squadIds', 'targetId']) ??
       dataFields(value, ['type', 'seq', 'squadIds']);
     if (!header) return INVALID;
     const { type, seq } = header;
-    if ((type !== 'move_group' && type !== 'stop') ||
+    if ((type !== 'move_group' && type !== 'stop' && type !== 'attack_group') ||
       typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 1) return INVALID;
     const ids = squadIds(header.squadIds);
     if (!ids) return INVALID;
     if (type === 'stop') {
       if ('x' in header || 'y' in header) return INVALID;
       return { ok: true, command: { type, seq, squadIds: ids } };
+    }
+    if (type === 'attack_group') {
+      if (typeof header.targetId !== 'string' || !SQUAD_ID.test(header.targetId)) return INVALID;
+      return { ok: true, command: { type, seq, squadIds: ids, targetId: header.targetId } };
     }
     const { x, y } = header;
     if (typeof x !== 'number' || !Number.isSafeInteger(x) || x < 0 ||

@@ -19,7 +19,7 @@ export { defineMapSpec, MAX_MAP_SIDE, MAX_MAP_CELLS } from './maps/types.js';
 export type { MapCell, MapObjective, MapSpec } from './maps/types.js';
 export { parseTiledJson, MAX_TILED_JSON_BYTES, MAX_TILED_LAYERS } from './maps/tiled.js';
 export type { TiledGrid } from './maps/tiled.js';
-export { BATTLEFIELD_MAP } from './maps/battlefield.js';
+export { BATTLEFIELD_MAP, SECTOR_01_BATTLEFIELD_MAP } from './maps/battlefield.js';
 export { applyBattlefieldCommand, stepBattlefieldWorld, cloneBattlefieldWorld } from './maps/world.js';
 export type { BattlefieldWorld, BattlefieldSquad, BattlefieldCommandResult, BattlefieldRejection } from './maps/world.js';
 
@@ -366,6 +366,9 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
       nextSquad.route = [];
       nextSquad.attackTargetId = command.targetId;
     });
+  }
+  if (command.type === 'stop') {
+    return commitOrder(world, playerId, command.seq, squad.id, (nextSquad) => holdGround(nextSquad));
   }
   if (command.type === 'stance') {
     return commitOrder(world, playerId, command.seq, squad.id, (nextSquad) => {

@@ -8,6 +8,43 @@ const unit = (id: string, x: number, y: number, next?: [number, number], ownerId
 const state = (...squads: OccupancySquad[]): OccupancyWorld => ({ map: grid, squads, guardians: [] });
 
 describe('simultaneous occupancy', () => {
+  it('advances a diagonal step when both corner cells are open', () => {
+    const world = state(unit('a', 0, 0, [1, 1]));
+    expect(advanceOccupancy(world)).toBe(1);
+    expect(world.squads[0]).toMatchObject({ x: 1, y: 1 });
+  });
+
+  it('rejects a diagonal step that cuts across a blocked corner', () => {
+    const blocked = { width: 3, height: 3, walkable: Array<boolean>(9).fill(true) };
+    blocked.walkable[1] = false;
+    const world: OccupancyWorld = { map: blocked, squads: [unit('a', 0, 0, [1, 1])], guardians: [] };
+    expect(advanceOccupancy(world)).toBe(0);
+    expect(world.squads[0]).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it('enforces authored elevation transitions during movement', () => {
+    const level = Array<number>(15).fill(0);
+    const ramp = Array<null | 'x+'>(15).fill(null);
+    level[1] = 1;
+    const map = { width: 5, height: 3, walkable: Array<boolean>(15).fill(true), level, ramp };
+    const blocked = state(unit('a', 0, 0, [1, 0]));
+    blocked.map = map;
+    expect(advanceOccupancy(blocked)).toBe(0);
+    ramp[0] = 'x+';
+    expect(advanceOccupancy(blocked)).toBe(1);
+  });
+
+  it('does not displace a settled ally across an unramped elevation boundary', () => {
+    const level = [0, 0, 1, 1];
+    const ramp = Array<null | 'x+'>(4).fill(null);
+    const world = state(unit('a', 0, 0, [1, 0]), unit('b', 1, 0));
+    world.squads[0]!.route.push({ x: 2, y: 0 });
+    world.squads[0]!.target = { x: 2, y: 0 };
+    world.map = { width: 4, height: 1, walkable: [true, true, true, true], level, ramp };
+    expect(advanceOccupancy(world)).toBe(2);
+    expect(world.squads.find(({ id }) => id === 'b')?.x).not.toBe(2);
+  });
+
   it('advances ally chains into a freed cell independent of input array order', () => {
     const first = state(unit('z', 0, 1, [1, 1]), unit('a', 1, 1, [2, 1]));
     const second = state(unit('a', 1, 1, [2, 1]), unit('z', 0, 1, [1, 1]));

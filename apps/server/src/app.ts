@@ -1,6 +1,7 @@
 import { defineServer, defineRoom, createRouter, createEndpoint } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { TrainingRoom } from './training-room';
+import { BattlefieldRoom } from './battlefield-room';
 import { campaignRoomWith } from './campaign-room';
 import type { CampaignConfig } from './campaign/machine';
 
@@ -23,6 +24,7 @@ export function createGameServer(options: GameServerOptions = {}) {
     greet: false,
     rooms: {
       training: defineRoom(TrainingRoom),
+      battlefield: defineRoom(BattlefieldRoom),
       campaign: defineRoom(campaignRoomWith(options.campaign ?? {})),
     },
     routes: createRouter({

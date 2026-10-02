@@ -30,6 +30,7 @@ const initialSnapshot: GameplayViewModel = {
   core: { state: 'locked', progress: 34, opensInSeconds: 88 },
   enemiesVisible: true,
   clockRunning: false,
+  feedback: null,
   squads: [
     {
       id: 'blue-alpha', callSign: 'Alpha', owner: 'blue', unitType: 'interceptor',
@@ -69,6 +70,7 @@ function cloneSnapshot(snapshot: GameplayViewModel): GameplayViewModel {
       ...squad,
       composition: { ...squad.composition },
     })),
+    feedback: snapshot.feedback,
   };
 }
 
@@ -216,6 +218,16 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
         };
       } else if (intent.type === 'set-action') {
         snapshot = { ...snapshot, activeAction: intent.action };
+      } else if (intent.type === 'hold-selected') {
+        const selected = selectedAllies();
+        for (const squad of selected) {
+          stopMovement(squad.id);
+          stopAttack(squad.id);
+          orders.delete(squad.id);
+        }
+        snapshot = { ...snapshot, activeAction: null, moveOrder: null,
+          squads: snapshot.squads.map((squad) => selected.some((unit) => unit.id === squad.id)
+            ? { ...squad, attackTargetId: null, status: 'holding' } : squad) };
       } else if (intent.type === 'move-squad') {
         if (snapshot.activeAction !== null && snapshot.activeAction !== 'move') return;
         const squad = snapshot.squads.find((candidate) => candidate.id === intent.squadId

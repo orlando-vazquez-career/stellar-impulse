@@ -28,7 +28,9 @@ export interface BattlefieldWorld {
 }
 
 export type BattlefieldRejection = 'invalid_command' | 'unknown_player' | 'match_finished' | 'stale_sequence'
-  | 'unit_unavailable' | 'out_of_bounds' | 'blocked' | 'unreachable' | 'budget_exceeded';
+  | 'unit_unavailable' | 'out_of_bounds' | 'blocked' | 'unreachable' | 'budget_exceeded'
+  | 'unknown_target' | 'friendly_target' | 'target_destroyed' | 'target_not_visible' | 'cannot_attack'
+  | 'target_unavailable';
 export type BattlefieldCommandResult =
   | { accepted: true; world: BattlefieldWorld; expansions: number }
   | { accepted: false; reason: BattlefieldRejection; world: BattlefieldWorld; expansions: number };
@@ -130,6 +132,12 @@ function destinations(map: MapSpec, goal: MapCell, count: number): MapCell[] {
   return selected;
 }
 
+function attackDestinations(map: MapSpec, target: MapCell, count: number): MapCell[] {
+  return destinations(map, target, count + 1)
+    .filter((cell) => cell.x !== target.x || cell.y !== target.y)
+    .slice(0, count);
+}
+
 /** All validations and routes complete before cloning or advancing sequence. */
 export function applyBattlefieldCommand(world: BattlefieldWorld, playerId: string, raw: unknown,
   remainingExpansions = 32768): BattlefieldCommandResult {
@@ -150,9 +158,60 @@ export function applyBattlefieldCommand(world: BattlefieldWorld, playerId: strin
   if (command.type === 'stop') {
     const next = cloneBattlefieldWorld(world);
     const ids = new Set(selected.map((unit) => unit.id));
-    for (const unit of next.squads) if (ids.has(unit.id)) { unit.route = []; unit.target = null; }
+    for (const unit of next.squads) if (ids.has(unit.id)) {
+      unit.route = [];
+      unit.target = null;
+      unit.attackTargetId = null;
+      unit.stance = 'guard';
+      unit.anchor = { x: unit.x, y: unit.y };
+    }
     next.players[playerId].lastSequence = command.seq;
     return { accepted: true, world: next, expansions: 0 };
+  }
+  if (command.type === 'attack_group') {
+    const target = [...world.squads, ...world.guardians].find((unit) => unit.id === command.targetId);
+    if (!target) return reject('unknown_target');
+    if (target.hp <= 0) return reject('target_destroyed');
+    if (target.id === world.core.guardianId && !world.core.open) return reject('target_unavailable');
+    if ('ownerId' in target && target.ownerId === playerId) return reject('friendly_target');
+    if (world.visible[playerId][indexOf(world.map, target)] !== true) return reject('target_not_visible');
+    if (selected.every((unit) => unit.damage <= 0)) return reject('cannot_attack');
+    const assigned = attackDestinations(world.map, target, selected.length);
+    if (assigned.length < selected.length) return reject('unreachable');
+    const cap = Math.min(remainingExpansions, 16 * world.map.width * world.map.height, 32768);
+    let expansions = 0;
+    const routes = new Map<string, { route: MapCell[]; target: MapCell }>();
+    for (let index = 0; index < selected.length; index += 1) {
+      const unit = selected[index]!;
+      if (Math.abs(unit.x - target.x) + Math.abs(unit.y - target.y) <= 1) {
+        routes.set(unit.id, { route: [], target: { x: target.x, y: target.y } });
+        continue;
+      }
+      let found: { route: MapCell[]; target: MapCell } | null = null;
+      for (const destination of assigned) {
+        const result = findPath(world.map, unit, destination, {
+          maxExpansions: Math.min(world.map.width * world.map.height, cap - expansions),
+        });
+        expansions += result.expansions;
+        if (result.status === 'found') {
+          found = { route: result.path, target: { x: target.x, y: target.y } };
+          break;
+        }
+        if (result.status === 'budget_exceeded') return reject('budget_exceeded', expansions);
+      }
+      if (!found) return reject('unreachable', expansions);
+      routes.set(unit.id, found);
+    }
+    const next = cloneBattlefieldWorld(world);
+    for (const unit of next.squads) {
+      const order = routes.get(unit.id);
+      if (!order) continue;
+      unit.route = order.route.map((cell) => ({ ...cell }));
+      unit.target = { ...order.target };
+      unit.attackTargetId = target.id;
+    }
+    next.players[playerId].lastSequence = command.seq;
+    return { accepted: true, world: next, expansions };
   }
   const goal = { x: command.x, y: command.y };
   if (goal.x >= world.map.width || goal.y >= world.map.height) return reject('out_of_bounds');
@@ -177,6 +236,9 @@ export function applyBattlefieldCommand(world: BattlefieldWorld, playerId: strin
   for (const unit of next.squads) {
     const assignedRoute = routes.get(unit.id);
     if (assignedRoute) {
+      unit.stance = 'march';
+      unit.anchor = null;
+      unit.attackTargetId = null;
       unit.route = assignedRoute.route.map((cell) => ({ ...cell }));
       unit.target = unit.route.length === 0 ? null : { ...assignedRoute.target };
     }

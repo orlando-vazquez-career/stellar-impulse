@@ -76,6 +76,20 @@ test.describe('visual interface foundation', () => {
     await page.screenshot({ path: 'test-results/visual-sector.png' });
   });
 
+  test('renders the ship received from the authoritative server', async ({ page }) => {
+    await page.goto('/visual');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Probar nave autoritativa' }).click();
+
+    await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-gameplay-mode', 'server');
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
+    await expect(page.locator('.vi-squad')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.map-ally')).toHaveCount(1);
+  });
+
   test('keeps HUD modules inside 1366×768 without overlap', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await page.goto('/visual');

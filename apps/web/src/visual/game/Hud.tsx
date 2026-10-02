@@ -137,7 +137,7 @@ function ActionHud({ view, adapter, controls }: { view: GameplayViewModel; adapt
   ];
   return <Panel className="vi-actions"><span className="vi-actions__label">{t('actions')}</span>
     <div className="vi-actions__list">
-      {actions.map(({ action, label, key }) => <button key={action} className={view.activeAction === action ? 'is-active' : ''} onClick={() => adapter.dispatch({ type: 'set-action', action })} aria-pressed={view.activeAction === action}>
+      {actions.map(({ action, label, key }) => <button key={action} className={view.activeAction === action ? 'is-active' : ''} onClick={() => action === 'hold' ? adapter.dispatch({ type: 'hold-selected' }) : adapter.dispatch({ type: 'set-action', action })} aria-pressed={view.activeAction === action}>
         <span className="vi-action-glyph" aria-hidden="true">{actionGlyphs[action]}</span><span>{label}</span><kbd>{key}</kbd>
       </button>)}
       <button disabled={!view.activeAction} onClick={() => adapter.dispatch({ type: 'set-action', action: null })}><span className="vi-action-glyph" aria-hidden="true">{actionGlyphs.cancel}</span><span>{t('cancel')}</span><kbd>{controls.cancel}</kbd></button>
@@ -148,6 +148,7 @@ function ActionHud({ view, adapter, controls }: { view: GameplayViewModel; adapt
 export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void }) {
   const { t } = useI18n();
   return <div className="vi-hud" aria-label={t('hud')}>
+    {view.feedback && <div className="vi-command-feedback" role="alert">{view.feedback}</div>}
     <ResourceHud view={view} />
     <SectorHud view={view} />
     <TopControls onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} />

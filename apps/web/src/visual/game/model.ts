@@ -68,6 +68,7 @@ export interface GameplayViewModel {
   core: CoreViewModel;
   enemiesVisible: boolean;
   clockRunning: boolean;
+  feedback: string | null;
 }
 
 export type PresentationIntent =
@@ -78,6 +79,7 @@ export type PresentationIntent =
   | { type: 'move-selected'; x: number; y: number }
   | { type: 'attack-squad'; squadId: string; targetId: string }
   | { type: 'attack-selected'; targetId: string }
+  | { type: 'hold-selected' }
   | { type: 'set-core-state'; state: CoreState }
   | { type: 'set-core-progress'; progress: number }
   | { type: 'set-selected-health'; healthPercent: number }

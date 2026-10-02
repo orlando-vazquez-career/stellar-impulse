@@ -4,6 +4,7 @@ import { createSpatialIndex, type SpatialIndex } from './spatial-index.js';
 
 /** Structural mechanics shared by training and battlefield without changing either world type. */
 export interface MechanicsWorld {
+  mode?: 'training' | 'battlefield';
   width: number;
   height: number;
   tick: number;
@@ -66,7 +67,11 @@ export function resolveCombat(world: MechanicsWorld): void {
     const inRange = index.queryManhattan(squad, 1)
       .map((point) => byId.get(point.id)!)
       .filter((unit) => unit.id !== squad.id && (!('ownerId' in unit) || unit.ownerId !== squad.ownerId));
-    const target = inRange.find((unit) => unit.id === squad.attackTargetId) ?? inRange[0];
+    const target = squad.attackTargetId
+      ? inRange.find((unit) => unit.id === squad.attackTargetId)
+      : world.mode === 'battlefield'
+        ? squad.stance === 'attack' ? inRange[0] : undefined
+        : inRange[0];
     if (target) hit(target.id, heightDamage({
       world, attacker: squad, defender: target,
       damage: 'kind' in target ? damageAgainst(squad.kind, target.kind, squad.damage) : squad.damage,

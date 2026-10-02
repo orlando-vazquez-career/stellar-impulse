@@ -3,6 +3,7 @@ import { applyCommand, createSquad, createWorld, findPath, stepWorld, TRAINING_R
 
 const move = (seq = 1, squadId = 'p1-interceptor', x = 4, y = 4) => ({ seq, type: 'move', squadId, x, y });
 const attack = (targetId: string, seq = 1, squadId = 'p1-interceptor') => ({ seq, type: 'attack', squadId, targetId });
+const stop = (seq = 2, squadId = 'p1-interceptor') => ({ seq, type: 'stop', squadId });
 const ticks = (world: World, count: number): World => {
   for (let i = 0; i < count; i += 1) world = stepWorld(world);
   return world;
@@ -36,6 +37,14 @@ describe('authoritative command checks', () => {
     for (let x = 1; x <= 3; x++) for (let y = 16; y <= 18; y++) if (x !== 2 || y !== 17) isolated.obstacles.push({ x, y });
     expect(applyCommand(isolated, 'p1', move())).toMatchObject({ accepted: false, reason: 'unreachable_destination' });
     expect(isolated.players.p1.lastSequence).toBe(0);
+  });
+  it('stops a moving ship and leaves it holding at its current cell', () => {
+    const moving = applyCommand(createWorld(), 'p1', move()).world;
+    const stopped = applyCommand(moving, 'p1', stop());
+    expect(stopped).toMatchObject({ accepted: true });
+    expect(stopped.world.squads[0]).toMatchObject({ stance: 'guard', target: null, gather: null, route: [], attackTargetId: null });
+    expect(stopped.world.players.p1.lastSequence).toBe(2);
+    expect(stepWorld(stopped.world).squads[0]).toMatchObject({ x: 2, y: 17, stance: 'guard' });
   });
   it('validates attack ownership, visibility, target state and class', () => {
     const world = createWorld();

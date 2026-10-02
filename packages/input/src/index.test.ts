@@ -24,6 +24,11 @@ describe('command boundary', () => {
     expect(parseCommand({ ...stance, stance: 'march' })).toEqual({ ok: false, reason: 'invalid_command' });
     expect(parseCommand({ ...queued, loop: true })).toEqual({ ok: false, reason: 'invalid_command' });
   });
+  it('accepts a stop intention for interrupting a ship route', () => {
+    const stop = { seq: 5, type: 'stop', squadId: 'p1-interceptor' };
+    expect(parseCommand(stop)).toEqual({ ok: true, command: stop });
+    expect(parseCommand({ ...stop, x: 3 })).toEqual({ ok: false, reason: 'invalid_command' });
+  });
   it.each([null, [], 'move', {}, { ...valid, seq: 0 }, { ...valid, seq: 1.5 },
     { ...valid, seq: Number.MAX_SAFE_INTEGER + 1 }, { ...valid, x: NaN },
     { ...valid, y: Infinity }, { ...valid, x: '3' }, { ...valid, type: 'attack' },

@@ -1,3 +1,4 @@
+import { canCrossHeight } from '../mapas/alturas.js';
 import type { MapCell, MapSpec } from './types.js';
 
 export interface OccupancySquad extends MapCell {
@@ -11,14 +12,33 @@ export interface OccupancySquad extends MapCell {
 }
 
 export interface OccupancyWorld {
-  map: Pick<MapSpec, 'width' | 'height' | 'walkable'>;
+  map: Pick<MapSpec, 'width' | 'height' | 'walkable' | 'level' | 'ramp'>;
   squads: OccupancySquad[];
   guardians: { id: string; x: number; y: number; hp: number }[];
 }
 
 const key = (width: number, cell: MapCell): number => cell.y * width + cell.x;
 
-/** Resolve one simultaneous orthogonal step. Ally chains and cycles may advance;
+function canStep(map: OccupancyWorld['map'], from: MapCell, to: MapCell): boolean {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (dx === 0 && dy === 0) return false;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) !== 1) return false;
+  if (to.x < 0 || to.y < 0 || to.x >= map.width || to.y >= map.height) return false;
+  if (map.walkable[key(map.width, to)] !== true) return false;
+  if (dx !== 0 && dy !== 0) {
+    const sideA = { x: to.x, y: from.y };
+    const sideB = { x: from.x, y: to.y };
+    if (map.walkable[key(map.width, sideA)] !== true || map.walkable[key(map.width, sideB)] !== true) return false;
+  }
+  if (map.level && map.ramp && !canCrossHeight({
+    width: map.width, level: map.level, ramp: map.ramp,
+    from: key(map.width, from), to: key(map.width, to),
+  })) return false;
+  return true;
+}
+
+/** Resolve one simultaneous eight-way step. Ally chains and cycles may advance;
  * enemies and live guardians block. Ally cycles reserve their cells first;
  * remaining equal destination claims use squad ID order.
  */
@@ -39,8 +59,7 @@ export function advanceOccupancy(world: OccupancyWorld): number {
   for (const unit of units) {
     const next = unit.route[0];
     if (!next || !Number.isSafeInteger(next.x) || !Number.isSafeInteger(next.y)
-      || next.x < 0 || next.y < 0 || next.x >= map.width || next.y >= map.height
-      || Math.abs(next.x - unit.x) + Math.abs(next.y - unit.y) !== 1) continue;
+      || !canStep(map, unit, next)) continue;
     const cell = key(map.width, next);
     if (map.walkable[cell] !== true) continue;
     proposed.set(unit.id, { unit, next, cell });
@@ -90,6 +109,7 @@ export function advanceOccupancy(world: OccupancyWorld): number {
       ];
       for (const next of neighbors) {
         if (next < 0 || parent.has(next) || claimed.has(next) || map.walkable[next] !== true) continue;
+        if (!canStep(map, cell, cellAt(next))) continue;
         const occupant = occupants.get(next);
         if (occupant) {
           const ally = byId.get(occupant.id);
@@ -127,7 +147,7 @@ export function advanceOccupancy(world: OccupancyWorld): number {
     // A fully packed pocket can still exchange the blocker with the mover.
     const origin = { x: intent.unit.x, y: intent.unit.y };
     const originIndex = key(map.width, origin);
-    if (claimed.has(originIndex)) continue;
+    if (claimed.has(originIndex) || !canStep(map, blocker, origin)) continue;
     claimed.add(originIndex);
     intents.set(blocker.id, { unit: blocker, next: origin, cell: originIndex,
       yieldFrom: { x: blocker.x, y: blocker.y },
