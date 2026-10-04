@@ -33,8 +33,8 @@ it('new camouflaged ships must wait three seconds and decoys are not identified 
 it('reports authoritative passive income and the modified core capture progress',()=>{
   const w=createMatchWorld('sector-01');w.nodes.forEach(n=>n.ownerId='p1');
   grantAugment(w,'p1','p-guerra');grantAugment(w,'p1','g-mineria');
-  const expected=2*(w.nodes.filter(n=>n.kind==='metal').length+w.nodes.length/4);
-  expect(viewFor(w,'p1').metalRate).toBe(expected);
+  const expected=2*(0.4*w.nodes.filter(n=>n.kind==='metal').length+w.nodes.length/4);
+  expect(viewFor(w,'p1').metalRate).toBeCloseTo(expected);
   expect(viewFor(w,'p2').metalRate).toBe(.5);
   const sprint=createMatchWorld('sector-01');grantAugment(sprint,'p1','p-relampago');sprint.core.progress.p1=135;
   expect(viewFor(sprint,'p1').coreFraction).toBe(.5);

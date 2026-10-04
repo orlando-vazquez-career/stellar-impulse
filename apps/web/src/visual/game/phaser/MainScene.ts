@@ -80,6 +80,7 @@ export class MainScene extends Phaser.Scene {
   private selectionBox?: Phaser.GameObjects.Graphics;
   private core?: Phaser.GameObjects.Graphics;
   private nodeMarks?: Phaser.GameObjects.Graphics;
+  private baseMarks?: Phaser.GameObjects.Graphics;
   /** Terrain images per cell, so fog can tint the real tile art instead of painting over it. */
   private tileImages: Phaser.GameObjects.Image[][] = [];
   private fogShown: boolean[] | null = null;
@@ -142,6 +143,7 @@ export class MainScene extends Phaser.Scene {
     this.selectionBox = this.add.graphics().setScrollFactor(0).setDepth(DEPTH.selection);
     this.core = this.add.graphics().setDepth(DEPTH.core);
     this.nodeMarks = this.add.graphics().setDepth(DEPTH.nodes);
+    this.baseMarks = this.add.graphics().setDepth(DEPTH.core);
     this.weapons = new WeaponEffects(this);
     this.serverTickAt = this.time.now;
 
@@ -318,12 +320,49 @@ export class MainScene extends Phaser.Scene {
     for (const node of this.snapshot.nodes) {
       const center = cellToIso(node.x, node.y);
       const hue = node.owner === 'blue' ? color.blue : node.owner === 'red' ? color.red : 0x8aa0b8;
-      graphics.lineStyle(2, hue, 0.9);
+      // A freshly captured node is faint until it starts producing.
+      graphics.lineStyle(2, hue, node.stabilizingSeconds ? 0.35 : 0.9);
       graphics.strokeEllipse(center.x, center.y + 9, 54, 27);
       if (node.kind === 'metal') {
         graphics.fillStyle(hue, 0.95);
         graphics.fillPoints(polygon([{ x: center.x, y: center.y - 2 }, { x: center.x + 7, y: center.y + 9 },
           { x: center.x, y: center.y + 20 }, { x: center.x - 7, y: center.y + 9 }]), true);
+      }
+    }
+  }
+
+  /** Base hull bars, the shield before bases are exposed and one pip per finished module. */
+  private drawBases() {
+    const graphics = this.baseMarks;
+    if (!graphics) return;
+    graphics.clear();
+    const own = this.snapshot.base;
+    const enemy = this.snapshot.enemyBase;
+    const shielded = (own?.vulnerableInSeconds ?? 0) > 0;
+    const bases = [
+      own?.position && own.hp !== undefined && own.maxHp ? { at: own.position, hp: own.hp, maxHp: own.maxHp, hue: 0x5fd49a,
+        modules: (own.modules?.refinery ?? 0) + (own.modules?.extras.length ?? 0) } : null,
+      enemy?.visible && enemy.hp !== undefined && enemy.maxHp ? { at: enemy, hp: enemy.hp, maxHp: enemy.maxHp, hue: color.red, modules: 0 } : null,
+    ];
+    for (const base of bases) {
+      if (!base) continue;
+      const center = cellToIso(base.at.x, base.at.y);
+      if (shielded) {
+        graphics.lineStyle(2, 0x83d4ff, 0.45);
+        graphics.strokeEllipse(center.x, center.y + 4, 150, 75);
+      }
+      // Above the station art, framed so it never blends with the sprite's own lights.
+      const width = 112;
+      const top = center.y - 150;
+      graphics.fillStyle(0x071420, 0.9);
+      graphics.fillRect(center.x - width / 2 - 2, top - 2, width + 4, 12);
+      graphics.lineStyle(1, 0xd8e6f3, 0.7);
+      graphics.strokeRect(center.x - width / 2 - 2, top - 2, width + 4, 12);
+      graphics.fillStyle(base.hue, 0.95);
+      graphics.fillRect(center.x - width / 2, top, width * Math.max(0, base.hp) / base.maxHp, 8);
+      for (let pip = 0; pip < base.modules; pip++) {
+        graphics.fillStyle(0x7fe0b0, 0.95);
+        graphics.fillRect(center.x - width / 2 + pip * 10, top + 13, 7, 4);
       }
     }
   }
@@ -371,6 +410,7 @@ export class MainScene extends Phaser.Scene {
   private renderSnapshot() {
     this.drawCore();
     this.drawNodes();
+    this.drawBases();
     this.drawFog();
     this.drawRoute();
     this.drawAttackRanges();
@@ -628,6 +668,13 @@ export class MainScene extends Phaser.Scene {
       }
       const cell = this.pointerPoint(pointer);
       if (!cell) return;
+      // A right click on the visible rival base orders an assault on it.
+      const rivalBase = this.snapshot.enemyBase;
+      if (rivalBase?.visible && this.snapshot.selectedSquadIds.length && (this.snapshot.activeAction === null || this.snapshot.activeAction === 'attack')
+        && Math.max(Math.abs(cell.x - rivalBase.x), Math.abs(cell.y - rivalBase.y)) <= 1.5) {
+        this.onAttackSelected(rivalBase.id);
+        return;
+      }
       if ((this.snapshot.activeAction === null || this.snapshot.activeAction === 'move') && this.snapshot.selectedSquadIds.length) {
         this.onMoveSelected(cell.x, cell.y);
       }

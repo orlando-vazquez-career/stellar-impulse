@@ -42,7 +42,8 @@ test('retires an accidental ship with Delete and buys capacity and damage upgrad
   const damage = production.getByRole('button', { name: /Daño de base/ });
   await expect(damage).toBeEnabled({ timeout: 30000 });
   await damage.click();
-  await expect(production).toContainText('10 daño');
+  // The base fires on its own (12) and the first upgrade adds 10.
+  await expect(production).toContainText('22 daño');
   await expect(damage).toContainText('Nivel 1/3');
   await page.screenshot({ path: 'test-results/base-upgrades.png' });
   const overlap = await page.evaluate(() => {

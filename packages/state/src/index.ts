@@ -1,4 +1,5 @@
 import { AUGMENTS_BY_ID, DURATION_MODES, effectsFor, effectiveFleetCap, effectiveBaseDamage, visionSources, isConcealed, statsForUnit, baseUpgradeCost, metalIncomeRate, captureDuration, type Augment } from '@impulso/sim';
+import { baseArmor, baseDefense, type ExtraModule, type ModuleKind, type ModuleSpec } from '@impulso/sim';
 import { distance, statsFor, moveInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
 import { weaponView, type WeaponView } from './weapons.js';
 export { UNIT_STATS, damageAgainst, findPath } from '@impulso/sim';
@@ -40,7 +41,13 @@ export interface PlayerView {
   unitStats?: Record<UnitKind, ShipStats>;
   augments?: AugmentView;
   chart?: { nodes: Position[]; guardians: Position[] };
-  base?: {damage:number;fleetCap:number;upgradeCosts:Record<'damage'|'capacity',number|null>};
+  base?: {damage:number;range?:number;fleetCap:number;upgradeCosts:Record<'damage'|'capacity',number|null>;
+    /** Match worlds: own hull, shield timer and modules. */
+    hp?:number;maxHp?:number;armor?:number;vulnerableTick?:number;
+    modules?:{refinery:0|1|2;extras:ExtraModule[];building:{kind:ModuleKind;remainingTicks:number}|null};
+    moduleCosts?:Record<ModuleKind,ModuleSpec>};
+  /** The rival base: position always, hull only while it is in sight. */
+  enemyBase?: {x:number;y:number;visible:boolean;hp?:number;maxHp?:number};
   productionForbidden?: UnitKind[];
   /** Metal and the hangar queue are private to their owner. */
   players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; baseUpgrades?: { damage: number; capacity: number }; production?: { kind: UnitKind; remainingTicks: number } | null }>;
@@ -75,6 +82,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
   const match=world.augmentMatch, augmentPlayer=match?.players[playerId];
   const offer=augmentPlayer?.offer;
   const rivalId=playerId==='p1'?'p2':'p1';
+  const own=world.players[playerId];
   return {
     metalRate:metalIncomeRate(world,playerId),
     coreFraction:Math.max(...(['p1','p2'] as const).map(p=>world.core.progress[p]/captureDuration(world,p,world.rules.coreCaptureTicks,true))),
@@ -82,7 +90,14 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
       nextChoiceTick:world.duration && augmentPlayer.nextChoice<3 ? DURATION_MODES[world.duration].choices[augmentPlayer.nextChoice]! : null,
       offer:offer ? {choice:offer.choice,tier:offer.tier,cards:offer.cards.map(card),remainingSeconds:Math.max(0,Math.ceil((offer.deadline-match.clock)/world.rules.tickRate)),rerolls:offer.rerolls} : null} : undefined,
     chart:augmentPlayer?.chart ? {nodes:augmentPlayer.chart.nodes.map((p)=>({...p})),guardians:augmentPlayer.chart.guardians.map((p)=>({...p}))} : undefined,
-    base:{damage:effectiveBaseDamage(world,playerId),fleetCap:effectiveFleetCap(world,playerId),upgradeCosts:{damage:baseUpgradeCost('damage',world.players[playerId].baseUpgrades),capacity:baseUpgradeCost('capacity',world.players[playerId].baseUpgrades)}},
+    base:{damage:effectiveBaseDamage(world,playerId)+baseDefense(world,playerId).damage,range:Math.max(baseDefense(world,playerId).range,4),fleetCap:effectiveFleetCap(world,playerId),upgradeCosts:{damage:baseUpgradeCost('damage',world.players[playerId].baseUpgrades),capacity:baseUpgradeCost('capacity',world.players[playerId].baseUpgrades)},
+      ...(world.baseRules && own.structure && own.modules ? {
+        hp:own.structure.hp,maxHp:own.structure.maxHp,armor:baseArmor(world,playerId),vulnerableTick:world.baseRules.vulnerableTick,
+        modules:{refinery:own.modules.refinery,extras:[...own.modules.extras],building:own.modules.building?{kind:own.modules.building.kind,remainingTicks:Math.max(0,own.modules.building.readyTick-world.tick)}:null},
+        moduleCosts:Object.fromEntries(Object.entries(world.baseRules.modules).map(([kind,spec])=>[kind,{...spec}])) as Record<ModuleKind,ModuleSpec>,
+      } : {})},
+    enemyBase:world.baseRules ? (()=>{const rival=world.players[rivalId];const seen=visible(rival.base);
+      return {x:rival.base.x,y:rival.base.y,visible:seen,...(seen&&rival.structure?{hp:rival.structure.hp,maxHp:rival.structure.maxHp}:{})};})() : undefined,
     productionForbidden:effectsFor(world,playerId).flatMap((e)=>e.hook==='no-production'?[e.kind]:[]),
     schemaVersion: 1, mode: 'training', tick: world.tick, playerId, duration: world.duration, suddenDeath: world.suddenDeath,
     width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })),
@@ -114,6 +129,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     nodes: world.nodes.filter(visible).map((node) => ({
       id: node.id, kind: node.kind, guardianId: node.guardianId, x: node.x, y: node.y,
       ownerId: node.ownerId, progress: { p1: node.progress.p1, p2: node.progress.p2 },
+      ...(node.activeAt !== undefined && node.activeAt > world.tick ? { activeAt: node.activeAt } : {}),
     })),
     // The central objective timer and capture score are public rules.
     core: {

@@ -50,6 +50,14 @@ describe('command boundary', () => {
   ])('rejects malformed or extra data: %j', (value) => {
     expect(parseCommand(value)).toEqual({ ok: false, reason: 'invalid_command' });
   });
+  it('accepts base modules and surrender, and nothing else in those commands', () => {
+    for (const module of ['refinery', 'refinery2', 'shipyard', 'bastion', 'radar'])
+      expect(parseCommand({ seq: 1, type: 'build_module', module })).toEqual({ ok: true, command: { seq: 1, type: 'build_module', module } });
+    expect(parseCommand({ seq: 1, type: 'build_module', module: 'castle' }).ok).toBe(false);
+    expect(parseCommand({ seq: 1, type: 'build_module', module: 'radar', slot: 2 }).ok).toBe(false);
+    expect(parseCommand({ seq: 2, type: 'surrender' })).toEqual({ ok: true, command: { seq: 2, type: 'surrender' } });
+    expect(parseCommand({ seq: 2, type: 'surrender', winner: 'p1' }).ok).toBe(false);
+  });
   it('does not execute property accessors', () => {
     const value = { ...valid };
     Object.defineProperty(value, 'x', { get() { throw new Error('must not execute'); } });
