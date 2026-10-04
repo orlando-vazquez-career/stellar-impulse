@@ -1,5 +1,6 @@
 export type SquadOwner = 'blue' | 'red' | 'neutral';
 import type { UnitKind } from '@impulso/state';
+import type { BaseUpgradeKind, BaseUpgrades } from '@impulso/sim';
 export type SquadType = UnitKind;
 
 export interface SquadViewModel {
@@ -91,6 +92,7 @@ export interface GameplayViewModel {
   clockRunning: boolean;
   nodes: NodeViewModel[];
   production: ProductionViewModel | null;
+  base?: { upgrades: BaseUpgrades; damage: number; range: number; upgradeCosts: Record<BaseUpgradeKind, number | null> };
   /** The campaign battlefield currently provides a fixed starting fleet. */
   canProduce?: boolean;
   result: 'victory' | 'defeat' | null;
@@ -121,7 +123,9 @@ export type PresentationIntent =
   | { type: 'set-resource'; resource: 'metal' | 'energy'; value: number }
   | { type: 'set-enemy-visibility'; visible: boolean }
   | { type: 'set-clock-running'; running: boolean }
-  | { type: 'produce'; kind: SquadType };
+  | { type: 'produce'; kind: SquadType }
+  | { type: 'disband-selected' }
+  | { type: 'upgrade-base'; upgrade: BaseUpgradeKind };
 
 export interface GameplayPresentationAdapter {
   getSnapshot(): GameplayViewModel;

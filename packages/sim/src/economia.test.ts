@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyCommand, BUILD_TICKS, createSectorWorld, createWorld, FLEET_CAP, runTrainingRival, stepWorld,
   STARTING_METAL, UNIT_COSTS, type AiMemory, type World,
+  fleetCapacity, baseDamage, baseUpgradeCost, createSquad,
 } from './index.js';
 
 const produce = (seq: number, kind: 'interceptor' | 'frigate' | 'bomber' | 'explorer') => ({ seq, type: 'produce', kind });
@@ -12,6 +13,78 @@ const run = (world: World, ticks: number) => {
 };
 
 describe('sector economy', () => {
+  it('retires a selected owned ship immediately, frees housing and keeps its Metal spent', () => {
+    let world = createSectorWorld();
+    world.players.p1.metal = 100;
+    while (world.squads.filter((unit) => unit.ownerId === 'p1').length < FLEET_CAP)
+      world.squads.push(createSquad(`p1-extra-${world.squads.length}`, 'p1', 'explorer', { x: 3, y: 3 }));
+    expect(applyCommand(world, 'p1', produce(1, 'explorer'))).toMatchObject({ accepted: false, reason: 'fleet_full' });
+    const retired = applyCommand(world, 'p1', { seq: 1, type: 'disband', squadIds: ['p1-explorer'] });
+    expect(retired.accepted).toBe(true);
+    expect(retired.world.squads.find((unit) => unit.id === 'p1-explorer'))
+      .toMatchObject({ hp: 0, target: null, route: [], attackTargetId: null });
+    expect(retired.world.players.p1.metal).toBe(100);
+    expect(world.squads.find((unit) => unit.id === 'p1-explorer')!.hp).toBeGreaterThan(0);
+    expect(applyCommand(retired.world, 'p1', produce(2, 'explorer')).accepted).toBe(true);
+    expect(applyCommand(retired.world, 'p1', { seq: 2, type: 'disband', squadIds: ['p1-explorer'] }))
+      .toMatchObject({ accepted: false, reason: 'squad_destroyed' });
+  });
+
+  it('rejects retiring another player’s ship atomically and rejects stale orders', () => {
+    const world = createSectorWorld();
+    const refused = applyCommand(world, 'p1', { seq: 1, type: 'disband', squadIds: ['p1-explorer', 'p2-explorer'] });
+    expect(refused).toMatchObject({ accepted: false, reason: 'not_owner' });
+    expect(refused.world).toBe(world);
+    expect(world.players.p1.lastSequence).toBe(0);
+    const accepted = applyCommand(world, 'p1', { seq: 1, type: 'disband', squadIds: ['p1-explorer', 'p1-interceptor'] });
+    expect(accepted.world.squads.filter((unit) => unit.ownerId === 'p1' && unit.hp > 0)).toHaveLength(0);
+    expect(applyCommand(accepted.world, 'p1', { seq: 1, type: 'disband', squadIds: ['p1-interceptor'] }))
+      .toMatchObject({ accepted: false, reason: 'stale_sequence' });
+  });
+
+  it('charges escalating costs for capacity, permits production over the old cap and enforces the upgrade limit', () => {
+    let world = createSectorWorld();
+    expect(applyCommand(world, 'p1', { seq: 1, type: 'upgrade_base', upgrade: 'capacity' }))
+      .toMatchObject({ accepted: false, reason: 'insufficient_metal' });
+    expect(world.players.p1.lastSequence).toBe(0);
+    world.players.p1.metal = 100;
+    for (let level = 1; level <= 3; level++) {
+      const before = world;
+      world = applyCommand(world, 'p1', { seq: level, type: 'upgrade_base', upgrade: 'capacity' }).world;
+      expect(before.players.p1.baseUpgrades?.capacity ?? 0).toBe(level - 1);
+      expect(fleetCapacity(world.players.p1.baseUpgrades)).toBe(12 + level * 4);
+    }
+    expect(world.players.p1.metal).toBe(40);
+    expect(baseUpgradeCost('capacity', world.players.p1.baseUpgrades)).toBeNull();
+    expect(applyCommand(world, 'p1', { seq: 4, type: 'upgrade_base', upgrade: 'capacity' }))
+      .toMatchObject({ accepted: false, reason: 'upgrade_maxed', world });
+    while (world.squads.filter((unit) => unit.ownerId === 'p1').length < FLEET_CAP)
+      world.squads.push(createSquad(`extra-${world.squads.length}`, 'p1', 'explorer', { x: 3, y: 3 }));
+    expect(applyCommand(world, 'p1', produce(4, 'explorer')).accepted).toBe(true);
+  });
+
+  it('arms the base and increases actual damage while leaving allies and distant enemies untouched', () => {
+    const world = createSectorWorld();
+    world.players.p1.metal = 100;
+    const upgraded = applyCommand(world, 'p1', { seq: 1, type: 'upgrade_base', upgrade: 'damage' }).world;
+    expect(upgraded.players.p1.metal).toBe(88);
+    expect(baseDamage(upgraded.players.p1.baseUpgrades)).toBe(10);
+    expect(baseDamage(world.players.p1.baseUpgrades)).toBe(0);
+    const second = applyCommand(upgraded, 'p1', { seq: 2, type: 'upgrade_base', upgrade: 'damage' }).world;
+    expect(second.players.p1.metal).toBe(64);
+    second.guardians = [];
+    const base = second.players.p1.base;
+    const near = createSquad('near', 'p2', 'interceptor', { x: base.x + 3, y: base.y });
+    const far = createSquad('far', 'p2', 'interceptor', { x: base.x + 5, y: base.y });
+    const ally = createSquad('ally', 'p1', 'explorer', { x: base.x, y: base.y + 3 });
+    second.squads = [near, far, ally];
+    second.tick = second.rules.attackEveryTicks - 1;
+    const fired = stepWorld(second);
+    expect(fired.squads.find((unit) => unit.id === 'near')!.hp).toBe(100);
+    expect(fired.squads.find((unit) => unit.id === 'far')!.hp).toBe(120);
+    expect(fired.squads.find((unit) => unit.id === 'ally')!.hp).toBe(70);
+    expect(near.hp).toBe(120);
+  });
   it('starts each side with a scout and one combat ship, guarded nodes and opening Metal', () => {
     const world = createSectorWorld();
     for (const player of ['p1', 'p2'] as const) {
