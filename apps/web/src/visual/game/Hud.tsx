@@ -49,13 +49,13 @@ function SectorHud({ view }: { view: GameplayViewModel }) {
   </Panel>;
 }
 
-function TopControls({ onResetCamera, onDevelopment, onLeave }: { onResetCamera(): void; onDevelopment(): void; onLeave(): void }) {
+function TopControls({ onResetCamera, onDevelopment, onLeave, multiplayer }: { onResetCamera(): void; onDevelopment(): void; onLeave(): void; multiplayer?: boolean }) {
   const { t } = useI18n();
   return <div className="vi-top-controls">
     <button title={t('cameraReset')} onClick={onResetCamera}><span aria-hidden="true">◎</span></button>
-    <button title={t('preferences')} onClick={onDevelopment}><span aria-hidden="true">⚙</span></button>
+    {!multiplayer && <button title={t('preferences')} onClick={onDevelopment}><span aria-hidden="true">⚙</span></button>}
     <LanguageToggle />
-    <button className="vi-leave" onClick={onLeave}>{t('leaveSimulation')}</button>
+    <button className="vi-leave" onClick={onLeave}>{multiplayer ? t('leaveMatch') : t('leaveSimulation')}</button>
   </div>;
 }
 
@@ -146,8 +146,8 @@ function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: Gamepla
   const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
   return <Panel className={`vi-squad ${collapsed ? 'is-collapsed' : ''}`}>
     <header><span>{selected.length > 1 ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span>
-      <div className="vi-squad__tools"><button className="vi-retire" disabled={!!view.result}
-        title={t('retireShipsHelp')} onClick={() => adapter.dispatch({ type: 'disband-selected' })}>{t('retireShips')}</button>
+      <div className="vi-squad__tools">{view.canProduce !== false && <button className="vi-retire" disabled={!!view.result}
+        title={t('retireShipsHelp')} onClick={() => adapter.dispatch({ type: 'disband-selected' })}>{t('retireShips')}</button>}
         <button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></div></header>
     {!collapsed && selected.length > 1 ? <div className="vi-squad__group">{selected.map((unit) => <div className="vi-squad__group-unit" key={unit.id}>
       <strong>{unit.callSign}</strong><span>{unitNames[unit.unitType]}</span><progress aria-label={`${unit.callSign} HP`} value={unit.healthPercent} max="100" />
@@ -193,7 +193,7 @@ const PRODUCTION_ORDER = [
 function ProductionHud({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
   const { t } = useI18n();
   const [tab, setTab] = useState<'hangar' | 'base'>('hangar');
-  if (view.connection === 'local') return null;
+  if (view.connection === 'local' || view.canProduce === false) return null;
   const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
   const full = view.resources.fleet >= view.resources.fleetCap;
   return <Panel className="vi-production"><div className="vi-production__tabs" role="tablist" aria-label={t('baseTab')}>
@@ -234,12 +234,12 @@ function NoticeHud({ view }: { view: GameplayViewModel }) {
   return <div className={`vi-notice vi-notice--${view.connection}`} role="status">{view.notice}</div>;
 }
 
-export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void }) {
+export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave, multiplayer }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void; multiplayer?: boolean }) {
   const { t } = useI18n();
   return <div className="vi-hud" aria-label={t('hud')}>
     <ResourceHud view={view} />
     <SectorHud view={view} />
-    <TopControls onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} />
+    <TopControls onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} multiplayer={multiplayer} />
     <Minimap view={view} cameraView={cameraView} onPanMap={onPanMap} />
     <SquadHud view={view} adapter={adapter} />
     <ActionHud view={view} adapter={adapter} controls={controls} />

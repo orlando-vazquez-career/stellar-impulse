@@ -13,8 +13,9 @@ const auth = new AuthService();
 const tokens = {
   Ana: auth.register('ana-campaign@example.com', 'secret-1234').token,
   Beto: auth.register('beto-campaign@example.com', 'secret-1234').token,
+  Caro: auth.register('caro-campaign@example.com', 'secret-1234').token,
 };
-const joinOptions = (name: 'Ana' | 'Beto') => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name] });
+const joinOptions = (name: keyof typeof tokens) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name] });
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
 
 const server = createGameServer({
@@ -64,6 +65,77 @@ describe('campaign room', () => {
   it('refuses clients speaking another protocol version before seating them', async () => {
     await expect(new Client(URL).create('campaign', { protocolVersion: 1 }))
       .rejects.toThrow(/unsupported_version/);
+  });
+
+  it('identifies each player in the lobby even when both use the same alias', async () => {
+    const a = await new Client(URL).create('campaign', { ...joinOptions('Ana'), name: 'Comandante' });
+    const b = await new Client(URL).joinById(a.roomId, { ...joinOptions('Beto'), name: 'Comandante' });
+    for (const room of [a, b]) room.reconnection.enabled = false;
+    try {
+      const [phaseA, phaseB] = await Promise.all([next(a, 'phase'), next(b, 'phase')]);
+      expect(phaseA).toMatchObject({ phase: 'lobby', playerId: 'p1' });
+      expect(phaseB).toMatchObject({ phase: 'lobby', playerId: 'p2' });
+      expect(phaseA.seats).toEqual(phaseB.seats);
+    } finally {
+      await a.leave(); await b.leave();
+    }
+  });
+
+  it('reuses a departed lobby seat without changing the remaining player identity', async () => {
+    const a = await new Client(URL).create('campaign', joinOptions('Ana'));
+    const b = await new Client(URL).joinById(a.roomId, joinOptions('Beto'));
+    for (const room of [a, b]) room.reconnection.enabled = false;
+    let c: Room | null = null;
+    try {
+      const vacancy = next(b, 'phase', (phase) => phase.seats.p1 === null);
+      await a.leave();
+      expect(await vacancy).toMatchObject({ phase: 'lobby', playerId: 'p2' });
+      c = await new Client(URL).joinById(b.roomId, joinOptions('Caro'));
+      c.reconnection.enabled = false;
+      const phase = await next(c, 'phase');
+      expect(phase).toMatchObject({ playerId: 'p1', seats: { p1: { name: 'Caro' }, p2: { name: 'Beto' } } });
+    } finally {
+      await c?.leave(); await b.leave();
+    }
+  });
+
+  it('starts Sector 01 for two accounts and delivers authoritative orders from both players', async () => {
+    const a = await new Client(URL).create('campaign', { ...joinOptions('Ana'), map: 'sector-01' });
+    const b = await new Client(URL).joinById(a.roomId, joinOptions('Beto'));
+    for (const room of [a, b]) room.reconnection.enabled = false;
+    try {
+      const phaseA = next(a, 'phase', (phase) => phase.phase === 'sector');
+      const phaseB = next(b, 'phase', (phase) => phase.phase === 'sector');
+      const mapA = next(a, 'map'); const mapB = next(b, 'map');
+      a.send('ready', envelope({})); b.send('ready', envelope({}));
+      expect(await phaseA).toMatchObject({ playerId: 'p1', renderMap: 'sector-01' });
+      expect(await phaseB).toMatchObject({ playerId: 'p2', renderMap: 'sector-01' });
+      const metadata = await mapA;
+      expect(metadata).toMatchObject({ mapId: 'sector-01', width: 29, height: 29 });
+      expect(metadata).toEqual(await mapB);
+      const ackA = next(a, 'ack'); const ackB = next(b, 'ack');
+      const viewA = next(a, 'view', (view) => view.players.p1.lastSequence === 1);
+      const viewB = next(b, 'view', (view) => view.players.p2.lastSequence === 1);
+      a.send('command', envelope({ type: 'move_group', seq: 1, squadIds: ['p1-interceptor'], x: 4, y: 3 }));
+      b.send('command', envelope({ type: 'move_group', seq: 1, squadIds: ['p2-interceptor'], x: 24, y: 25 }));
+      expect(await ackA).toEqual({ protocolVersion: 2, seq: 1 });
+      expect(await ackB).toEqual({ protocolVersion: 2, seq: 1 });
+      const firstA = await viewA; const firstB = await viewB;
+      expect(firstA).toMatchObject({ playerId: 'p1', mapId: 'sector-01' });
+      expect(firstB).toMatchObject({ playerId: 'p2', mapId: 'sector-01' });
+      expect(firstA.players.p2).not.toHaveProperty('lastSequence');
+      expect(firstB.players.p1).not.toHaveProperty('lastSequence');
+      const [movedA, movedB] = await Promise.all([
+        next(a, 'view', (view) => view.squads.some((unit: { id: string; x: number; y: number }) =>
+          unit.id === 'p1-interceptor' && unit.x === 4 && unit.y === 3)),
+        next(b, 'view', (view) => view.squads.some((unit: { id: string; x: number; y: number }) =>
+          unit.id === 'p2-interceptor' && unit.x === 24 && unit.y === 25)),
+      ]);
+      expect(movedA.tick).toBeGreaterThan(0);
+      expect(movedB.tick).toBeGreaterThan(0);
+    } finally {
+      await a.leave(); await b.leave();
+    }
   });
 
   it('runs a two-player campaign and forfeits a player who leaves', async () => {

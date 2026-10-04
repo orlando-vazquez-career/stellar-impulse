@@ -71,7 +71,7 @@ export function LoginScreen(props: LoginScreenProps) {
   // Cuando la conexión del padre termina (éxito o error), liberar los botones.
   useEffect(() => {
     if (!busy) dispatch({ type: 'settle' });
-  }, [busy]);
+  }, [busy, notice]);
 
   useEffect(() => {
     if (!chainBusy) dispatch({ type: 'settle' });

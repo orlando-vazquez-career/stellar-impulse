@@ -4,7 +4,7 @@ import {
   CAMPAIGN_PROTOCOL_VERSION, openCampaignEnvelope, parseBattlefieldCommand,
   parseCampaignJoinOptions, parseReady, parseTechChoice,
 } from '@impulso/input';
-import type { PlayerId } from '@impulso/sim';
+import { createBattlefieldWorld, SECTOR_01_BATTLEFIELD_MAP, type PlayerId } from '@impulso/sim';
 import { battlefieldViewFor } from '@impulso/state';
 import * as campaigns from './campaign/machine';
 import { publicMapMetadata } from './map-catalog';
@@ -31,10 +31,16 @@ export class CampaignRoom extends Room {
   private budgetTick = -1;
   private ticks = 0;
   private announcedEnd = false;
+  private renderMap?: 'sector-01';
 
-  onCreate() {
+  onCreate(options?: unknown) {
     this.roomId = randomBytes(6).toString('hex').toUpperCase();
-    this.campaign = campaigns.createCampaign(this.overrides);
+    const parsed = parseCampaignJoinOptions(options);
+    this.renderMap = parsed.ok && parsed.map === 'sector-01' && !this.overrides.createSector ? 'sector-01' : undefined;
+    this.campaign = campaigns.createCampaign({
+      ...(this.renderMap ? { createSector: () => createBattlefieldWorld(SECTOR_01_BATTLEFIELD_MAP) } : {}),
+      ...this.overrides,
+    });
     void this.setPrivate(true);
     this.onMessage('ready', (client, message) => this.withEnvelope(client, message, (player, body) => {
       if (!parseReady(body)) return this.reject(client, 'invalid_ready');
@@ -89,7 +95,8 @@ export class CampaignRoom extends Room {
     if (!player) return;
     const now = Date.now();
     campaigns.drop(this.campaign, player, now);
-    void this.allowReconnection(client, Math.ceil(this.campaign.config.reconnectWindowMs / 1000));
+    // Expiry and room disposal reject this reservation; onLeave owns the seat lifecycle.
+    void this.allowReconnection(client, Math.ceil(this.campaign.config.reconnectWindowMs / 1000)).catch(() => {});
     if (this.campaign.pause?.by === player) {
       this.broadcast('paused', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, by: player, remainingMs: this.campaign.pause.until - now });
     }
@@ -154,7 +161,11 @@ export class CampaignRoom extends Room {
   private sendPhase(now = Date.now()) {
     for (const client of this.clients) {
       const player = this.seats.get(client.sessionId);
-      if (player) client.send('phase', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, ...campaigns.phaseView(this.campaign, player, now) });
+      if (player) client.send('phase', {
+        protocolVersion: CAMPAIGN_PROTOCOL_VERSION,
+        ...campaigns.phaseView(this.campaign, player, now),
+        ...(this.renderMap ? { renderMap: this.renderMap } : {}),
+      });
     }
   }
 

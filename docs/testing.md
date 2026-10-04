@@ -18,9 +18,17 @@ captura después de PvE y vistas sin enemigos ocultos. Chain: validación RPC, r
 errores y adapter de wallet con test double. Rust: versión del contrato de arranque.
 Los tests de wallet no prueban una aprobación humana en extensión.
 
-E2E: dos contextos de navegador entran en una sala, envían órdenes y observan resultado
-del entrenamiento. Capturas a 320/768/1024/1440/1920 y chequeo de overflow.
-Estas pruebas no certifican la campaña, accesibilidad completa ni balance.
+E2E multijugador: dos contextos de navegador con cuentas diferentes crean y comparten
+una sala, esperan ambos estados listo, entran juntos y envían órdenes confirmadas.
+Una recarga conserva sala, asiento y secuencia; abandonar concede victoria al rival,
+y recargar resultados conserva esa victoria. También se comprueban código inválido,
+corrección de nombre de sala y salida del lobby incluso durante una caída de red.
+Las pruebas de transporte cubren
+tercer jugador, privacidad, pausa, reconexión automática y ausencia de órdenes reenviadas.
+La suite mantiene login, entrenamiento, mapa, cámara, hangar y ajustes.
+Estas pruebas no certifican la campaña completa, accesibilidad completa ni balance.
+
+Ejecutar solo la aceptación de salas con `pnpm test:e2e tests/e2e/multiplayer.spec.ts`.
 
 ## Aceptación futura del MVP
 

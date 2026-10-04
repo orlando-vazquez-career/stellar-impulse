@@ -90,3 +90,4 @@ export { battlefieldViewFor, encodeBattlefieldMask, decodeBattlefieldMask } from
 export type {
   BattlefieldView, BattlefieldMask, BattlefieldPublicPlayer, BattlefieldPublicSquad, BattlefieldOwnSquad,
 } from './battlefield.js';
+export type { CampaignPhase, CampaignPhaseView, CampaignSectorResult, CampaignResult } from './campaign.js';

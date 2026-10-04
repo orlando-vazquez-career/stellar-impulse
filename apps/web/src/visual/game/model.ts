@@ -93,6 +93,8 @@ export interface GameplayViewModel {
   nodes: NodeViewModel[];
   production: ProductionViewModel | null;
   base?: { upgrades: BaseUpgrades; damage: number; range: number; upgradeCosts: Record<BaseUpgradeKind, number | null> };
+  /** The campaign battlefield currently provides a fixed starting fleet. */
+  canProduce?: boolean;
   result: 'victory' | 'defeat' | null;
   /** Last server rejection or connection message, already localized by key. */
   notice: string | null;

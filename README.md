@@ -2,7 +2,7 @@
 
 RTS roguelite competitivo PvPvE para navegador. Explorar para prepararse, combatir para avanzar y defender para ganar.
 
-**Estado: interfaz Visual principal y entrenamiento técnico separado en el servidor. No es la campaña MVP.**
+**Estado: entrenamiento contra IA y salas multijugador conectadas al servidor. La campaña MVP completa sigue en desarrollo.**
 El brief de referencia es la versión 0.4. El objetivo es 1v1,
 tres sectores isométricos 2D, servidor autoritativo y cosméticos en Stellar testnet.
 Las compras nunca modifican el poder de una flota.
@@ -21,16 +21,20 @@ pnpm dev
 ```
 
 Abrir **http://127.0.0.1:5173** (la antigua ruta `/visual` también muestra la misma interfaz).
-Entra como invitado → prepara una operación → **Explorar mapa Tiled** para probar
-rutas, rampas, bloqueos y movimiento de una nave en el Sector 01 de 29×29, o
-despliega el combate Phaser sobre ese mismo mapa Tiled para probar selección, órdenes,
-movimiento libre y ataque. WASD mueve la cámara; **Q** activa la orden de ataque.
-El servidor sigue escuchando en **127.0.0.1:2567**, pero el lobby Visual y su
-gameplay usan un adaptador local: los códigos de sala de esa pantalla son simulados.
-La sala `training` y la sala `campaign` permanecen en el servidor para integración futura.
+Entra como invitado → **Preparar operación** para entrenar contra la IA en Espiral
+Estelar o Sector 01. **Explorar mapa Tiled** abre el inspector de Sector 01.
+WASD mueve la cámara; clic izquierdo selecciona, clic derecho ordena y **Q** activa ataque.
+El servidor escucha en **127.0.0.1:2567** y aplica las órdenes y el estado de la partida.
 
-No necesitas wallet, cuenta, base de datos ni credenciales para iniciar. El adaptador
-de testnet/Freighter sigue en el repositorio, pero ya no está expuesto en esta interfaz.
+Para jugar entre dos personas, inicia sesión con dos cuentas diferentes en dos
+navegadores o perfiles. El primero elige **Crear sala multijugador → Crear sala**;
+el segundo elige **Unirse a sala** y pega el código. Ambos pulsan **Estoy listo**:
+tras la cuenta regresiva entran a la misma partida de Sector 01. Una recarga recupera
+la plaza mientras siga vigente la reserva de reconexión. El registro de cuentas y
+el contrato de conexión están en [cuentas y multijugador](docs/auth-multiplayer.md).
+
+El entrenamiento admite invitados; el multijugador requiere cuenta. No necesitas
+wallet para ninguno de estos flujos. `?adapter=mock` conserva el juego visual local.
 
 ## Qué contiene esta base
 
