@@ -152,7 +152,7 @@ function SquadHud({ view }: { view: GameplayViewModel }) {
       <div className="vi-squad__identity"><span aria-hidden="true">△</span><div><h2>{t('squad')} {squad.callSign}</h2><p>{status}</p></div></div>
       <div className="vi-squad__composition">
         <strong>{unitNames[squad.unitType]}</strong>
-        <span>{t('unitStats', { hp: stats.maxHp, damage: stats.damage, speed: (4 / stats.moveIntervalFactor).toFixed(1) })}</span>
+        <span>{t('unitStats', { hp: stats.maxHp, damage: stats.damage, speed: squad.speedCellsPerSecond?.toFixed(1) ?? '—' })}</span>
         {squad.composition.interceptors > 0 && <span>{t('interceptors', { count: squad.composition.interceptors })}</span>}
         {squad.composition.frigates > 0 && <span>{t('frigates', { count: squad.composition.frigates })}</span>}
         {squad.composition.bombers && <span>{t('bombers', { count: squad.composition.bombers })}</span>}

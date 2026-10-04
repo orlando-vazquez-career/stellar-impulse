@@ -76,14 +76,19 @@ export function cellAtPixel(x: number, y: number) {
     ? { x: cellX, y: cellY } : null;
 }
 
-export function routeAcrossSector(start: { x: number; y: number }, target: { x: number; y: number }) {
-  const result = findTiledPath(sectorSurface, start, target);
+export function routeAcrossSector(start: { x: number; y: number }, target: { x: number; y: number }, occupied: Point[] = []) {
+  const walkable = [...sectorSurface.walkable];
+  for (const point of occupied) {
+    const x = Math.round(point.x), y = Math.round(point.y);
+    if (x !== start.x || y !== start.y) walkable[y * sectorSurface.width + x] = false;
+  }
+  const result = findTiledPath({ ...sectorSurface, walkable }, start, target);
   return result.status === 'found' ? [start, ...result.path] : [];
 }
 
 type Point = { x: number; y: number };
 
-function clearSegment(from: Point, to: Point) {
+function clearSegment(from: Point, to: Point, occupied: Point[] = []) {
   const steps = Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) * 20);
   const first = Math.round(from.y) * sectorSurface.width + Math.round(from.x);
   const height = sectorSurface.level[first];
@@ -95,25 +100,31 @@ function clearSegment(from: Point, to: Point) {
     if (col < 0 || row < 0 || col >= sectorMap.width || row >= sectorMap.height) return false;
     const index = row * sectorMap.width + col;
     if (!sectorSurface.walkable[index] || sectorSurface.level[index] !== height) return false;
+    if (occupied.some((point) => Math.hypot(x - point.x, y - point.y) < 0.9)) return false;
   }
   return true;
 }
 
 /** Free-angle movement on flat ground; legal ramp crossings follow the Tiled path. */
-export function planSectorMove(start: Point, target: Point): Point[] {
+export function planSectorMove(start: Point, target: Point, occupied: Point[] = []): Point[] {
   const startCell = { x: Math.round(start.x), y: Math.round(start.y) };
   const targetCell = { x: Math.round(target.x), y: Math.round(target.y) };
   if (!Number.isFinite(target.x) || !Number.isFinite(target.y)
     || target.x < 0 || target.y < 0 || target.x > sectorMap.width - 1 || target.y > sectorMap.height - 1
-    || Math.hypot(target.x - start.x, target.y - start.y) < 0.02) return [];
-  const route = routeAcrossSector(startCell, targetCell);
+    || Math.hypot(target.x - start.x, target.y - start.y) < 0.02
+    || occupied.some((point) => Math.hypot(target.x - point.x, target.y - point.y) < 0.9)) return [];
+  const route = routeAcrossSector(startCell, targetCell, occupied);
   if (!route.length) return [];
-  if (clearSegment(start, target)) return [start, target];
-  const points = [start, ...route.slice(1, -1), target];
+  if (clearSegment(start, target, occupied)) return [start, target];
+  // Keep the open start-cell centre when traffic forces a detour. Omitting it can
+  // make a fractional start cut into a nearby hull on the first diagonal segment.
+  const entry = occupied.length && Math.hypot(start.x - startCell.x, start.y - startCell.y) > 0.02
+    && clearSegment(start, startCell, occupied) ? [startCell] : [];
+  const points = [start, ...entry, ...route.slice(1, -1), target];
   const smoothed: Point[] = [start];
   for (let anchor = 0; anchor < points.length - 1;) {
     let next = points.length - 1;
-    while (next > anchor + 1 && !clearSegment(points[anchor]!, points[next]!)) next--;
+    while (next > anchor + 1 && !clearSegment(points[anchor]!, points[next]!, occupied)) next--;
     smoothed.push(points[next]!);
     anchor = next;
   }

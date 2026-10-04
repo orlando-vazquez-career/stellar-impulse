@@ -54,7 +54,7 @@ describe('sector 01', () => {
       .find((cell) => world.surface?.walkable[cell.y * world.width + cell.x] === true
         && world.surface.level[cell.y * world.width + cell.x] === world.surface.level[ship.y * world.width + ship.x]);
     expect(neighbor).toBeDefined();
-    // An enemy ship holds its cell; allies may pass through each other.
+    // An enemy ship holds its cell; allied traffic is covered by ship-traffic.test.ts.
     const rival = world.squads.find((squad) => squad.id === 'p2-interceptor')!;
     rival.x = neighbor!.x;
     rival.y = neighbor!.y;

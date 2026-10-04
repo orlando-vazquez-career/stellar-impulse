@@ -6,9 +6,9 @@ import type {
 } from './model';
 import { UNIT_STATS, damageAgainst } from '@impulso/state';
 import { planSectorMove, sectorSurface } from '../map/sector-map';
-import { advanceFreeMove } from './phaser/free-movement';
+import { advanceShip, CRUISE_SPEED, SHIP_SPACING } from './phaser/ship-motion';
 
-const MOVE_SPEED = 4; // Interceptor speed in grid units per second for the visual prototype.
+const MOVE_SPEED = CRUISE_SPEED;
 const MOVE_STEP_MS = 50;
 
 const initialSnapshot: GameplayViewModel = {
@@ -73,6 +73,7 @@ function cloneSnapshot(snapshot: GameplayViewModel): GameplayViewModel {
     },
     squads: snapshot.squads.map((squad) => ({
       ...squad,
+      speedCellsPerSecond: MOVE_SPEED / UNIT_STATS[squad.unitType].moveIntervalFactor,
       composition: { ...squad.composition },
     })),
   };
@@ -85,9 +86,28 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
   const movements = new Map<string, ReturnType<typeof setInterval>>();
   const attacks = new Map<string, ReturnType<typeof setInterval>>();
   const replyReadyAt = new Map<string, number>();
+  const speeds = new Map<string, number>();
   const listeners = new Set<() => void>();
 
   const emit = () => listeners.forEach((listener) => listener());
+  const occupiedByOthers = (id: string, ignoredId?: string) => snapshot.squads
+    .filter((squad) => squad.id !== id && squad.id !== ignoredId && squad.healthPercent > 0)
+    .map((squad) => ({ x: squad.gridX, y: squad.gridY }));
+  const destinationNear = (id: string, desired: { x: number; y: number }, reserved: { x: number; y: number }[] = []) => {
+    const squad = snapshot.squads.find((unit) => unit.id === id)!;
+    const occupied = [...occupiedByOthers(id), ...reserved];
+    const candidates = [desired];
+    for (let radius = 1; radius <= 4; radius++) for (let step = 0; step < 16; step++) {
+      const angle = step * Math.PI / 8;
+      candidates.push({ x: desired.x + Math.cos(angle) * radius * SHIP_SPACING,
+        y: desired.y + Math.sin(angle) * radius * SHIP_SPACING });
+    }
+    for (const destination of candidates) {
+      const route = planSectorMove({ x: squad.gridX, y: squad.gridY }, destination, occupied);
+      if (route.length >= 2) return { destination, route };
+    }
+    return null;
+  };
   const stopClock = () => {
     if (clock) clearInterval(clock);
     clock = null;
@@ -96,11 +116,13 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
     const movement = movements.get(squadId);
     if (movement) clearInterval(movement);
     movements.delete(squadId);
+    speeds.delete(squadId);
   };
   const stopAttack = (squadId: string) => {
     const attack = attacks.get(squadId);
     if (attack) clearInterval(attack);
     attacks.delete(squadId);
+    speeds.delete(squadId);
   };
   const startAttack = (squadId: string) => {
     stopAttack(squadId);
@@ -122,10 +144,12 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
       const range = Math.hypot(target.gridX - attacker.gridX, target.gridY - attacker.gridY);
       if (range > 1.5) {
         inRangeMs = 0;
-        const route = planSectorMove({ x: attacker.gridX, y: attacker.gridY }, { x: target.gridX, y: target.gridY });
-        if (route.length < 2) { stopAttack(squadId); return; }
+        const route = planSectorMove({ x: attacker.gridX, y: attacker.gridY }, { x: target.gridX, y: target.gridY }, occupiedByOthers(squadId, target.id));
+        if (route.length < 2) return; // Live traffic can clear; retain the attack order.
         const speed = MOVE_SPEED / UNIT_STATS[attacker.unitType].moveIntervalFactor;
-        const next = advanceFreeMove(route, speed * elapsedMs / 1000)[0]!;
+        const motion = advanceShip(route, speeds.get(squadId) ?? 0, speed, elapsedMs, occupiedByOthers(squadId));
+        speeds.set(squadId, motion.speed);
+        const next = motion.route[0]!;
         snapshot = { ...snapshot, squads: snapshot.squads.map((squad) => squad.id === squadId
           ? { ...squad, gridX: next.x, gridY: next.y, status: 'attacking' } : squad) };
         emit();
@@ -161,7 +185,13 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
       const movingSquad = snapshot.squads.find((squad) => squad.id === squadId);
       if (!movingSquad) { stopMovement(squadId); return; }
       const speed = MOVE_SPEED / UNIT_STATS[movingSquad.unitType].moveIntervalFactor;
-      const remaining = advanceFreeMove(order.route, speed * elapsedMs / 1000);
+      const motion = advanceShip(order.route, speeds.get(squadId) ?? 0, speed, elapsedMs, occupiedByOthers(squadId));
+      speeds.set(squadId, motion.speed);
+      let remaining = motion.route;
+      if (motion.blocked) {
+        const detour = planSectorMove(remaining[0]!, order.destination, occupiedByOthers(squadId));
+        if (detour.length >= 2) remaining = detour;
+      }
       const next = remaining[0]!;
       const arrived = remaining.length === 1;
       const updatedOrder = arrived ? null : { ...order, route: remaining };
@@ -226,10 +256,11 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
         if (snapshot.activeAction !== null && snapshot.activeAction !== 'move') return;
         const squad = snapshot.squads.find((candidate) => candidate.id === intent.squadId
           && candidate.id === snapshot.selectedSquadId && candidate.owner === 'blue' && candidate.visible && candidate.healthPercent > 0);
-        const route = squad ? planSectorMove({ x: squad.gridX, y: squad.gridY }, { x: intent.x, y: intent.y }) : [];
-        if (!squad || route.length < 2) return;
+        if (!squad || !planSectorMove({ x: squad.gridX, y: squad.gridY }, { x: intent.x, y: intent.y }).length) return;
+        const planned = destinationNear(squad.id, { x: intent.x, y: intent.y });
+        if (!planned) return;
         stopAttack(squad.id);
-        const order: MoveOrder = { squadId: squad.id, destination: { x: intent.x, y: intent.y }, route };
+        const order: MoveOrder = { squadId: squad.id, ...planned };
         orders.set(squad.id, order);
         snapshot = {
           ...snapshot,
@@ -242,20 +273,18 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
         if (snapshot.activeAction !== null && snapshot.activeAction !== 'move') return;
         const selected = selectedAllies();
         if (!selected.length || !Number.isFinite(intent.x) || !Number.isFinite(intent.y)
+          || intent.x < 0 || intent.y < 0 || intent.x >= sectorSurface.width || intent.y >= sectorSurface.height
           || !sectorSurface.walkable[Math.round(intent.y) * sectorSurface.width + Math.round(intent.x)]) return;
         const center = selected.reduce((sum, squad) => ({ x: sum.x + squad.gridX / selected.length, y: sum.y + squad.gridY / selected.length }), { x: 0, y: 0 });
         const newOrders: MoveOrder[] = [];
         for (const squad of selected) {
           const desired = { x: intent.x + squad.gridX - center.x, y: intent.y + squad.gridY - center.y };
-          let route = planSectorMove({ x: squad.gridX, y: squad.gridY }, desired);
-          let destination = desired;
-          if (route.length < 2) {
-            destination = { x: intent.x, y: intent.y };
-            route = planSectorMove({ x: squad.gridX, y: squad.gridY }, destination);
-          }
-          if (route.length < 2) continue;
+          const reserved = newOrders.map((order) => order.destination);
+          const planned = destinationNear(squad.id, desired, reserved)
+            ?? destinationNear(squad.id, { x: intent.x, y: intent.y }, reserved);
+          if (!planned) continue;
           stopAttack(squad.id);
-          const order: MoveOrder = { squadId: squad.id, destination, route };
+          const order: MoveOrder = { squadId: squad.id, ...planned };
           orders.set(squad.id, order);
           newOrders.push(order);
           startMovement(squad.id);

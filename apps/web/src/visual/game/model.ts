@@ -7,6 +7,7 @@ export interface SquadViewModel {
   callSign: string;
   owner: SquadOwner;
   unitType: SquadType;
+  speedCellsPerSecond?: number;
   // Continuous map coordinates; integer values are tile centers.
   gridX: number;
   gridY: number;

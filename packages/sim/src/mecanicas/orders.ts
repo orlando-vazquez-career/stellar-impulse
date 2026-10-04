@@ -65,9 +65,18 @@ export function assignArrival(ids: readonly string[], origin: Cell, board: WalkB
     return assigned;
   }
   const ring = ringAround(origin, board);
+  // Expand the formation instead of sending overflow ships to the same centre pixel.
+  for (let radius = 2; ring.length < ordered.length && radius < Math.max(board.width, board.height); radius++) {
+    for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+      const cell = { x: origin.x + dx, y: origin.y + dy };
+      if (cell.x >= 0 && cell.y >= 0 && cell.x < board.width && cell.y < board.height
+        && !board.blocked.has(cellKey(cell))) ring.push(cell);
+    }
+  }
   for (let index = 0; index < ordered.length; index += 1) {
     const id = ordered[index];
-    if (id) assigned.set(id, ring[index] ?? copy(origin));
+    if (id && ring[index]) assigned.set(id, ring[index]!);
   }
   return assigned;
 }

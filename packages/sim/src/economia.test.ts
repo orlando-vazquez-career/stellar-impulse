@@ -123,6 +123,7 @@ describe('rival difficulty', () => {
 
   it('lets harder rivals build more and expand faster', () => {
     expect(rivalShips(play('medium', 600))).toBeGreaterThan(rivalShips(play('easy', 600)));
-    expect(rivalNodes(play('hard', 200))).toBeGreaterThan(rivalNodes(play('medium', 200)));
+    // The sector now travels at 6 ticks/cell instead of 4: allow the same travel budget.
+    expect(rivalNodes(play('hard', 300))).toBeGreaterThan(rivalNodes(play('medium', 300)));
   });
 });
