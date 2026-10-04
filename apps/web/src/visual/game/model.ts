@@ -90,6 +90,8 @@ export interface GameplayViewModel {
   clockRunning: boolean;
   nodes: NodeViewModel[];
   production: ProductionViewModel | null;
+  /** The campaign battlefield currently provides a fixed starting fleet. */
+  canProduce?: boolean;
   result: 'victory' | 'defeat' | null;
   /** Last server rejection or connection message, already localized by key. */
   notice: string | null;

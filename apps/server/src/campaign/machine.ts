@@ -2,13 +2,14 @@ import {
   applyBattlefieldCommand, createBattlefieldWorld, stepBattlefieldWorld,
   type BattlefieldRejection, type BattlefieldWorld, type PlayerId,
 } from '@impulso/sim';
+import type { CampaignPhase, CampaignPhaseView, CampaignSectorResult, CampaignResult } from '@impulso/state';
 import { campaignMapForSector } from '../map-catalog.js';
 
 /**
  * Campaign lifecycle: lobby → countdown → sector 1..N (with transitions) → results → closed.
  * Pure orchestration around the simulator. Time always comes in as `now` (ms); nothing here reads a clock.
  */
-export type Phase = 'lobby' | 'countdown' | 'sector' | 'transition' | 'results' | 'closed';
+export type Phase = CampaignPhase;
 
 export interface CampaignConfig {
   sectors: number;
@@ -42,8 +43,8 @@ export const DEFAULT_CONFIG: Readonly<CampaignConfig> = Object.freeze({
 });
 
 export interface Seat { name: string; ready: boolean; connected: boolean; pausesUsed: number; droppedAt: number | null }
-export interface SectorResult { sector: number; winner: PlayerId | null }
-export interface CampaignResult { winner: PlayerId | null; reason: 'core' | 'draw' | 'forfeit' | 'annulled' }
+export type SectorResult = CampaignSectorResult;
+export type { CampaignResult } from '@impulso/state';
 export interface Campaign {
   config: CampaignConfig;
   phase: Phase;
@@ -59,21 +60,7 @@ export interface Campaign {
   startedAt: number | null;
   result: CampaignResult | null;
 }
-export interface PhaseView {
-  phase: Phase;
-  sector: number;
-  sectors: number;
-  remainingMs: number | null;
-  seats: Record<PlayerId, { name: string; ready: boolean; connected: boolean } | null>;
-  pause: { by: PlayerId; remainingMs: number } | null;
-  resumeInMs: number | null;
-  sectorResults: SectorResult[];
-  offers: string[] | null;
-  myTech: string | null;
-  rivalChoseTech: boolean;
-  myTechnologies: string[];
-  result: CampaignResult | null;
-}
+export type PhaseView = Omit<CampaignPhaseView, 'protocolVersion'>;
 
 const PLAYERS: readonly PlayerId[] = ['p1', 'p2'];
 const rivalOf = (player: PlayerId): PlayerId => (player === 'p1' ? 'p2' : 'p1');
@@ -213,6 +200,7 @@ export function leave(campaign: Campaign, player: PlayerId, now: number): void {
 export function phaseView(campaign: Campaign, player: PlayerId, now: number): PhaseView {
   const publicSeat = (seat: Seat | null) => (seat ? { name: seat.name, ready: seat.ready, connected: seat.connected } : null);
   return {
+    playerId: player,
     phase: campaign.phase,
     sector: campaign.sector,
     sectors: campaign.config.sectors,

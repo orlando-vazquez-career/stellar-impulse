@@ -63,14 +63,16 @@ test('login gate leads straight to a new training once the commander has an alia
   await expect(page.getByRole('button', { name: /Espiral Estelar 58/ })).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('carries the room code from the login into the preparation lobby', async ({ page }) => {
+test('requires an account before joining a multiplayer room from the login', async ({ page }) => {
   await openApp(page);
   await page.getByLabel('Identificador de comandante').fill('Vega');
   await page.getByRole('button', { name: 'Unirse con código' }).click();
   await page.getByLabel('Código de sala').fill('ab12');
   await page.getByLabel('Código de sala').press('Enter');
-  await expect(page.getByRole('heading', { name: 'Accede a la operación.' })).toBeVisible();
-  await expect(page.getByLabel('Código de sala')).toHaveValue('AB12');
+  await expect(page.getByRole('status')).toContainText('Inicia sesión con tu cuenta');
+  await expect(page.getByRole('button', { name: 'Iniciar sesión', exact: false })).toBeEnabled();
+  await expect(page.getByLabel('Correo electrónico')).toBeVisible();
+  await expect(page.locator('.vi-lobby')).toHaveCount(0);
 });
 
 test('can continue as a guest while the empty room-code form is open', async ({ page }) => {
