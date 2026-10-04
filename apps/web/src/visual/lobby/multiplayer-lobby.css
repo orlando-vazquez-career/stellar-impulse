@@ -1,0 +1,363 @@
+.vi-multiplayer-lobby .vi-lobby__grid {
+  grid-template-columns: minmax(290px, .75fr) minmax(480px, 1.25fr);
+}
+
+.vi-multiplayer-lobby .vi-lobby-card {
+  min-height: 0;
+}
+
+.vi-multiplayer-lobby .vi-lobby-card > header {
+  gap: 16px;
+}
+
+.vi-multiplayer-room > header h2 {
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.vi-multiplayer-lobby .vi-multiplayer-connection {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .035em;
+  text-transform: none;
+}
+
+.vi-multiplayer-connection.is-idle,
+.vi-multiplayer-connection.is-offline {
+  color: #b7c6d1;
+  border-color: rgb(143 174 194 / 35%);
+}
+
+.vi-multiplayer-connection.is-idle i,
+.vi-multiplayer-connection.is-offline i {
+  background: #8faec2;
+  box-shadow: none;
+}
+
+.vi-multiplayer-connection.is-connecting,
+.vi-multiplayer-connection.is-reconnecting {
+  color: #f2cd79;
+  border-color: rgb(242 205 121 / 45%);
+}
+
+.vi-multiplayer-connection.is-connecting i,
+.vi-multiplayer-connection.is-reconnecting i {
+  background: #f2cd79;
+  box-shadow: 0 0 8px rgb(242 205 121 / 50%);
+}
+
+.vi-multiplayer-map-hint,
+.vi-multiplayer-rules {
+  padding: 16px 28px;
+  color: #b0c5d3;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.vi-multiplayer-map-hint {
+  border-bottom: 1px solid rgb(113 229 220 / 18%);
+}
+
+.vi-multiplayer-lobby .vi-briefing__data dt {
+  font-size: 11px;
+  letter-spacing: .05em;
+}
+
+.vi-multiplayer-lobby .vi-briefing__data dd {
+  line-height: 1.5;
+}
+
+.vi-multiplayer-entry {
+  padding: 36px 24px;
+}
+
+.vi-multiplayer-entry > p:first-child {
+  margin-top: 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.vi-multiplayer-entry > .vi-primary {
+  min-height: 50px;
+  margin-top: 22px;
+  padding: 0 18px;
+}
+
+.vi-multiplayer-lobby .vi-primary {
+  border-color: #71e5dc;
+  border-radius: 0;
+  background: linear-gradient(120deg, #71e5dc, #10b981);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  cursor: pointer;
+}
+
+.vi-multiplayer-lobby .vi-primary:hover:not(:disabled) {
+  background: linear-gradient(120deg, #a3f6ee, #34d399);
+}
+
+.vi-multiplayer-lobby .vi-primary:disabled {
+  cursor: not-allowed;
+}
+
+.vi-multiplayer-entry input {
+  text-transform: none;
+  letter-spacing: .03em;
+}
+
+.vi-multiplayer-entry > .vi-multiplayer-name {
+  display: block;
+  margin-bottom: 24px;
+}
+
+.vi-multiplayer-name input {
+  width: 100%;
+  border-right: 1px solid rgb(113 229 220 / 40%);
+}
+
+.vi-multiplayer-name input[aria-invalid="true"] {
+  border-color: #f2cd79;
+}
+
+.vi-multiplayer-name > p {
+  margin-top: 10px;
+}
+
+.vi-multiplayer-entry > div > button {
+  padding-right: 14px;
+  padding-left: 14px;
+  letter-spacing: .06em;
+  font-size: 13px;
+}
+
+.vi-multiplayer-error {
+  margin: 18px 20px 0 !important;
+  padding: 12px 14px;
+  border: 1px solid rgb(255 155 167 / 45%);
+  border-left: 3px solid #ff9ba7;
+  background: rgb(255 79 100 / 8%);
+  color: #ffc6ce;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.vi-multiplayer-share {
+  padding: 22px 24px 12px;
+  border-bottom: 1px solid rgb(113 229 220 / 18%);
+}
+
+.vi-multiplayer-share > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #b0c5d3;
+  font-size: 12px;
+}
+
+.vi-multiplayer-share > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.vi-multiplayer-share code {
+  min-width: 0;
+  color: #a3f6ee;
+  font-family: var(--vi-display);
+  font-size: clamp(26px, 2.8vw, 38px);
+  font-weight: 700;
+  letter-spacing: .07em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.vi-multiplayer-share button {
+  flex-shrink: 0;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid rgb(113 229 220 / 45%);
+  background: rgb(113 229 220 / 8%);
+  color: #a3f6ee;
+  font-family: var(--vi-display);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vi-multiplayer-share button:hover {
+  background: rgb(113 229 220 / 15%);
+  border-color: #71e5dc;
+}
+
+.vi-multiplayer-share > p {
+  margin-top: 10px;
+  color: #b0c5d3;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.vi-multiplayer-share .vi-multiplayer-copy-feedback {
+  min-height: 19px;
+  margin-top: 6px;
+  color: #a3f6ee;
+}
+
+.vi-multiplayer-lobby .vi-room__section {
+  padding: 18px 24px;
+}
+
+.vi-multiplayer-lobby .vi-room__section h3 {
+  display: flex;
+  justify-content: space-between;
+}
+
+.vi-multiplayer-lobby .vi-room__section h3 > span {
+  color: #b0c5d3;
+  font-size: 12px;
+  letter-spacing: .1em;
+}
+
+.vi-multiplayer-lobby .vi-commanders {
+  grid-template-columns: 1fr;
+}
+
+.vi-multiplayer-lobby .vi-commander {
+  min-height: 66px;
+}
+
+.vi-multiplayer-lobby .vi-commander.is-muted {
+  opacity: .8;
+}
+
+.vi-multiplayer-lobby .vi-commander em {
+  font-size: 11px;
+  letter-spacing: .025em;
+}
+
+.vi-multiplayer-lobby .vi-commander em.is-ready {
+  color: #84f0be;
+}
+
+.vi-multiplayer-ready,
+.vi-multiplayer-countdown,
+.vi-multiplayer-waiting {
+  padding: 18px 24px 24px;
+}
+
+.vi-multiplayer-ready > p,
+.vi-multiplayer-countdown > p,
+.vi-multiplayer-waiting {
+  color: #b0c5d3;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.vi-multiplayer-ready .vi-primary {
+  margin-top: 18px;
+}
+
+.vi-multiplayer-countdown {
+  border-top: 1px solid rgb(242 205 121 / 25%);
+  background: rgb(242 205 121 / 4%);
+}
+
+.vi-multiplayer-countdown > p:first-child {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #edf4f8;
+  font-family: var(--vi-display);
+  font-size: 20px;
+}
+
+.vi-multiplayer-countdown strong {
+  color: #f2cd79;
+  font-size: 40px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.vi-multiplayer-lobby .vi-screen__footer {
+  position: relative;
+  inset: auto;
+  margin: 0 auto;
+}
+
+@media (max-width: 960px) {
+  .vi-multiplayer-lobby .vi-lobby__grid {
+    grid-template-columns: minmax(250px, .75fr) minmax(400px, 1.25fr);
+  }
+
+  .vi-multiplayer-room > header {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .vi-multiplayer-lobby .vi-lobby__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vi-multiplayer-lobby .vi-screen__header {
+    height: auto;
+    min-height: 92px;
+    margin: 0 20px;
+    padding: 14px 0;
+    flex-wrap: wrap;
+    gap: 18px;
+  }
+
+  .vi-multiplayer-lobby .vi-screen__footer {
+    width: calc(100% - 40px);
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+}
+
+.is-reduced-motion .vi-multiplayer-lobby::before {
+  animation: none;
+}
+
+.is-reduced-motion .vi-multiplayer-lobby button,
+.is-reduced-motion .vi-multiplayer-lobby .vi-commander {
+  transition: none;
+}
+
+@media (max-width: 460px) {
+  .vi-multiplayer-entry > div {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .vi-multiplayer-entry input {
+    border-right: 1px solid rgb(113 229 220 / 40%);
+  }
+
+  .vi-multiplayer-entry > div > button {
+    min-height: 44px;
+  }
+
+  .vi-multiplayer-share > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .vi-multiplayer-lobby .vi-commander {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .vi-multiplayer-lobby .vi-commander em {
+    grid-column: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vi-multiplayer-lobby::before {
+    animation: none;
+  }
+
+  .vi-multiplayer-lobby button,
+  .vi-multiplayer-lobby .vi-commander {
+    transition: none;
+  }
+}

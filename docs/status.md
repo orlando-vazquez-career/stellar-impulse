@@ -1,8 +1,22 @@
 # Estado del repositorio
 
-Actualizado: 1 de octubre de 2026. Base de producto: 0.1.0.
+Actualizado: 3 de octubre de 2026. Base de producto: 0.1.0.
 
 ## Implementado
+
+### Salas y conexión multijugador (3 de octubre de 2026)
+
+El centro de mando permite crear una sala privada o unirse por código con cuentas
+distintas. El lobby muestra las dos plazas y su estado listo desde el servidor;
+solo inicia la cuenta regresiva cuando ambos están conectados y listos. El juego
+conserva la misma conexión y representa las vistas privadas autoritativas de Sector 01.
+Las órdenes de mover, atacar y detener usan secuencias y confirmaciones del servidor.
+
+La sesión conserva el token de reconexión en `sessionStorage`: una caída o recarga
+recupera el mismo asiento durante la reserva. Salir del lobby libera la plaza; salir
+de la partida concede el resultado al rival. La pantalla también recupera resultados
+tras recargar. Las salas históricas de 72 × 72 se rechazan en esta interfaz con un
+mensaje de mapa incompatible. El entrenamiento contra IA conserva su ruta independiente.
 
 ### Interfaz principal y prueba Tiled (1 de octubre de 2026)
 
@@ -18,7 +32,7 @@ mueven en continuo cuando el terreno es llano; en las rampas siguen las rutas
 válidas de la simulación. Selección individual y múltiple, órdenes de movimiento y
 ataque se conservan. WASD vuelve a desplazar la cámara y Q queda como atajo de
 ataque (los A guardados se migran). El minimapa refleja el terreno de Sector 01.
-El combate sigue con **adaptador local**, sin conexión a la sala autoritativa `campaign`.
+En esta entrega del 1 de octubre, el combate todavía usaba **adaptador local**.
 `pnpm check` pasó con 251 tests; `pnpm test:e2e` pasó con 13 tests
 (incluida una prueba directa de la sala `training` tras retirar su cliente web).
 
@@ -36,7 +50,12 @@ Backend actualizado el 29 de septiembre: campaign usa protocolo v2 y un mundo au
 
 ## Límites
 
-El gameplay de campaña todavía no está completo: el preset está abierto, los tres sectores lo reutilizan, las tecnologías son placeholders y el cliente web aún no integra la vista de campaña. Siguen pendientes bots, producción de flotas, Energía, tecnologías jugables, PostgreSQL, SEP-10, compra, premios e inventario equipado. No hay contrato desplegado, mainnet ni sitio publicado.
+El gameplay de campaña todavía no está completo: los tres sectores reutilizan el
+mapa seleccionado, las tecnologías no tienen efectos jugables y la flota multijugador
+es fija (un Interceptor inicial por jugador). Siguen pendientes producción multijugador,
+Energía y la integración de la campaña completa. El modo training conserva su IA y producción.
+Las limitaciones de blockchain y persistencia descritas en las entregas históricas
+requieren su propia verificación antes de una publicación.
 
 Las salas son efímeras de desarrollo. campaign reserva un asiento desconectado hasta 60 s desde la caída original, con hasta dos pausas por jugador; training no ofrece reconexión. Los lobbies de campaña sin empezar caducan a los 15 minutos.
 
