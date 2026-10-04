@@ -14,12 +14,15 @@ import { SECTOR_01 } from './mapas/sector-01.js';
 import {
   BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, launchCell, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS,
   type ProductionState,
+  baseUpgradeCost, fleetCapacity, baseDamage, BASE_DEFENSE_RANGE, type BaseUpgrades,
 } from './economia.js';
 import { rivalGoals, rivalProduction, type RivalDifficulty } from './inteligencia-enemiga/estrategia.js';
 export { RIVAL_PROFILES } from './inteligencia-enemiga/estrategia.js';
 export type { RivalDifficulty } from './inteligencia-enemiga/estrategia.js';
 export { BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS } from './economia.js';
 export type { ProductionOrder, ProductionState } from './economia.js';
+export { baseUpgradeCost, fleetCapacity, baseDamage, MAX_BASE_UPGRADE_LEVEL, BASE_DEFENSE_RANGE, CAPACITY_PER_LEVEL, BASE_DAMAGE_PER_LEVEL } from './economia.js';
+export type { BaseUpgrades, BaseUpgradeKind } from './economia.js';
 export { leerSuperficie } from './mapas/leer-tiled.js';
 export { findPath as findTiledPath } from './maps/pathfinding.js';
 import { ESPIRAL } from './mapas/espiral.js';
@@ -89,6 +92,7 @@ export interface Player {
   base: Position;
   metal: number;
   lastSequence: number;
+  baseUpgrades?: BaseUpgrades;
 }
 export interface Squad extends Position {
   id: string;
@@ -159,7 +163,7 @@ export type CommandRejection =
   | 'unknown_squad' | 'not_owner' | 'squad_destroyed'
   | 'out_of_bounds' | 'blocked_destination' | 'unreachable_destination' | 'route_full' | 'match_finished'
   | 'unknown_target' | 'friendly_target' | 'target_destroyed' | 'target_not_visible' | 'cannot_attack' | 'target_unavailable'
-  | 'insufficient_metal' | 'fleet_full' | 'production_busy';
+  | 'insufficient_metal' | 'fleet_full' | 'production_busy' | 'upgrade_maxed';
 export type CommandResult =
   | { accepted: true; world: World }
   | { accepted: false; reason: CommandRejection; world: World };
@@ -318,8 +322,8 @@ function cloneWorld(world: World): World {
   return {
     ...world, rules: { ...world.rules }, obstacles: world.obstacles.map((point) => ({ ...point })),
     players: {
-      p1: { ...world.players.p1, base: { ...world.players.p1.base } },
-      p2: { ...world.players.p2, base: { ...world.players.p2.base } },
+      p1: { ...world.players.p1, base: { ...world.players.p1.base }, baseUpgrades: world.players.p1.baseUpgrades && { ...world.players.p1.baseUpgrades } },
+      p2: { ...world.players.p2, base: { ...world.players.p2.base }, baseUpgrades: world.players.p2.baseUpgrades && { ...world.players.p2.baseUpgrades } },
     },
     squads: world.squads.map((unit) => ({
       ...unit,
@@ -456,6 +460,35 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
   if (world.winner !== null) return reject('match_finished');
   const command = parsed.command;
   if (command.seq <= world.players[playerId].lastSequence) return reject('stale_sequence');
+  if (command.type === 'disband') {
+    const units = command.squadIds.map((id) => world.squads.find((unit) => unit.id === id));
+    if (units.some((unit) => !unit)) return reject('unknown_squad');
+    if (units.some((unit) => unit!.ownerId !== playerId)) return reject('not_owner');
+    if (units.some((unit) => unit!.hp <= 0)) return reject('squad_destroyed');
+    const next = cloneWorld(world);
+    const ids = new Set(command.squadIds);
+    next.players[playerId].lastSequence = command.seq;
+    for (const unit of next.squads) if (ids.has(unit.id)) {
+      holdGround(unit);
+      unit.hp = 0;
+      delete unit.transit;
+    }
+    refreshArrivals(next.squads.filter((unit) => unit.hp > 0), boardOf(next));
+    return { accepted: true, world: next };
+  }
+  if (command.type === 'upgrade_base') {
+    if (!world.economy) return reject('invalid_command');
+    const cost = baseUpgradeCost(command.upgrade, world.players[playerId].baseUpgrades);
+    if (cost === null) return reject('upgrade_maxed');
+    if (world.players[playerId].metal < cost) return reject('insufficient_metal');
+    const next = cloneWorld(world);
+    const player = next.players[playerId];
+    player.lastSequence = command.seq;
+    player.metal -= cost;
+    player.baseUpgrades ??= { damage: 0, capacity: 0 };
+    player.baseUpgrades[command.upgrade] += 1;
+    return { accepted: true, world: next };
+  }
   if (command.type === 'produce') {
     if (!world.economy) return reject('invalid_command');
     const refused = productionRefusal(world, playerId, command.kind);
@@ -646,7 +679,7 @@ function moveSquads(world: World): void {
 }
 function productionRefusal(world: World, playerId: PlayerId, kind: UnitKind): CommandRejection | null {
   if (world.production[playerId]) return 'production_busy';
-  if (world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0).length >= FLEET_CAP) return 'fleet_full';
+  if (world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0).length >= fleetCapacity(world.players[playerId].baseUpgrades)) return 'fleet_full';
   if (world.players[playerId].metal < UNIT_COSTS[kind]) return 'insufficient_metal';
   return null;
 }
@@ -688,6 +721,7 @@ export function stepWorld(world: World): World {
   moveSquads(next);
   if (next.economy) moveGuardians(next);
   resolveCombat(next.surface ? { ...next, level: next.surface.level, diagonalReach: true } : next);
+  if (next.economy) resolveBaseDefense(next);
   const capture = captureContext(next);
   for (const node of next.nodes) {
     const captor = advanceCapture(next, node, next.rules.nodeCaptureTicks, capture);
@@ -698,6 +732,21 @@ export function stepWorld(world: World): World {
   return next;
 }
 
+/** Bases fire once per combat beat at the nearest hostile in their visible perimeter. */
+function resolveBaseDefense(world: World): void {
+  if (world.tick % world.rules.attackEveryTicks !== 0) return;
+  const hits = new Map<string, number>();
+  for (const player of Object.values(world.players)) {
+    const damage = baseDamage(player.baseUpgrades);
+    if (damage <= 0) continue;
+    const target = [...world.squads.filter((unit) => unit.ownerId !== player.id && unit.hp > 0),
+      ...world.guardians.filter((unit) => guardianActive(world, unit))]
+      .filter((unit) => distance(unit, player.base) <= Math.min(BASE_DEFENSE_RANGE, world.rules.visionRadius))
+      .sort((a, b) => distance(a, player.base) - distance(b, player.base) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
+    if (target) hits.set(target.id, (hits.get(target.id) ?? 0) + damage);
+  }
+  for (const unit of [...world.squads, ...world.guardians]) unit.hp = Math.max(0, unit.hp - (hits.get(unit.id) ?? 0));
+}
 function releaseLostTarget(world: World, squad: Squad): void {
   if (!squad.attackTargetId) return;
   const enemy = attackTarget(world, squad.attackTargetId);

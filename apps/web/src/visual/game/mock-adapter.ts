@@ -5,6 +5,7 @@ import type {
   PresentationIntent,
 } from './model';
 import { UNIT_STATS, damageAgainst } from '@impulso/state';
+import { baseDamage, baseUpgradeCost, fleetCapacity, BASE_DEFENSE_RANGE, type BaseUpgrades } from '@impulso/sim';
 import { planSectorMove, sectorSurface } from '../map/sector-map';
 import { advanceShip, CRUISE_SPEED, SHIP_SPACING } from './phaser/ship-motion';
 
@@ -24,8 +25,8 @@ const initialSnapshot: GameplayViewModel = {
     metalRate: 12,
     energy: 180,
     energyRate: 8,
-    fleet: 12,
-    fleetCap: 20,
+    fleet: 3,
+    fleetCap: 12,
   },
   core: { state: 'locked', progress: 34, opensInSeconds: 88 },
   enemiesVisible: true,
@@ -88,6 +89,10 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
   const replyReadyAt = new Map<string, number>();
   const speeds = new Map<string, number>();
   const listeners = new Set<() => void>();
+  let baseUpgrades: BaseUpgrades = { damage: 0, capacity: 0 };
+  const baseView = () => ({ upgrades: { ...baseUpgrades }, damage: baseDamage(baseUpgrades), range: BASE_DEFENSE_RANGE,
+    upgradeCosts: { damage: baseUpgradeCost('damage', baseUpgrades), capacity: baseUpgradeCost('capacity', baseUpgrades) } });
+  snapshot = { ...snapshot, base: baseView() };
 
   const emit = () => listeners.forEach((listener) => listener());
   const occupiedByOthers = (id: string, ignoredId?: string) => snapshot.squads
@@ -234,7 +239,21 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
       return () => listeners.delete(listener);
     },
     dispatch(intent: PresentationIntent) {
-      if (intent.type === 'select-squad' || intent.type === 'select-squads') {
+      if (intent.type === 'disband-selected') {
+        const ids = new Set(selectedAllies().map((squad) => squad.id));
+        if (!ids.size) return;
+        for (const id of ids) { stopMovement(id); stopAttack(id); orders.delete(id); }
+        const squads = snapshot.squads.map((squad) => ids.has(squad.id)
+          ? { ...squad, selected: false, healthPercent: 0, visible: false, status: 'destroyed' as const, attackTargetId: null } : squad);
+        snapshot = { ...snapshot, squads, selectedSquadIds: [], selectedSquadId: null, moveOrder: null, activeAction: null,
+          resources: { ...snapshot.resources, fleet: squads.filter((squad) => squad.owner === 'blue' && squad.healthPercent > 0).length } };
+      } else if (intent.type === 'upgrade-base') {
+        const cost = baseUpgradeCost(intent.upgrade, baseUpgrades);
+        if (cost === null || snapshot.resources.metal < cost) return;
+        baseUpgrades = { ...baseUpgrades, [intent.upgrade]: baseUpgrades[intent.upgrade] + 1 };
+        snapshot = { ...snapshot, base: baseView(), resources: { ...snapshot.resources,
+          metal: snapshot.resources.metal - cost, fleetCap: fleetCapacity(baseUpgrades) } };
+      } else if (intent.type === 'select-squad' || intent.type === 'select-squads') {
         const requested = intent.type === 'select-squad' ? [intent.squadId] : intent.squadIds;
         const ids = [...new Set(requested)].filter((id) => snapshot.squads.some((squad) =>
           squad.id === id && squad.owner === 'blue' && squad.visible && squad.healthPercent > 0));

@@ -680,6 +680,18 @@
 /* Hangar, notices and match result (server-backed gameplay). */
 .vi-production { position: absolute; right: 20px; bottom: 20px; width: 262px; padding: 10px; box-sizing: border-box; }
 .vi-production__queue { margin: 0 5px 8px; color: var(--vi-text); font-size: 13px; }
+.vi-production__tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.vi-production__tabs button { padding: 4px 9px; border: 1px solid var(--vi-border); color: var(--vi-muted); font-family: var(--vi-display); font-size: 14px; }
+.vi-production__tabs button[aria-selected="true"] { color: var(--vi-blue-light); border-color: var(--vi-blue); background: var(--vi-surface-raised); }
+.vi-base-upgrades { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.vi-base-upgrades button { display: grid; gap: 3px; padding: 8px; border: 1px solid var(--vi-border); color: var(--vi-text); text-align: left; font-size: 13px; }
+.vi-base-upgrades button span { color: var(--vi-muted); }
+.vi-base-upgrades button small { color: var(--vi-blue-light); font-size: 12px; }
+.vi-base-upgrades button:hover:not(:disabled) { border-color: var(--vi-blue); background: var(--vi-surface-raised); }
+.vi-base-upgrades button:disabled { opacity: .45; }
+.vi-squad__tools { display: flex; gap: 10px; align-items: center; }
+.vi-squad header button.vi-retire { color: var(--vi-warning); }
+.vi-squad.is-collapsed .vi-retire { display: none; }
 .vi-production__list { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .vi-production__list button { min-width: 0; min-height: 44px; padding: 5px 7px; border: 1px solid var(--vi-border); display: grid; grid-template-columns: 1fr auto; gap: 2px 5px; align-items: center; color: var(--vi-text); text-align: left; font-size: 13px; }
 .vi-production__list button small { grid-column: 1; color: var(--vi-muted); }

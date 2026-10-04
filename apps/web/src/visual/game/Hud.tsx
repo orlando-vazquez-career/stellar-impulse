@@ -134,7 +134,7 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
   </Panel>;
 }
 
-function SquadHud({ view }: { view: GameplayViewModel }) {
+function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
   const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
   const selected = view.squads.filter((candidate) => view.selectedSquadIds.includes(candidate.id) && candidate.visible && candidate.healthPercent > 0);
@@ -145,7 +145,10 @@ function SquadHud({ view }: { view: GameplayViewModel }) {
   const stats = UNIT_STATS[squad.unitType];
   const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
   return <Panel className={`vi-squad ${collapsed ? 'is-collapsed' : ''}`}>
-    <header><span>{selected.length > 1 ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span><button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></header>
+    <header><span>{selected.length > 1 ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span>
+      <div className="vi-squad__tools"><button className="vi-retire" disabled={!!view.result}
+        title={t('retireShipsHelp')} onClick={() => adapter.dispatch({ type: 'disband-selected' })}>{t('retireShips')}</button>
+        <button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></div></header>
     {!collapsed && selected.length > 1 ? <div className="vi-squad__group">{selected.map((unit) => <div className="vi-squad__group-unit" key={unit.id}>
       <strong>{unit.callSign}</strong><span>{unitNames[unit.unitType]}</span><progress aria-label={`${unit.callSign} HP`} value={unit.healthPercent} max="100" />
     </div>)}</div> : !collapsed && <div className="vi-squad__body">
@@ -189,10 +192,27 @@ const PRODUCTION_ORDER = [
 /** Base hangar: one ship at a time, paid in Metal. Hidden in the offline mock. */
 function ProductionHud({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
   const { t } = useI18n();
+  const [tab, setTab] = useState<'hangar' | 'base'>('hangar');
   if (view.connection === 'local') return null;
   const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
   const full = view.resources.fleet >= view.resources.fleetCap;
-  return <Panel className="vi-production"><span className="vi-actions__label">Hangar</span>
+  return <Panel className="vi-production"><div className="vi-production__tabs" role="tablist" aria-label={t('baseTab')}>
+    <button id="hangar-tab" role="tab" aria-selected={tab === 'hangar'} aria-controls="hangar-panel" onClick={() => setTab('hangar')}>{t('hangar')}</button>
+    <button id="base-tab" role="tab" aria-selected={tab === 'base'} aria-controls="base-panel" disabled={!view.base} onClick={() => setTab('base')}>{t('baseTab')}</button>
+  </div>
+    {tab === 'base' && view.base ? <div role="tabpanel" id="base-panel" aria-labelledby="base-tab">
+      <p className="vi-production__queue">{t('baseSummary', { damage: view.base.damage, fleet: view.resources.fleet, cap: view.resources.fleetCap })}</p>
+      <div className="vi-base-upgrades">{(['damage', 'capacity'] as const).map((upgrade) => {
+        const cost = view.base!.upgradeCosts[upgrade];
+        return <button key={upgrade} disabled={cost === null || view.resources.metal < cost || !!view.result || view.connection !== 'online'}
+          title={t(upgrade === 'damage' ? 'baseDamageHelp' : 'baseCapacityHelp')}
+          onClick={() => adapter.dispatch({ type: 'upgrade-base', upgrade })}>
+          <strong>{t(upgrade === 'damage' ? 'baseDamage' : 'baseCapacity')}</strong>
+          <span>{t('upgradeLevel', { level: view.base!.upgrades[upgrade] })}</span>
+          <small>{cost === null ? t('upgradeMaxed') : `${cost} Metal`}</small>
+        </button>;
+      })}</div>
+    </div> : <div role="tabpanel" id="hangar-panel" aria-labelledby="hangar-tab">
     {view.production
       ? <p className="vi-production__queue">{unitNames[view.production.kind]} · {view.production.remainingSeconds} s</p>
       : <p className="vi-production__queue">{full ? 'Flota completa' : 'Listo para construir'}</p>}
@@ -205,7 +225,7 @@ function ProductionHud({ view, adapter }: { view: GameplayViewModel; adapter: Ga
           <span>{unitNames[kind]}</span><small>{cost} M</small><kbd>{key}</kbd>
         </button>;
       })}
-    </div>
+    </div></div>}
   </Panel>;
 }
 
@@ -221,7 +241,7 @@ export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCame
     <SectorHud view={view} />
     <TopControls onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} />
     <Minimap view={view} cameraView={cameraView} onPanMap={onPanMap} />
-    <SquadHud view={view} />
+    <SquadHud view={view} adapter={adapter} />
     <ActionHud view={view} adapter={adapter} controls={controls} />
     <ProductionHud view={view} adapter={adapter} />
     <NoticeHud view={view} />

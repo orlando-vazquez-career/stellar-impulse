@@ -1,5 +1,5 @@
 import { Client, type Room } from '@colyseus/sdk';
-import { FLEET_CAP } from '@impulso/sim';
+import { FLEET_CAP, fleetCapacity, baseDamage, baseUpgradeCost, BASE_DEFENSE_RANGE } from '@impulso/sim';
 import { UNIT_STATS, type PlayerView, type UnitKind } from '@impulso/state';
 import { sectorSurface, type TrainingMapId } from '../map/sector-map';
 import type {
@@ -24,6 +24,7 @@ export const REJECTION_TEXT: Record<string, string> = {
   insufficient_metal: 'No alcanza el Metal.',
   fleet_full: 'Flota completa.',
   production_busy: 'El hangar ya está construyendo.',
+  upgrade_maxed: 'Esta mejora ya está al máximo.',
   blocked_destination: 'No se puede volar a ese punto.',
   unreachable_destination: 'No hay ruta hasta ese punto.',
   target_not_visible: 'El objetivo no está a la vista.',
@@ -194,7 +195,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         : null,
       resources: {
         metal: own.metal ?? 0, metalRate: ownedMetal + 0.5, energy: 0, energyRate: 0,
-        fleet: ownIds.size, fleetCap: FLEET_CAP,
+        fleet: ownIds.size, fleetCap: fleetCapacity(own.baseUpgrades),
       },
       squads,
       nodes: view.nodes.map((node) => ({
@@ -209,6 +210,8 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       production: own.production
         ? { kind: own.production.kind, remainingSeconds: Math.ceil(own.production.remainingTicks / TICKS_PER_SECOND) }
         : null,
+      base: { upgrades: { ...(own.baseUpgrades ?? { damage: 0, capacity: 0 }) }, damage: baseDamage(own.baseUpgrades),
+        range: BASE_DEFENSE_RANGE, upgradeCosts: { damage: baseUpgradeCost('damage', own.baseUpgrades), capacity: baseUpgradeCost('capacity', own.baseUpgrades) } },
       result: view.winner === null ? null : view.winner === me ? 'victory' : 'defeat',
       visibleCells: (() => {
         const cells = Array<boolean>(view.width * view.height).fill(false);
@@ -299,6 +302,20 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       return () => eventListeners.delete(listener);
     },
     dispatch(intent: PresentationIntent) {
+      if (intent.type === 'disband-selected') {
+        const squadIds = selectedOwn().map((squad) => squad.id);
+        if (!squadIds.length) return;
+        send({ type: 'disband', squadIds });
+        snapshot = { ...snapshot, activeAction: null, notice: null };
+        emit();
+        return;
+      }
+      if (intent.type === 'upgrade-base') {
+        send({ type: 'upgrade_base', upgrade: intent.upgrade });
+        snapshot = { ...snapshot, notice: null };
+        emit();
+        return;
+      }
       if (intent.type === 'select-squad' || intent.type === 'select-squads') {
         const requested = intent.type === 'select-squad' ? [intent.squadId] : intent.squadIds;
         const ids = [...new Set(requested)].filter((id) => snapshot.squads.some((squad) => squad.id === id && squad.owner === 'blue'));

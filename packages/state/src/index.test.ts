@@ -7,12 +7,18 @@ describe('per-player visibility boundary', () => {
     const world = createWorld();
     world.players.p2.metal = 999;
     world.players.p2.lastSequence = 4321;
+    world.players.p1.baseUpgrades = { damage: 1, capacity: 2 };
+    world.players.p2.baseUpgrades = { damage: 3, capacity: 3 };
     const view = viewFor(world, 'p1');
     expect(view.squads.map((unit) => unit.id)).toEqual(['p1-interceptor']);
     expect(view.guardians).toEqual([]);
     expect(view.nodes).toEqual([]);
     expect(view.players.p1.metal).toBe(0);
     expect(view.players.p2).not.toHaveProperty('metal');
+    expect(view.players.p2).not.toHaveProperty('baseUpgrades');
+    expect(view.players.p1.baseUpgrades).toEqual({ damage: 1, capacity: 2 });
+    view.players.p1.baseUpgrades!.capacity = 99;
+    expect(world.players.p1.baseUpgrades.capacity).toBe(2);
     expect(JSON.stringify(view)).not.toContain('lastSequence');
     expect(JSON.stringify(view)).not.toContain('seed');
     expect(view.core.progress).toEqual({ p1: 0, p2: 0 });

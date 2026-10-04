@@ -22,7 +22,7 @@ export interface PlayerView {
   level?: number[];
   rules: Rules;
   /** Metal and the hangar queue are private to their owner. */
-  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; production?: { kind: UnitKind; remainingTicks: number } | null }>;
+  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; baseUpgrades?: { damage: number; capacity: number }; production?: { kind: UnitKind; remainingTicks: number } | null }>;
   squads: VisibleSquad[];
   guardians: Guardian[];
   nodes: ResourceNode[];
@@ -48,6 +48,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     p2: { id: 'p2', base: { ...world.players.p2.base } },
   };
   players[playerId].metal = world.players[playerId].metal;
+  players[playerId].baseUpgrades = { ...(world.players[playerId].baseUpgrades ?? { damage: 0, capacity: 0 }) };
   const order = world.production[playerId];
   players[playerId].production = order ? { kind: order.kind, remainingTicks: Math.max(0, order.readyTick - world.tick) } : null;
   return {
