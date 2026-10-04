@@ -42,6 +42,8 @@ export type UnitKind = 'explorer' | 'interceptor' | 'frigate' | 'bomber';
 import { BASE_STATS, statsFor, moveInterval, type ShipStats, type StatModifier } from './stats.js';
 export { BASE_STATS, statsFor, moveInterval, damageAgainst } from './stats.js';
 export type { ShipStats, StatModifier } from './stats.js';
+export { createMatchWorld, DURATION_MODES } from './match-modes.js';
+export type { DurationMode } from './match-modes.js';
 /** Compatibility metadata for the offline presentation sandbox. Authoritative rules use statsFor. */
 export const UNIT_STATS = Object.freeze(Object.fromEntries(Object.entries(BASE_STATS).map(([kind, stats]) =>
   [kind, Object.freeze({ ...stats, moveIntervalFactor: 1.7 / stats.speed, visionBonus: stats.vision - 4 })])) as Record<UnitKind, ShipStats & { moveIntervalFactor: number; visionBonus: number }>);
@@ -158,6 +160,8 @@ export interface World {
   built: Record<PlayerId, number>;
   /** Base income, hangar and repairs. Off in the legacy 20×20 drill. */
   economy: boolean;
+  duration?: import('./match-modes.js').DurationMode;
+  seed?: number;
   events?: SimEvent[];
 }
 export type CommandRejection =

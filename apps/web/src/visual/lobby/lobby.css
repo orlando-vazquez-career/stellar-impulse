@@ -854,3 +854,7 @@
     grid-template-columns: 1fr;
   }
 }
+
+.vi-duration { border: 0; padding: 0; margin: 8px 0; }
+.vi-duration legend { font: 600 14px Rajdhani; color: #a8c6df; }
+.vi-duration select { width: 100%; padding: 7px; background: #0a1d2e; color: #daeeff; border: 1px solid #315269; }

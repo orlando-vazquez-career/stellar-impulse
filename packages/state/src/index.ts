@@ -16,6 +16,7 @@ export interface PlayerView {
   schemaVersion: 1;
   mode: 'training';
   tick: number;
+  duration?: World['duration'];
   playerId: PlayerId;
   width: number;
   height: number;
@@ -55,7 +56,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
   const order = world.production[playerId];
   players[playerId].production = order ? { kind: order.kind, remainingTicks: Math.max(0, order.readyTick - world.tick) } : null;
   return {
-    schemaVersion: 1, mode: 'training', tick: world.tick, playerId,
+    schemaVersion: 1, mode: 'training', tick: world.tick, playerId, duration: world.duration,
     width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })),
     ...(world.surface ? { walkable: [...world.surface.walkable], level: [...world.surface.level] } : {}),
     rules: { ...world.rules }, players,

@@ -1,5 +1,6 @@
 import { FLEET_CAP, UNIT_COSTS } from '../economia.js';
 import type { PlayerId, Position, UnitKind, World } from '../index.js';
+import { statsFor } from '../stats.js';
 
 export type RivalDifficulty = 'easy' | 'medium' | 'hard';
 
@@ -62,8 +63,12 @@ export function rivalGoals(world: World, rival: PlayerId, canSee: (target: Posit
     && (profile.raidsPlayer || node.ownerId === null))
     .sort(byDistanceFrom(base));
   let front: Position;
+  const mine = world.nodes.filter((node) => node.kind === 'metal' && node.ownerId === rival).length;
+  const theirs = world.nodes.filter((node) => node.kind === 'metal' && node.ownerId !== null && node.ownerId !== rival).length;
+  const contestCore = world.core.open && (mine >= theirs || !targets.length);
   if (threatened) front = base;
-  else if (world.core.open) front = world.core;
+  else if (contestCore) front = world.core;
+  else if (world.core.open && targets[0]) front = targets[0];
   else if (combat.length < profile.attackGroup) front = targets[0] && manhattan(targets[0], base) <= 8 ? targets[0] : base;
   else front = targets[0] ?? world.core;
   // Hard: a big enough fleet sends its newest ships to raid the player's own Metal.
@@ -94,5 +99,5 @@ export function rivalProduction(world: World, rival: PlayerId, difficulty: Rival
   if (alive >= Math.min(FLEET_CAP, profile.fleetLimit)) return null;
   if (world.tick < (world.built[rival] + 1) * profile.buildSpacingTicks) return null;
   const kind = profile.buildOrder[world.built[rival] % profile.buildOrder.length]!;
-  return world.players[rival].metal >= UNIT_COSTS[kind] ? kind : null;
+  return world.players[rival].metal >= statsFor(world, rival, kind).cost ? kind : null;
 }

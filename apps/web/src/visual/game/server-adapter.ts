@@ -1,3 +1,4 @@
+import type { DurationMode } from '@impulso/sim';
 import { Client, type Room } from '@colyseus/sdk';
 import { FLEET_CAP, fleetCapacity, baseDamage, baseUpgradeCost, BASE_DEFENSE_RANGE } from '@impulso/sim';
 import { type PlayerView, type UnitKind } from '@impulso/state';
@@ -117,7 +118,7 @@ function coreState(view: PlayerView): CoreState {
  * server rival (or a second human who joins the same room). The browser only sends intentions.
  */
 export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy' | 'medium' | 'hard' = 'medium',
-  map: TrainingMapId = 'espiral'): GameplayPresentationAdapter {
+  map: TrainingMapId = 'espiral', duration: DurationMode = 'skirmish'): GameplayPresentationAdapter {
   let snapshot = blankSnapshot();
   let latest: PlayerView | null = null;
   let room: Room | null = null;
@@ -270,7 +271,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
 
   void (async () => {
     try {
-      const joined = await new Client(serverUrl).create('training', { difficulty, map });
+      const joined = await new Client(serverUrl).create('training', { difficulty, map, duration });
       if (destroyed) { void joined.leave(); return; }
       room = joined;
       joined.onMessage('view', onView);

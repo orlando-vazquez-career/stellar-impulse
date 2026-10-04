@@ -1,6 +1,7 @@
+import { randomInt } from 'node:crypto';
 import { Room, type Client } from '@colyseus/core';
 import { parseCommand } from '@impulso/input';
-import { createSectorWorld, applyCommand, runTrainingRival, stepWorld, fleetCapacity, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId } from '@impulso/sim';
+import { createSectorWorld, createMatchWorld, applyCommand, runTrainingRival, stepWorld, fleetCapacity, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId } from '@impulso/sim';
 import { viewFor } from '@impulso/state';
 
 /** Diego's Espiral Estelar is the training map unless the creator asks for Sector 01. */
@@ -30,10 +31,10 @@ export class TrainingRoom extends Room {
 
   /** The room creator picks the map and the rival's difficulty; anything unexpected falls back to the defaults. */
   onCreate(options?: unknown) {
-    const fields = typeof options === 'object' && options !== null ? options as { difficulty?: unknown; map?: unknown } : {};
+    const fields = typeof options === 'object' && options !== null ? options as { difficulty?: unknown; map?: unknown; duration?: unknown } : {};
     const requested = fields.difficulty;
     if (requested === 'easy' || requested === 'medium' || requested === 'hard') this.difficulty = requested;
-    if (fields.map === 'espiral' || fields.map === 'sector-01') this.world = createSectorWorld(fields.map);
+    this.world = createMatchWorld(fields.map === 'sector-01' ? 'sector-01' : DEFAULT_MAP, fields.duration === 'complete' ? 'complete' : 'skirmish', randomInt(0x100000000));
     this.setPrivate(true);
     this.onMessage('command', (client, command: unknown) => {
       const player = this.seats.get(client.sessionId);
@@ -62,7 +63,7 @@ export class TrainingRoom extends Room {
       }
     }, 100);
     // Ephemeral development room. A full campaign/session lifecycle is planned.
-    this.clock.setTimeout(() => { void this.disconnect(); }, 15 * 60 * 1000);
+    this.clock.setTimeout(() => { void this.disconnect(); }, 45 * 60 * 1000);
   }
 
   onJoin(client: Client) {

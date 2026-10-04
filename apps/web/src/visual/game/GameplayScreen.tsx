@@ -1,3 +1,4 @@
+import type { DurationMode } from '@impulso/sim';
 import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { DevelopmentControls } from './DevelopmentControls';
 import { Hud } from './Hud';
@@ -22,20 +23,20 @@ const PRODUCTION_KEYS: Record<string, 'explorer' | 'interceptor' | 'frigate' | '
 const emptySubscribe = () => () => {};
 const emptyMultiplayer = () => null;
 
-export function GameplayScreen({ preferences, difficulty = 'medium', map = 'espiral', multiplayerSession, onLeave }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; multiplayerSession?: MultiplayerSession; onLeave(): void }) {
+export function GameplayScreen({ preferences, difficulty = 'medium', map = 'espiral', duration = 'skirmish', multiplayerSession, onLeave }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; duration?: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void }) {
   const [match, setMatch] = useState(0);
   // The local mock only knows Sector 01. Selecting before the children render keeps scene, HUD and server on one map.
   const chosen = multiplayerSession || wantsLocalMock() ? 'sector-01' : map;
   selectMap(chosen);
-  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
+  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} duration={duration} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
 }
 
 /** The adapter lives exactly as long as the mounted match, so a server room is never left orphaned. */
-function GameplayMatch({ preferences, difficulty, map, multiplayerSession, onLeave, onRestart }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void }) {
+function GameplayMatch({ preferences, difficulty, map, duration, multiplayerSession, onLeave, onRestart }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; duration: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void }) {
   const [adapter, setAdapter] = useState<GameplayPresentationAdapter | null>(null);
   useEffect(() => {
     const created = multiplayerSession ? createCampaignGameplayAdapter(multiplayerSession)
-      : wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL, difficulty, map);
+      : wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL, difficulty, map, duration);
     setAdapter(created);
     return () => created.destroy();
   }, []);

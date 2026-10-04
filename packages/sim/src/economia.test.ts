@@ -30,7 +30,7 @@ describe('sector economy', () => {
       .toMatchObject({ accepted: false, reason: 'squad_destroyed' });
   });
 
-  it('rejects retiring another playerâ€™s ship atomically and rejects stale orders', () => {
+  it('rejects retiring another player’s ship atomically and rejects stale orders', () => {
     const world = createSectorWorld();
     const refused = applyCommand(world, 'p1', { seq: 1, type: 'disband', squadIds: ['p1-explorer', 'p2-explorer'] });
     expect(refused).toMatchObject({ accepted: false, reason: 'not_owner' });
