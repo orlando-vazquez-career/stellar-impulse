@@ -22,6 +22,14 @@ describe('campaign message envelope', () => {
 });
 
 describe('campaign v2 alongside legacy v1', () => {
+  it('accepts only the catalog Sector 01 map option', () => {
+    expect(parseCampaignJoinOptions({ protocolVersion: 2, name: 'Ana', token: 'abc', map: 'sector-01' }))
+      .toEqual({ ok: true, name: 'Ana', token: 'abc', map: 'sector-01' });
+    for (const map of ['other-map', '', {}, { width: 29 }, null]) {
+      expect(parseCampaignJoinOptions({ protocolVersion: 2, map })).toEqual({ ok: false, reason: 'invalid_join' });
+    }
+  });
+
   it('admits only version 2 for campaign without changing legacy validation', () => {
     const body = { type: 'stop', seq: 1, squadIds: ['p1-interceptor'] };
     expect(CAMPAIGN_PROTOCOL_VERSION).toBe(2);

@@ -4,7 +4,9 @@ Contrato de red para `campaign`, con mensajes versionados por `CAMPAIGN_PROTOCOL
 
 ## Crear o unirse
 
-La sala admite dos asientos (`p1` al crear y `p2` al unirse), y no admite participantes nuevos una vez iniciada la campaña. Cada jugador necesita un token de cuenta obtenido por `/auth/register` o `/auth/login`; ver [autenticación y salas](auth-multiplayer.md). `name` es opcional: admite de 1 a 24 letras, números, espacios, `_`, `.` o `-`; si se omite, el servidor usa `Comandante`. Una versión de campaña incorrecta falla con `unsupported_version`; opciones inválidas fallan con `invalid_join`. El `roomId` generado es el código de invitación de 12 caracteres hexadecimales. El ejemplo de abajo muestra creación, unión por código y reconexión usando el mismo enlace de eventos.
+La sala admite dos asientos (`p1` al crear y `p2` al unirse), y no admite participantes nuevos una vez iniciada la campaña. Cada jugador necesita un token de cuenta obtenido por `/auth/register` o `/auth/login`; ver [autenticación y salas](auth-multiplayer.md). `name` es opcional: admite de 1 a 24 letras, números, espacios, `_`, `.` o `-`; si se omite, el servidor usa `Comandante`. Una versión de campaña incorrecta falla con `unsupported_version`; opciones inválidas fallan con `invalid_join`. El `roomId` generado es el código de invitación de 12 caracteres hexadecimales. `phase.playerId` identifica el asiento propio desde el lobby; los alias pueden coincidir. Si alguien sale antes de empezar, su plaza vuelve a estar disponible y el asiento de quien permanece no cambia.
+
+El creador puede pedir `map: 'sector-01'` para el mapa de catálogo de 29 × 29 usado por la interfaz integrada. El invitado hereda esa elección sin enviar `map`; `phase.renderMap` anuncia `sector-01` a ambos desde el lobby. Sin esa opción se conserva el mapa histórico de 72 × 72. No se aceptan otros nombres ni terreno arbitrario. Un `createSector` configurado por el servidor tiene prioridad sobre la elección del creador. El ejemplo de abajo muestra creación, unión por código y reconexión usando el mismo enlace de eventos.
 
 ## Flujo del cliente
 
@@ -40,6 +42,7 @@ async function createCampaign(name = 'Ana'): Promise<Room> {
     protocolVersion: CAMPAIGN_PROTOCOL_VERSION,
     name,
     token: accessToken,
+    map: 'sector-01',
   });
   bindRoom(nextRoom);
   return nextRoom;
@@ -91,7 +94,7 @@ Los mensajes de campaña que requieren sobre llevan `{ protocolVersion: 2, body 
 | Canal | `body` | Uso |
 |---|---|---|
 | `ready` | `{}` | En lobby; con ambos jugadores listos comienza cuenta regresiva de 5 s. |
-| `command` | `{ type: 'move_group', seq, squadIds, x, y }` o `{ type: 'stop', seq, squadIds }` | Durante un sector activo. Entre 1 y 16 IDs de escuadrón únicos; coordenadas enteras no negativas solo para `move_group`. |
+| `command` | `{ type: 'move_group', seq, squadIds, x, y }`, `{ type: 'attack_group', seq, squadIds, targetId }` o `{ type: 'stop', seq, squadIds }` | Durante un sector activo. Entre 1 y 16 IDs de escuadrón únicos; coordenadas enteras no negativas solo para `move_group`. |
 | `tech` | `{ techId }` | En transición, usando un identificador ofrecido en `phase.offers`. |
 
 Los cuerpos no admiten campos extra. `parseBattlefieldCommand` copia y valida los datos sin coerción. Los rechazos de unidad se agrupan bajo `unit_unavailable`, tanto si la unidad no existe como si no pertenece al jugador o está destruida.
@@ -100,8 +103,8 @@ Los cuerpos no admiten campos extra. `parseBattlefieldCommand` copia y valida lo
 
 | Canal | Contenido | Frecuencia o privacidad |
 |---|---|---|
-| `map` | `{ protocolVersion, mapId, version, width, height, cellSize, walkable, opaque }` | Al iniciar cada sector y al reconectar, antes de `view`. Solo metadata estática incluida en la lista permitida; nunca spawns, objetivos o entidades. |
-| `phase` | `protocolVersion`, `phase`, `sector`, `sectors`, `remainingMs`, `seats`, `pause`, `resumeInMs`, `sectorResults`, `offers`, `myTech`, `rivalChoseTech`, `myTechnologies`, `result` | En cada cambio de fase y una vez por segundo. Las elecciones del rival no se revelan; solo se indica `rivalChoseTech`. |
+| `map` | `{ protocolVersion, mapId, version, width, height, cellSize, walkable, opaque }`, con `level` y `ramp` opcionales | Al iniciar cada sector y al reconectar, antes de `view`. Solo metadata estática incluida en la lista permitida; nunca spawns, objetivos o entidades. |
+| `phase` | `protocolVersion`, `playerId`, `renderMap` opcional, `phase`, `sector`, `sectors`, `remainingMs`, `seats`, `pause`, `resumeInMs`, `sectorResults`, `offers`, `myTech`, `rivalChoseTech`, `myTechnologies`, `result` | En cada cambio de fase y una vez por segundo. Las elecciones del rival no se revelan; solo se indica `rivalChoseTech`. |
 | `view` | Vista `BattlefieldView` específica para el jugador | 10 veces por segundo durante el sector; se reenvía al reconectar. |
 | `ack` | `{ protocolVersion, seq }` | Solo para una orden de campaña aceptada. |
 | `rejected` | `{ protocolVersion, reason }` | Solo a quien envió el mensaje. |
@@ -128,7 +131,7 @@ lobby → countdown (5 s) → sector 1 → transition (25 s) → sector 2 → tr
 
 Un sector termina al capturar el Núcleo o al alcanzar el tope de seguridad actual de 8 minutos (empate). El ganador de la campaña es quien gana el sector final; los sectores anteriores no suman puntos. En cada transición, quien no elige recibe la primera opción de `offers`. Motivos de cierre: `core`, `draw`, `forfeit` (abandono) y `annulled` (ambos desconectados o tope de 30 minutos). Un lobby sin empezar se cierra a los 15 minutos.
 
-La sala tiene un solo preset de mapa en los tres sectores por ahora. Los identificadores de tecnología son placeholders y todavía no modifican la simulación. Esas selecciones se conservan en la fase de campaña, pero no implican mejoras de juego implementadas.
+La sala repite el mapa elegido en los tres sectores por ahora. Los identificadores de tecnología son placeholders y todavía no modifican la simulación. Esas selecciones se conservan en la fase de campaña, pero no implican mejoras de juego implementadas.
 
 ## Desconexión, tamaño y ritmo
 
@@ -141,4 +144,5 @@ El servidor limita las órdenes a 32 acciones de escuadrón por segundo y jugado
 - Versiones, sobres y validadores: [`packages/input/src/protocol.ts`](../packages/input/src/protocol.ts) y [`packages/input/src/battlefield.ts`](../packages/input/src/battlefield.ts).
 - Sala y máquina de campaña: [`apps/server/src/campaign-room.ts`](../apps/server/src/campaign-room.ts) y [`apps/server/src/campaign/machine.ts`](../apps/server/src/campaign/machine.ts).
 - Formato de mapa y vista: [`docs/map-backend.md`](map-backend.md), [`packages/state/src/battlefield.ts`](../packages/state/src/battlefield.ts).
+- Contrato compartido de fase: `CampaignPhaseView` exportado por `@impulso/state`, en [`packages/state/src/campaign.ts`](../packages/state/src/campaign.ts).
 - Pruebas de contrato: [`apps/server/src/campaign-room.test.ts`](../apps/server/src/campaign-room.test.ts), [`packages/input/src/protocol.test.ts`](../packages/input/src/protocol.test.ts) y [`packages/state/src/battlefield.test.ts`](../packages/state/src/battlefield.test.ts).

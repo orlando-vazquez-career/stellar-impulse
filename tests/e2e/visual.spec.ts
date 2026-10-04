@@ -315,17 +315,14 @@ test.describe('visual interface foundation', () => {
     await expect(page.getByRole('heading', { name: 'Resolución no compatible' })).toBeVisible();
   });
 
-  test('supports the simulated join-room path', async ({ page }) => {
+  test('requires a signed-in account for multiplayer from the command center', async ({ page }) => {
     await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
-    await page.getByRole('button', { name: /Unirse a una sala/ }).click();
-
-    await expect(page.getByRole('heading', { name: 'Accede a la operación.' })).toBeVisible();
-    await page.getByLabel('Código de sala').fill('ab12');
-    await page.getByRole('button', { name: 'Acceder a la sala' }).click();
-    await expect(page.getByText('AB12', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Iniciar operación' })).toBeDisabled();
+    await page.getByRole('button', { name: /Unirse a sala/ }).click();
+    await expect(page.getByRole('status')).toContainText('Inicia sesión con tu cuenta');
+    await expect(page.getByRole('button', { name: 'Iniciar sesión', exact: false })).toBeEnabled();
+    await expect(page.locator('.vi-lobby')).toHaveCount(0);
   });
 
   test('saves local control and accessibility settings', async ({ page }) => {

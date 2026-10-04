@@ -59,6 +59,7 @@ export function CommandCenter({
   alias,
   accountEmail,
   onCreateRoom,
+  onCreateMultiplayer,
   onJoinRoom,
   onHangar,
   onSettings,
@@ -67,6 +68,7 @@ export function CommandCenter({
   alias: string;
   accountEmail?: string;
   onCreateRoom(): void;
+  onCreateMultiplayer(): void;
   onJoinRoom(): void;
   onHangar(): void;
   onSettings(): void;
@@ -117,6 +119,7 @@ export function CommandCenter({
 
         <div className="vi-menu-grid">
           <MenuCard glyph="△" title={t('deploy')} detail={t('deployDetail')} enabled onClick={onCreateRoom} />
+          <MenuCard glyph="⇄" title={t('createMultiplayer')} detail={t('createMultiplayerDetail')} enabled onClick={onCreateMultiplayer} />
           <MenuCard glyph="⌁" title={t('joinRoom')} detail={t('joinDetail')} enabled onClick={onJoinRoom} />
           <MenuCard glyph="◇" title={t('hangar')} detail={t('hangarDetail')} enabled onClick={onHangar} />
           <MenuCard glyph="＋" title={t('settings')} detail={t('settingsDetail')} enabled onClick={onSettings} />
