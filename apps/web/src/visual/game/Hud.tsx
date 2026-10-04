@@ -294,6 +294,7 @@ const MODULE_TEXT: Record<ModuleKind, { name: 'moduleRefinery' | 'moduleRefinery
 /** Slot 1 holds the Refinery (and its upgrade); slots 2 and 3 take two of Shipyard, Bastion and Radar. */
 function BaseModules({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
   const { t } = useI18n();
+  const [hovered, setHovered] = useState<ModuleKind | null>(null);
   const modules = view.base?.modules;
   const costs = view.base?.moduleCosts;
   if (!modules || !costs) return null;
@@ -305,19 +306,33 @@ function BaseModules({ view, adapter }: { view: GameplayViewModel; adapter: Game
     const full = kind !== 'refinery' && kind !== 'refinery2' && !built(kind) && modules.extras.length >= 2;
     const status = building ? t('moduleBuilding', { seconds: modules.building!.remainingSeconds })
       : built(kind) ? t('moduleBuilt') : locked ? t('moduleLocked') : full ? t('moduleSlotsFull')
-      : `${costs[kind].cost} Metal · ${costs[kind].buildTicks / 10} s`;
+      : `${costs[kind].cost} Metal · ${formatStat(costs[kind].buildTicks / 10)} s`;
     const disabled = built(kind) || locked || full || !!modules.building || view.resources.metal < costs[kind].cost
       || !!view.result || view.connection !== 'online';
-    return <button key={kind} className={`vi-module${built(kind) ? ' is-built' : ''}${building ? ' is-building' : ''}`} disabled={disabled}
-      title={t(MODULE_TEXT[kind].help)} onClick={() => adapter.dispatch({ type: 'build-module', module: kind })}>
-      <strong>{t(MODULE_TEXT[kind].name)}</strong><small>{status}</small>
-    </button>;
+    // Wrapped so the guide also opens over a disabled button, like the hangar's.
+    return <span key={kind} className="vi-module-slot" onMouseEnter={() => setHovered(kind)} onMouseLeave={() => setHovered(null)}
+      onFocus={() => setHovered(kind)} onBlur={() => setHovered(null)}>
+      <button className={`vi-module${built(kind) ? ' is-built' : ''}${building ? ' is-building' : ''}`} disabled={disabled}
+        aria-describedby={hovered === kind ? `module-guide-${kind}` : undefined}
+        onClick={() => adapter.dispatch({ type: 'build-module', module: kind })}>
+        <strong>{t(MODULE_TEXT[kind].name)}</strong><small>{status}</small>
+      </button>
+    </span>;
   };
+  const guide = hovered && <div className="vi-unit-guide" role="tooltip" id={`module-guide-${hovered}`}>
+    <header><strong>{t(MODULE_TEXT[hovered].name)}</strong><span>{costs[hovered].cost} Metal · {formatStat(costs[hovered].buildTicks / 10)} s</span></header>
+    <p>{t(MODULE_TEXT[hovered].help)}</p>
+    {built(hovered) ? <p className="vi-unit-guide__strong">{t('moduleBuilt')}</p>
+      : hovered !== 'refinery' && modules.refinery < 1 ? <p className="vi-unit-guide__weak">{t('moduleLocked')}</p>
+      : hovered !== 'refinery' && hovered !== 'refinery2' && modules.extras.length >= 2 ? <p className="vi-unit-guide__weak">{t('moduleSlotsFull')}</p>
+      : null}
+  </div>;
   return <section className="vi-base-modules" aria-label={t('modules')}>
     <span className="vi-base-modules__slot">{t('moduleSlot', { n: 1 })}</span>
     <div className="vi-base-modules__row">{button('refinery')}{button('refinery2')}</div>
     <span className="vi-base-modules__slot">{t('moduleSlot', { n: '2–3' })}</span>
     <div className="vi-base-modules__row">{EXTRA_MODULES.map(button)}</div>
+    {guide}
   </section>;
 }
 

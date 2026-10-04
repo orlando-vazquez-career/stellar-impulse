@@ -699,6 +699,8 @@
 .vi-base-modules h3 { margin: 0; font-family: var(--vi-display); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; color: var(--vi-muted); }
 .vi-base-modules__slot { color: var(--vi-muted); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
 .vi-base-modules__row { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 5px; }
+.vi-module-slot { display: grid; min-width: 0; }
+.vi-module-slot > .vi-module { width: 100%; }
 .vi-module { display: grid; gap: 1px; padding: 4px 6px; border: 1px solid var(--vi-border); color: var(--vi-text); text-align: left; font-size: 12px; line-height: 1.2; }
 .vi-module small { color: var(--vi-blue-light); font-size: 10px; }
 .vi-module:hover:not(:disabled) { border-color: var(--vi-blue); background: var(--vi-surface-raised); }
