@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { openApp } from './helpers';
 test('chooses a free opening card, rerolls once, and chooses gold during a running skirmish', async ({page}) => {
+  // Keep ten real seconds to pick: screenshots on CI can outlast a 5× offer.
+  test.setTimeout(120000);
   await page.setViewportSize({width:1366,height:768});
-  await openApp(page,'/?testTimeScale=5&testSeed=42');
+  await openApp(page,'/?testTimeScale=2&testSeed=42');
   await page.getByLabel('Identificador de comandante').fill('Nova');
   await page.getByRole('button',{name:'Continuar como invitado'}).click();
   await page.getByRole('button',{name:/Preparar operación/}).click();
@@ -31,9 +33,8 @@ test('chooses a free opening card, rerolls once, and chooses gold during a runni
   await expect(page.locator('.vi-base-range')).toContainText('4 casillas');
   await page.getByRole('tab',{name:'Hangar',exact:true}).click();
   const side=page.locator('.augment-side');
-  await expect(side).toBeVisible({timeout:35000});
+  await expect(side).toBeVisible({timeout:75000});
   await expect(side.locator('.augment-card--gold')).toHaveCount(3);
-  await page.screenshot({path:'test-results/augment-gold.png'});
   const overlap=await page.evaluate(()=>{
     const panel=document.querySelector('.augment-side')!.getBoundingClientRect();
     return ['.vi-minimap','.vi-actions'].some(selector=>{
@@ -42,7 +43,11 @@ test('chooses a free opening card, rerolls once, and chooses gold during a runni
     });
   });
   expect(overlap).toBe(false);
-  await side.locator('.augment-card').first().click();
+  const gold=side.locator('.augment-card--gold').first();
+  const goldName=await gold.getAttribute('aria-label');
+  await gold.click({timeout:5000});
   await expect(side).toHaveCount(0);
   await expect(page.locator('.augment-strip__row').first().locator('.augment-badge')).toHaveCount(2);
+  await expect(page.locator('.augment-strip__row').first().getByLabel(goldName!,{exact:true})).toBeVisible();
+  await page.screenshot({path:'test-results/augment-gold.png'});
 });
