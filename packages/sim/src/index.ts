@@ -116,6 +116,10 @@ export interface Squad extends Position {
   maxHp: number;
   damage: number;
   lastAttackTick?: number;
+  /** Last observation of the ordered target; never follows a position inside fog. */
+  attackMemory?: Position & { seenAt: number };
+  nextAttackTick?: number;
+  lastShot?: { tick: number; from: Position; to: Position; splashRadius: number };
   lastDamageTick?: number;
   lastMovedTick?: number;
   kills?: number;
@@ -361,6 +365,8 @@ export function cloneWorld(world: World): World {
       target: unit.target ? { ...unit.target } : null,
       route: unit.route.map((cell) => ({ ...cell })),
       transit: unit.transit ? { ...unit.transit, from: { ...unit.transit.from } } : undefined,
+      attackMemory: unit.attackMemory ? { ...unit.attackMemory } : undefined,
+      lastShot: unit.lastShot ? { ...unit.lastShot, from: { ...unit.lastShot.from }, to: { ...unit.lastShot.to } } : undefined,
     })),
     guardians: world.guardians.map((unit) => ({ ...unit,
       transit: unit.transit ? { ...unit.transit, from: { ...unit.transit.from } } : undefined })),
@@ -584,6 +590,7 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
       nextSquad.target = null;
       nextSquad.route = [];
       nextSquad.attackTargetId = command.targetId;
+      nextSquad.attackMemory = { x: target.x, y: target.y, seenAt: world.tick };
     });
   }
   if (command.type === 'stop') {
@@ -878,10 +885,16 @@ function resolveBaseDefense(world: World): void {
 function releaseLostTarget(world: World, squad: Squad): void {
   if (!squad.attackTargetId) return;
   const enemy = attackTarget(world, squad.attackTargetId);
-  const unseen = !enemy || enemy.hp <= 0 || !canSee(world, squad.ownerId, enemy);
-  const leftPost = squad.stance === 'guard' && !!squad.anchor && !!enemy
-    && distance(squad.anchor, enemy) > world.rules.visionRadius;
-  if (unseen || leftPost) squad.attackTargetId = null;
+  const observed = enemy && canSee(world, squad.ownerId, enemy);
+  if (observed && enemy.hp > 0) squad.attackMemory = { x: enemy.x, y: enemy.y, seenAt: world.tick };
+  const memory = squad.attackMemory;
+  const expired = !memory || world.tick - memory.seenAt > 5 * world.rules.tickRate;
+  const leftPost = squad.stance === 'guard' && !!squad.anchor && !!memory
+    && distance(squad.anchor, memory) > world.rules.visionRadius;
+  if (!enemy || enemy.hp <= 0 || expired || leftPost) {
+    squad.attackTargetId = null;
+    squad.attackMemory = undefined;
+  }
 }
 function acquireStanceTarget(world: World, squad: Squad): void {
   if (squad.attackTargetId || statsFor(world, squad.ownerId, squad.kind).damage <= 0) return;
@@ -889,12 +902,15 @@ function acquireStanceTarget(world: World, squad: Squad): void {
   const origin = squad.stance === 'guard' && squad.anchor ? squad.anchor : squad;
   const vision = statsFor(world, squad.ownerId, squad.kind).vision;
   const foe = nearestFoe(world, squad, origin, vision);
-  if (foe) squad.attackTargetId = foe.id;
+  if (foe) {
+    squad.attackTargetId = foe.id;
+    squad.attackMemory = { x: foe.x, y: foe.y, seenAt: world.tick };
+  }
 }
 function nearestFoe(world: World, squad: Squad, origin: Position, radius: number): Squad | Guardian | undefined {
   const foes: Array<Squad | Guardian> = [
     ...world.squads.filter((unit) => unit.hp > 0 && unit.ownerId !== squad.ownerId && canSee(world,squad.ownerId,unit)),
-    ...world.guardians.filter((unit) => guardianActive(world, unit)),
+    ...world.guardians.filter((unit) => guardianActive(world, unit) && canSee(world, squad.ownerId, unit)),
   ];
   let best: Squad | Guardian | undefined;
   let bestDistance = Infinity;
@@ -910,9 +926,13 @@ function nearestFoe(world: World, squad: Squad, origin: Position, radius: number
 }
 function movementDestination(world: World, squad: Squad): Position | null {
   const enemy = squad.attackTargetId ? attackTarget(world, squad.attackTargetId) : undefined;
-  if (enemy && enemy.hp > 0) {
+  if (enemy && enemy.hp > 0 && canSee(world, squad.ownerId, enemy)) {
     if (Math.max(Math.abs(squad.x - enemy.x), Math.abs(squad.y - enemy.y)) <= statsFor(world, squad.ownerId, squad.kind).range) return null;
     return enemy;
+  }
+  if (squad.attackTargetId && squad.attackMemory) {
+    const lastSeen = squad.attackMemory;
+    return squad.x === lastSeen.x && squad.y === lastSeen.y ? null : lastSeen;
   }
   return squad.target ?? guardDestination(squad);
 }
@@ -922,6 +942,7 @@ function clearStuckRoute(squad: Squad): void {
   squad.gather = null;
   squad.route = [];
   squad.attackTargetId = null;
+  squad.attackMemory = undefined;
 }
 function toAi(world: World, unit: Squad, viewer:PlayerId=unit.ownerId): AiUnit {
   const disguised=unit.isDecoy && viewer!==unit.ownerId;
@@ -984,8 +1005,9 @@ export function applyEnemyOrders(world: World, orders: readonly AiOrder[], rival
     if (!squad) continue;
     if (order.kind === 'attack') {
       const target = attackTarget(next, order.targetId);
-      if (!target || target.hp <= 0 || ('ownerId' in target && target.ownerId === rival)) continue;
+      if (!target || target.hp <= 0 || ('ownerId' in target && target.ownerId === rival) || !canSee(next, rival, target)) continue;
       squad.attackTargetId = order.targetId;
+      squad.attackMemory = { x: target.x, y: target.y, seenAt: next.tick };
       squad.gather = null;
       squad.target = null;
       squad.route = [];

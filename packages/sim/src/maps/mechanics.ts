@@ -1,5 +1,5 @@
 import { captureDuration, counterBonus, statsForUnit, isConcealed, type EffectContext } from '../augments/effects.js';
-import { statsFor, damageAgainst, type World, type Player, type SimEvent, type CaptureObjective, type Core, type Guardian, type PlayerId, type Rules, type Squad } from '../index.js';
+import { canSee, statsFor, damageAgainst, type World, type Player, type SimEvent, type CaptureObjective, type Core, type Guardian, type PlayerId, type Rules, type Squad } from '../index.js';
 import { createSpatialIndex, type SpatialIndex } from './spatial-index.js';
 
 /** Structural mechanics shared by training and battlefield without changing either world type. */
@@ -18,6 +18,7 @@ export interface MechanicsWorld {
   diagonalReach?: boolean;
   players?: Record<PlayerId, Player>;
   events?: SimEvent[];
+  visible?: Record<PlayerId, boolean[]>;
 }
 
 /** Adjacent for combat: orthogonal only, or any of the eight neighbours on diagonal maps. */
@@ -63,8 +64,11 @@ export function resolveCombat(world: MechanicsWorld): void {
   };
   for (const squad of squads) {
     const stats = statsForUnit(world,squad);
-    if (stats.damage <= 0 || world.tick % stats.attackTicks !== 0) continue;
+    const readyAt = squad.nextAttackTick ?? (squad.lastAttackTick ?? 0) + stats.attackTicks;
+    if (stats.damage <= 0 || world.tick < readyAt) continue;
     const inRange = all.filter((unit) => unit.id !== squad.id && gap(squad, unit) <= stats.range
+      && (world.visible ? world.visible[squad.ownerId][unit.y * world.width + unit.x] === true
+        : !world.players || canSee(world as World, squad.ownerId, unit))
       && (!('kind' in unit) || !isConcealed(world as World, unit))
       && (!('ownerId' in unit) || unit.ownerId !== squad.ownerId))
       .sort((a, b) => gap(squad, a) - gap(squad, b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -72,7 +76,16 @@ export function resolveCombat(world: MechanicsWorld): void {
     const target = world.mode === 'battlefield'
       ? squad.attackTargetId ? chosen : squad.stance === 'attack' ? inRange[0] : undefined : chosen ?? inRange[0];
     if (!target) continue;
+    // An idle ship keeps an opponent it has actually engaged. March orders still take priority.
+    if (world.mode !== 'battlefield' && squad.stance === 'march' && !squad.attackTargetId
+      && !squad.target && !squad.gather && squad.route.length === 0) {
+      squad.attackTargetId = target.id;
+      squad.attackMemory = { x: target.x, y: target.y, seenAt: world.tick };
+    }
     squad.lastAttackTick = world.tick;
+    squad.nextAttackTick = world.tick + stats.attackTicks;
+    squad.lastShot = { tick: world.tick, from: { x: squad.x, y: squad.y },
+      to: { x: target.x, y: target.y }, splashRadius: stats.splashRadius };
     const shot = `${world.tick}:${squad.id}`;
     for (const victim of inRange.length ? all : []) {
       if ('ownerId' in victim && victim.ownerId === squad.ownerId) continue;

@@ -13,6 +13,8 @@ export interface SquadViewModel {
   speedCellsPerSecond?: number;
   isDecoy?: boolean;
   hp?: number; maxHp?: number; stats?: ShipStats;
+  attackCooldown?: { remainingTicks: number; durationTicks: number };
+  lastShot?: { tick: number; from: {x:number;y:number}; to: {x:number;y:number}; splashRadius: number };
   // Continuous map coordinates; integer values are tile centers.
   gridX: number;
   gridY: number;
@@ -76,6 +78,7 @@ export type ConnectionState = 'local' | 'connecting' | 'online' | 'offline';
 
 export interface GameplayViewModel {
   tick: number;
+  tickRate?: number;
   sector: number;
   elapsedSeconds: number;
   suddenDeath?: boolean;

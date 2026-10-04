@@ -1,6 +1,7 @@
 import {
-  MAX_MAP_SIDE, type BattlefieldWorld, type Guardian, type MapCell, type PlayerId, type ResourceNode, type Rules,
+  MAX_MAP_SIDE, statsForUnit, type BattlefieldWorld, type Guardian, type MapCell, type PlayerId, type ResourceNode, type Rules,
 } from '@impulso/sim';
+import { weaponView, type WeaponView } from './weapons.js';
 
 /** Row-major cells, bit 0 first within each byte; trailing padding bits are zero. */
 export interface BattlefieldMask {
@@ -50,7 +51,7 @@ export function decodeBattlefieldMask(mask: BattlefieldMask): boolean[] {
   return Array.from({ length: count }, (_, index) => (bytes[index >>> 3]! & (1 << (index & 7))) !== 0);
 }
 
-export interface BattlefieldPublicSquad {
+export interface BattlefieldPublicSquad extends WeaponView {
   id: string;
   ownerId: PlayerId;
   kind: 'interceptor';
@@ -112,6 +113,7 @@ export function battlefieldViewFor(world: BattlefieldWorld, playerId: PlayerId):
         const publicUnit: BattlefieldPublicSquad = {
           id: unit.id, ownerId: unit.ownerId, kind: unit.kind,
           x: unit.x, y: unit.y, hp: unit.hp, maxHp: unit.maxHp, damage: unit.damage,
+          ...weaponView(unit, statsForUnit(world, unit), world.tick, canSee),
         };
         return unit.ownerId === playerId ? {
           ...publicUnit,

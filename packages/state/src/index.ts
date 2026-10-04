@@ -1,9 +1,10 @@
 import { AUGMENTS_BY_ID, DURATION_MODES, effectsFor, effectiveFleetCap, effectiveBaseDamage, visionSources, isConcealed, statsForUnit, baseUpgradeCost, metalIncomeRate, captureDuration, type Augment } from '@impulso/sim';
 import { distance, statsFor, moveInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
+import { weaponView, type WeaponView } from './weapons.js';
 export { UNIT_STATS, damageAgainst, findPath } from '@impulso/sim';
 export type { UnitKind } from '@impulso/sim';
 
-export interface VisibleSquad extends Omit<Squad, 'target' | 'attackTargetId' | 'stance' | 'anchor' | 'gather' | 'route'> {
+export interface VisibleSquad extends Omit<Squad, 'target' | 'attackTargetId' | 'attackMemory' | 'nextAttackTick' | 'stance' | 'anchor' | 'gather' | 'route'>, WeaponView {
   stats?: ShipStats;
   moveTicks?: number;
   /** Rival destinations remain private even while their units are visible. */
@@ -97,6 +98,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
         id: unit.id, ownerId: unit.ownerId, kind: unit.kind,
         x: unit.x, y: unit.y, hp: disguised?unit.hp/unit.maxHp*maxHp:unit.hp, maxHp, damage: stats.damage,
         stats, moveTicks: moveInterval(world, unit.ownerId, unit.kind),
+        ...weaponView(unit, stats, world.tick, visible),
       };
       return unit.ownerId === playerId
         ? {

@@ -161,6 +161,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         isDecoy:squad.isDecoy, unitType: squad.kind, gridX: at.x, gridY: at.y,
         speedCellsPerSecond: squad.stats?.speed, hp: squad.hp, maxHp: squad.maxHp, stats: squad.stats,
         healthPercent: Math.round(squad.hp / squad.maxHp * 100),
+        attackCooldown: squad.attackCooldown, lastShot: squad.lastShot,
         attackTargetId: own ? squad.attackTargetId ?? null : null,
         selected: selectedIds.includes(squad.id), visible: true,
         composition: {
@@ -188,6 +189,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     snapshot = {
       ...snapshot,
       tick: view.tick,
+      tickRate: view.rules.tickRate,
       elapsedSeconds: Math.floor(view.tick / TICKS_PER_SECOND),
       suddenDeath: view.suddenDeath,
       selectedSquadIds: selectedIds,

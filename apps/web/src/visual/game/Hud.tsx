@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { SHIP_COUNTERS, UNIT_COSTS } from '@impulso/sim';
 import { useI18n } from '../i18n';
 import { LanguageToggle } from '../shared/LanguageToggle';
+import { formatStat } from './format-stat';
 import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
 import type { CameraView, CoreState, GameplayAction, GameplayPresentationAdapter, GameplayViewModel } from './model';
@@ -160,7 +161,7 @@ function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: Gamepla
       <div className="vi-squad__identity"><span aria-hidden="true">△</span><div><h2>{t('squad')} {squad.callSign}</h2><p>{status}</p></div></div>
       <div className="vi-squad__composition">
         <strong>{unitNames[squad.unitType]}</strong>
-        <span>{t('shipNumbers', { hp: squad.hp?.toFixed(0) ?? '—', maxHp: squad.maxHp ?? stats?.maxHp ?? '—', damage: stats?.damage ?? '—', rhythm: stats?.attackTicks ? stats.attackTicks / 10 : '—', armor: stats?.armor ?? '—', range: stats?.range ?? '—', speed: stats?.speed ?? squad.speedCellsPerSecond?.toFixed(1) ?? '—' })}</span>
+        <span>{t('shipNumbers', { hp: squad.hp?.toFixed(0) ?? '—', maxHp: formatStat(squad.maxHp ?? stats?.maxHp), damage: formatStat(stats?.damage), rhythm: stats?.attackTicks ? formatStat(stats.attackTicks / (view.tickRate ?? 10)) : '—', armor: formatStat(stats?.armor), range: formatStat(stats?.range), speed: formatStat(stats?.speed ?? squad.speedCellsPerSecond) })}</span>
         {squad.composition.interceptors > 0 && <span>{t('interceptors', { count: squad.composition.interceptors })}</span>}
         {squad.composition.frigates > 0 && <span>{t('frigates', { count: squad.composition.frigates })}</span>}
         {squad.composition.bombers && <span>{t('bombers', { count: squad.composition.bombers })}</span>}
@@ -237,7 +238,7 @@ function ProductionHud({ view, adapter,onBaseRange }: { view: GameplayViewModel;
           </button>
           {hovered===kind&&stats&&<div className="vi-unit-guide" role="tooltip" id={`build-guide-${kind}`}>
             <header><strong>{unitNames[kind]}</strong><span>{cost} Metal · {stats.buildTicks/10} s</span></header>
-            <dl><div><dt>{locale==='es'?'Vida':'Health'}</dt><dd>{stats.maxHp}</dd></div><div><dt>{locale==='es'?'Armadura':'Armor'}</dt><dd>{stats.armor}</dd></div><div><dt>{locale==='es'?'Daño / ritmo':'Damage / cadence'}</dt><dd>{stats.damage} / {stats.attackTicks?`${stats.attackTicks/10} s`:'—'}</dd></div><div><dt>{t('attackRange')}</dt><dd>{stats.range} {t('cells')}</dd></div><div><dt>{locale==='es'?'Velocidad':'Speed'}</dt><dd>{stats.speed} c/s</dd></div><div><dt>{locale==='es'?'Visión':'Vision'}</dt><dd>{stats.vision} {t('cells')}</dd></div></dl>
+            <dl><div><dt>{locale==='es'?'Vida':'Health'}</dt><dd>{formatStat(stats.maxHp)}</dd></div><div><dt>{locale==='es'?'Armadura':'Armor'}</dt><dd>{formatStat(stats.armor)}</dd></div><div><dt>{locale==='es'?'Daño / ritmo':'Damage / cadence'}</dt><dd>{formatStat(stats.damage)} / {stats.attackTicks?`${formatStat(stats.attackTicks/(view.tickRate ?? 10))} s`:'—'}</dd></div><div><dt>{t('attackRange')}</dt><dd>{formatStat(stats.range)} {t('cells')}</dd></div><div><dt>{locale==='es'?'Velocidad':'Speed'}</dt><dd>{formatStat(stats.speed)} c/s</dd></div><div><dt>{locale==='es'?'Visión':'Vision'}</dt><dd>{formatStat(stats.vision)} {t('cells')}</dd></div></dl>
             {names(true)&&<p className="vi-unit-guide__strong">{t('effectiveAgainst')}: {names(true)}</p>}
             {names(false)&&<p className="vi-unit-guide__weak">{t('weakAgainst')}: {names(false)}</p>}
             {!stats.canCapture&&<p>{locale==='es'?'Reconoce el mapa. No ataca ni captura.':'Scouts the map. Cannot attack or capture.'}</p>}

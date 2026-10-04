@@ -21,6 +21,19 @@ function view(x: number, y: number, tick: number): PlayerView {
 afterEach(() => { handlers.clear(); vi.useRealTimers(); });
 
 describe('server movement presentation', () => {
+  it('passes authoritative shots and reload through to the renderer', async () => {
+    const adapter = createServerGameplayAdapter('http://localhost');
+    await Promise.resolve();
+    try {
+      const current = view(3, 3, 7);
+      current.squads[0]!.attackCooldown = { remainingTicks: 3, durationTicks: 5 };
+      current.squads[0]!.lastShot = { tick: 5, from: { x: 3, y: 3 }, to: { x: 4, y: 3 }, splashRadius: 0 };
+      handlers.get('view')!(current);
+      expect(adapter.getSnapshot()).toMatchObject({ tickRate: 10, squads: [{
+        attackCooldown: { remainingTicks: 3, durationTicks: 5 }, lastShot: current.squads[0]!.lastShot,
+      }] });
+    } finally { adapter.destroy(); }
+  });
   it('uses the full cadence for a diagonal step and does not restart on unchanged views', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
     const adapter = createServerGameplayAdapter('http://localhost');
