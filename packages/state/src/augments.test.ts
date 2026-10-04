@@ -27,7 +27,7 @@ it('new camouflaged ships must wait three seconds and decoys are not identified 
   grantAugment(w,'p2','g-senuelos');const decoy=w.squads.find(s=>s.isDecoy)!;Object.assign(decoy,position);decoy.lastMovedTick=w.tick;
   const visible=viewFor(w,'p1').squads.find(s=>s.id===decoy.id)!;
   expect(visible.kind).toBe('bomber');expect(visible.isDecoy).toBeUndefined();
-  expect(visible.damage).toBe(36);expect(visible.stats!.range).toBe(4);expect(visible.maxHp).toBe(120);
+  expect(visible.damage).toBe(30);expect(visible.stats!.range).toBe(3);expect(visible.maxHp).toBe(120);
   expect(viewFor(w,'p2').squads.find(s=>s.id===decoy.id)!.maxHp).toBe(30);
 });
 it('reports authoritative passive income and the modified core capture progress',()=>{

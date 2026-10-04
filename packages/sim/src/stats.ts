@@ -14,13 +14,14 @@ export interface StatsContext {
 export const BASE_STATS: Readonly<Record<UnitKind, Readonly<ShipStats>>> = Object.freeze({
   explorer: Object.freeze({ cost: 4, buildTicks: 30, maxHp: 50, armor: 0, damage: 0, attackTicks: 0, range: 0, speed: 2.5, vision: 7, canCapture: false, splashRadius: 0, splashFactor: 0 }),
   interceptor: Object.freeze({ cost: 6, buildTicks: 40, maxHp: 100, armor: 1, damage: 6, attackTicks: 5, range: 1, speed: 1.7, vision: 4, canCapture: true, splashRadius: 0, splashFactor: 0 }),
-  frigate: Object.freeze({ cost: 9, buildTicks: 60, maxHp: 220, armor: 3, damage: 5, attackTicks: 10, range: 2, speed: 1.25, vision: 4, canCapture: true, splashRadius: 0, splashFactor: 0 }),
-  bomber: Object.freeze({ cost: 12, buildTicks: 80, maxHp: 150, armor: 1, damage: 36, attackTicks: 30, range: 4, speed: 0.8, vision: 4, canCapture: true, splashRadius: 1, splashFactor: 0.5 }),
+  frigate: Object.freeze({ cost: 9, buildTicks: 60, maxHp: 200, armor: 1, damage: 8, attackTicks: 10, range: 2, speed: 1.25, vision: 4, canCapture: true, splashRadius: 0, splashFactor: 0 }),
+  bomber: Object.freeze({ cost: 12, buildTicks: 80, maxHp: 150, armor: 1, damage: 30, attackTicks: 30, range: 3, speed: 0.8, vision: 4, canCapture: true, splashRadius: 1, splashFactor: 0.5 }),
 });
 export const SHIP_COUNTERS: Readonly<Partial<Record<UnitKind, Partial<Record<UnitKind | 'guardian', number>>>>> = {
-  interceptor: { bomber: 2.5, frigate: 0.5 },
-  frigate: { interceptor: 2.5, bomber: 0.5 },
-  bomber: { frigate: 2, interceptor: 0.5, guardian: 1.5 },
+  // Tuned so each counter wins but loses ships, and a mixed fleet beats any single class.
+  interceptor: { bomber: 2, frigate: 0.75 },
+  frigate: { interceptor: 1.75, bomber: 0.6 },
+  bomber: { frigate: 1.5, interceptor: 0.6, guardian: 1.5 },
 };
 /** Pure effective values. Modifiers are supplied exclusively by the authoritative simulation. */
 export function statsFor(world: StatsContext, playerId: PlayerId, kind: UnitKind): ShipStats {

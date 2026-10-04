@@ -169,7 +169,7 @@ describe('deterministic integer simulation', () => {
     Object.assign(world.squads[0]!, { x: 1, y: 10 });
     world.squads[1] = createSquad('p2-bomber', 'p2', 'bomber', { x: 2, y: 10 });
     const fought = stepWorld(world);
-    expect(fought.squads[1]!.hp).toBe(UNIT_STATS.bomber.maxHp - 14);
+    expect(fought.squads[1]!.hp).toBe(UNIT_STATS.bomber.maxHp - 11);
     const explorerWorld = createWorld();
     explorerWorld.squads[0] = createSquad('scout', 'p1', 'explorer', { x: 4, y: 4 });
     explorerWorld.guardians[0]!.hp = 0;

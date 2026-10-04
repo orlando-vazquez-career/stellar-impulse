@@ -133,8 +133,8 @@ describe('destructible bases', () => {
     world.tick = BASE_RULES.complete.vulnerableTick;
     world = order(world, 'p1', { type: 'attack', squadId: 'raider', targetId: 'p2-base' }).world;
     world = run(world, 31);
-    // A Bombardier hits structures at x1.5 minus the base's 2 armour: 36 * 1.5 - 2 = 52.
-    expect(world.players.p2.structure!.hp).toBe(2500 - 52 * 2);
+    // A Bombardier hits structures at x1.5 minus the base's 2 armour: 30 * 1.5 - 2 = 43.
+    expect(world.players.p2.structure!.hp).toBe(2500 - 43 * 2);
     world.players.p2.structure!.hp = 10;
     world = run(world, 40);
     expect(world.players.p2.structure!.hp).toBe(0);
@@ -146,12 +146,12 @@ describe('destructible bases', () => {
     const base = world.players.p2.base;
     world.squads.push(createSquad('scout', 'p1', 'frigate', openNeighbour(world, base), world));
     world = run(world, 10);
-    expect(world.squads[0]!.hp).toBe(220 - (12 - 3));
+    expect(world.squads[0]!.hp).toBe(200 - (12 - 1));
     let fortified = match();
     fortified.players.p2.modules = { refinery: 1, extras: ['bastion'], building: null };
     fortified.squads.push(createSquad('scout', 'p1', 'frigate', openNeighbour(fortified, base), fortified));
     fortified = run(fortified, 10);
-    expect(fortified.squads[0]!.hp).toBe(220 - (20 - 3));
+    expect(fortified.squads[0]!.hp).toBe(200 - (20 - 1));
   });
 
   it('repairs itself after ten quiet seconds', () => {
