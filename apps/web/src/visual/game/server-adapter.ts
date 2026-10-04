@@ -7,7 +7,7 @@ import type {
 } from './model';
 
 /** The client renders at this rate and eases ships toward the last authoritative cell. */
-const FRAME_MS = 50;
+const FRAME_MS = 16;
 /** Further than this, a ship snaps instead of sliding (respawn, reconnection, fog reveal). */
 const SNAP_CELLS = 3;
 const TICKS_PER_SECOND = 10;
@@ -123,6 +123,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
   let seq = 0;
   let destroyed = false;
   const shown = new Map<string, Point>();
+  const transits = new Map<string, { from: Point; to: Point; startedAt: number; duration: number }>();
   const listeners = new Set<() => void>();
   const eventListeners = new Set<(event: GameplayEvent) => void>();
   const emit = () => listeners.forEach((listener) => listener());
@@ -156,6 +157,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       return {
         id: squad.id, callSign: `${UNIT_LABEL[squad.kind]}-${count}`, owner: ownerOf(squad.ownerId),
         unitType: squad.kind, gridX: at.x, gridY: at.y,
+        speedCellsPerSecond: view.rules.tickRate / Math.max(1, Math.round(view.rules.moveEveryTicks * UNIT_STATS[squad.kind].moveIntervalFactor)),
         healthPercent: Math.round(squad.hp / squad.maxHp * 100),
         attackTargetId: own ? squad.attackTargetId ?? null : null,
         selected: selectedIds.includes(squad.id), visible: true,
@@ -171,7 +173,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       const isCore = guardian.objectiveId === view.core.id;
       squads.push({
         id: guardian.id, callSign: isCore ? 'GUARDIÁN Ω' : 'GUARDIÁN', owner: 'neutral',
-        unitType: isCore ? 'bomber' : 'frigate', gridX: guardian.x, gridY: guardian.y,
+        unitType: isCore ? 'bomber' : 'frigate', gridX: shown.get(guardian.id)?.x ?? guardian.x, gridY: shown.get(guardian.id)?.y ?? guardian.y,
         healthPercent: Math.round(guardian.hp / guardian.maxHp * 100), selected: false, visible: true,
         composition: { interceptors: 0, frigates: 0 }, status: 'idle',
       });
@@ -217,20 +219,17 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     emit();
   };
 
-  /** Ease every ship toward its authoritative cell at its class speed. */
+  /** Interpolate a complete server step over its cadence, including diagonal steps.
+   * Fixed-distance catch-up made diagonal movement burst and pause at each cell. */
   const frame = setInterval(() => {
     if (!latest) return;
     let changed = false;
-    for (const squad of latest.squads) {
-      const at = shown.get(squad.id);
-      if (!at) continue;
-      const dx = squad.x - at.x;
-      const dy = squad.y - at.y;
-      const gap = Math.hypot(dx, dy);
-      if (gap < 0.001) continue;
-      const cellsPerSecond = TICKS_PER_SECOND / (latest.rules.moveEveryTicks * UNIT_STATS[squad.kind].moveIntervalFactor);
-      const step = cellsPerSecond * FRAME_MS / 1000 * (gap > 1.2 ? 1.6 : 1);
-      shown.set(squad.id, gap <= step ? { x: squad.x, y: squad.y } : { x: at.x + dx / gap * step, y: at.y + dy / gap * step });
+    const now = performance.now();
+    for (const [id, transit] of transits) {
+      const ratio = Math.min(1, Math.max(0, (now - transit.startedAt) / transit.duration));
+      shown.set(id, { x: transit.from.x + (transit.to.x - transit.from.x) * ratio,
+        y: transit.from.y + (transit.to.y - transit.from.y) * ratio });
+      if (ratio === 1) transits.delete(id);
       changed = true;
     }
     if (changed) rebuild();
@@ -244,12 +243,23 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       }
       eventListeners.forEach((listener) => listener(event));
     }
+    const previous = latest;
     latest = view;
-    const present = new Set(view.squads.map((squad) => squad.id));
-    for (const id of shown.keys()) if (!present.has(id)) shown.delete(id);
-    for (const squad of view.squads) {
-      const at = shown.get(squad.id);
-      if (!at || Math.hypot(squad.x - at.x, squad.y - at.y) > SNAP_CELLS) shown.set(squad.id, { x: squad.x, y: squad.y });
+    const units = [...view.squads, ...view.guardians].filter((unit) => unit.hp > 0);
+    const present = new Set(units.map((unit) => unit.id));
+    for (const id of shown.keys()) if (!present.has(id)) { shown.delete(id); transits.delete(id); }
+    for (const unit of units) {
+      const at = shown.get(unit.id);
+      const old = [...(previous?.squads ?? []), ...(previous?.guardians ?? [])].find((candidate) => candidate.id === unit.id);
+      if (!at || Math.hypot(unit.x - at.x, unit.y - at.y) > SNAP_CELLS) {
+        shown.set(unit.id, { x: unit.x, y: unit.y });
+        transits.delete(unit.id);
+      } else if (!old || old.x !== unit.x || old.y !== unit.y) {
+        const ticks = 'kind' in unit
+          ? Math.max(1, Math.round(view.rules.moveEveryTicks * UNIT_STATS[unit.kind].moveIntervalFactor)) : 9;
+        transits.set(unit.id, { from: { ...at }, to: { x: unit.x, y: unit.y },
+          startedAt: performance.now(), duration: ticks * 1000 / view.rules.tickRate });
+      }
     }
     if (snapshot.connection !== 'online') snapshot = { ...snapshot, connection: 'online', notice: null };
     rebuild();
@@ -340,6 +350,8 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     destroy() {
       destroyed = true;
       clearInterval(frame);
+      transits.clear();
+      shown.clear();
       void room?.leave();
       room = null;
       listeners.clear();

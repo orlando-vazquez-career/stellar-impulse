@@ -315,6 +315,33 @@ test.describe('visual interface foundation', () => {
     await expect(page.getByRole('heading', { name: 'Resolución no compatible' })).toBeVisible();
   });
 
+  test('keeps ships apart when right-clicking an occupied allied position', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
+    const destination = await gamePoint(page, 13, 15);
+    await page.mouse.click(destination.x, destination.y, { button: 'right' });
+    await expect(page.locator('.map-move-route')).toHaveCount(1);
+    const scale = 172 / Number(await page.locator('.map-camera').getAttribute('data-iso-width'));
+    for (let sample = 0; sample < 30; sample++) {
+      const markers = await page.locator('.map-ally').evaluateAll((nodes) => nodes.map((node) =>
+        ({ x: Number(node.getAttribute('cx')), y: Number(node.getAttribute('cy')) })));
+      for (let i = 0; i < markers.length; i++) for (let j = i + 1; j < markers.length; j++) {
+        const dx = (markers[i]!.x - markers[j]!.x) / scale / 32;
+        const dy = (markers[i]!.y - markers[j]!.y) / scale / 16;
+        expect(Math.hypot((dx + dy) / 2, (dy - dx) / 2)).toBeGreaterThanOrEqual(0.9 - 1e-6);
+      }
+      await page.waitForTimeout(100);
+    }
+    await expect(page.locator('.map-move-route')).toHaveCount(0);
+    await page.screenshot({ path: 'test-results/ship-traffic.png' });
+  });
+
   test('requires a signed-in account for multiplayer from the command center', async ({ page }) => {
     await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');

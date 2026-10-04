@@ -34,7 +34,7 @@ describe('visual presentation adapter', () => {
     adapter.destroy();
   });
 
-  it('moves the selected allied squad toward the exact destination and allows shared ship positions', () => {
+  it('moves the selected allied squad toward an unoccupied exact destination', () => {
     vi.useFakeTimers();
     const adapter = createMockGameplayAdapter();
     adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 14, y: 13 });
@@ -45,7 +45,7 @@ describe('visual presentation adapter', () => {
     expect(adapter.getSnapshot().moveOrder?.destination).toEqual({ x: 14, y: 14 });
     adapter.dispatch({ type: 'move-squad', squadId: 'red-sigma', x: 14, y: 14 });
     expect(adapter.getSnapshot().moveOrder?.squadId).toBe('blue-alpha');
-    vi.advanceTimersByTime(750);
+    vi.advanceTimersByTime(3000);
     expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')).toMatchObject({ gridX: 14, gridY: 14, status: 'idle' });
     expect(adapter.getSnapshot().moveOrder).toBeNull();
     adapter.destroy();
@@ -67,10 +67,14 @@ describe('visual presentation adapter', () => {
     expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.status).toBe('moving');
     expect(adapter.getSnapshot().moveOrder?.squadId).toBe('blue-alpha');
     vi.advanceTimersByTime(50);
-    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')?.gridX).toBeCloseTo(13.15);
-    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')?.gridX).toBeCloseTo(12.2);
+    const betaX = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')!.gridX;
+    const alphaX = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')!.gridX;
+    expect(betaX).toBeGreaterThan(13);
+    expect(betaX).toBeLessThan(13.1);
+    expect(alphaX).toBeGreaterThan(12);
+    expect(alphaX).toBeLessThan(12.1);
     adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
-    expect(adapter.getSnapshot().moveOrder?.route[0]?.x).toBeCloseTo(13.15);
+    expect(adapter.getSnapshot().moveOrder?.route[0]?.x).toBeCloseTo(betaX);
     adapter.destroy();
     vi.useRealTimers();
   });
@@ -118,8 +122,11 @@ describe('visual presentation adapter', () => {
     adapter.dispatch({ type: 'move-squad', squadId: 'blue-gamma', x: 0, y: 0 });
     expect(adapter.getSnapshot().moveOrder).toBeNull();
     adapter.dispatch({ type: 'move-squad', squadId: 'blue-gamma', x: 14, y: 15 });
-    vi.advanceTimersByTime(50);
-    expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-gamma')?.gridX).toBeCloseTo(12.1);
+    vi.advanceTimersByTime(5000);
+    const moved = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-gamma')!;
+    expect(Math.hypot(moved.gridX - 12, moved.gridY - 15)).toBeGreaterThan(0);
+    const beta = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-beta')!;
+    expect(Math.hypot(moved.gridX - beta.gridX, moved.gridY - beta.gridY)).toBeGreaterThanOrEqual(0.9);
     adapter.destroy();
     vi.useRealTimers();
   });
@@ -139,14 +146,16 @@ describe('visual presentation adapter', () => {
     vi.useRealTimers();
   });
 
-  it('advances movement by elapsed time when a timer callback is delayed', () => {
+  it('caps a delayed movement callback so ships do not teleport after a stalled frame', () => {
     vi.useFakeTimers();
     const adapter = createMockGameplayAdapter();
     try {
       adapter.dispatch({ type: 'move-squad', squadId: 'blue-alpha', x: 14, y: 13 });
       vi.setSystemTime(Date.now() + 450);
       vi.advanceTimersByTime(50);
-      expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')?.gridX).toBeCloseTo(14);
+      const x = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')!.gridX;
+      expect(x).toBeGreaterThan(12);
+      expect(x).toBeLessThan(12.2);
     } finally {
       adapter.destroy();
       vi.useRealTimers();
@@ -199,6 +208,44 @@ describe('visual presentation adapter', () => {
     unsubscribe();
     adapter.destroy();
     vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('stops beside an occupied click and never overlaps another living ship during travel', () => {
+    vi.useFakeTimers();
+    const adapter = createMockGameplayAdapter();
+    try {
+      adapter.dispatch({ type: 'move-selected', x: 13, y: 15 });
+      const destination = adapter.getSnapshot().moveOrder!.destination;
+      expect(Math.hypot(destination.x - 13, destination.y - 15)).toBeGreaterThanOrEqual(0.9);
+      for (let frame = 0; frame < 200; frame++) {
+        vi.advanceTimersByTime(50);
+        const ships = adapter.getSnapshot().squads.filter((ship) => ship.healthPercent > 0);
+        for (let i = 0; i < ships.length; i++) for (let j = i + 1; j < ships.length; j++) {
+          expect(Math.hypot(ships[i]!.gridX - ships[j]!.gridX, ships[i]!.gridY - ships[j]!.gridY))
+            .toBeGreaterThanOrEqual(0.9 - 1e-8);
+        }
+      }
+      expect(adapter.getSnapshot().squads[0]).toMatchObject({ gridX: destination.x, gridY: destination.y, status: 'idle' });
+    } finally { adapter.destroy(); vi.useRealTimers(); }
+  });
+
+  it('can redirect into an attack while an ally is crossing nearby', () => {
+    vi.useFakeTimers();
+    for (const delay of [100, 600, 1500]) {
+      const adapter = createMockGameplayAdapter();
+      try {
+        adapter.dispatch({ type: 'move-selected', x: 13, y: 15 });
+        vi.advanceTimersByTime(delay);
+        adapter.dispatch({ type: 'select-squad', squadId: 'blue-beta' });
+        adapter.dispatch({ type: 'move-selected', x: 15, y: 13 });
+        vi.advanceTimersByTime(150);
+        adapter.dispatch({ type: 'attack-selected', targetId: 'red-sigma' });
+        vi.advanceTimersByTime(20000);
+        expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'red-sigma'))
+          .toMatchObject({ healthPercent: 0, visible: false });
+      } finally { adapter.destroy(); }
+    }
     vi.useRealTimers();
   });
 });

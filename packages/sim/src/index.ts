@@ -69,8 +69,8 @@ export function createBattlefieldWorld(map: import('./maps/types.js').MapSpec = 
 }
 /** Playable sector 01: time to build an economy before the core opens (2:00) and a 30 s capture. */
 export const SECTOR_RULES: Readonly<Rules> = Object.freeze({
-  // One cell every 0.4 s for an Interceptor: slower than the drill, so fights can be read and steered.
-  ...TRAINING_RULES, moveEveryTicks: 4, coreOpenTick: 1200, coreCaptureTicks: 300,
+  // One cell every 0.6 s for an Interceptor; class speed differences remain intact.
+  ...TRAINING_RULES, moveEveryTicks: 6, coreOpenTick: 1200, coreCaptureTicks: 300,
 });
 /** Design candidates only. The initial client uses TRAINING_RULES. */
 export const MVP_CANDIDATE_RULES = Object.freeze({
@@ -103,6 +103,10 @@ export interface Squad extends Position {
   target: Position | null;
   route: Position[];
   attackTargetId: string | null;
+  /** Previous cell remains reserved while the client finishes this step. */
+  transit?: { from: Position; untilTick: number };
+  /** Brief right-of-way pause after taking an allied passing pocket. */
+  trafficYieldUntil?: number;
 }
 export function createSquad(id: string, ownerId: PlayerId, kind: UnitKind, position: Position): Squad {
   const stats = UNIT_STATS[kind];
@@ -116,6 +120,7 @@ export interface Guardian extends Position {
   hp: number;
   maxHp: number;
   damage: number;
+  transit?: { from: Position; untilTick: number };
 }
 export interface CaptureObjective extends Position {
   id: string;
@@ -322,8 +327,10 @@ function cloneWorld(world: World): World {
       gather: unit.gather ? { ...unit.gather } : null,
       target: unit.target ? { ...unit.target } : null,
       route: unit.route.map((cell) => ({ ...cell })),
+      transit: unit.transit ? { ...unit.transit, from: { ...unit.transit.from } } : undefined,
     })),
-    guardians: world.guardians.map((unit) => ({ ...unit })),
+    guardians: world.guardians.map((unit) => ({ ...unit,
+      transit: unit.transit ? { ...unit.transit, from: { ...unit.transit.from } } : undefined })),
     nodes: world.nodes.map((node) => ({ ...node, progress: { ...node.progress } })),
     core: { ...world.core, progress: { ...world.core.progress } },
     surface: copySurface(world.surface),
@@ -380,14 +387,51 @@ function nextStep(world: World, from: Position, to: Position): Position | null {
   }
   return findPath(from, to, world.width, world.height, world.obstacles)[1] ?? null;
 }
-/** Enemy ships and guardians hold their cell. Allies fly through each other (brief: no ship collisions). */
+/** Every living ship holds its cell, including allies. */
 function cellOccupied(world: World, cell: Position, selfId: string): boolean {
-  if (!world.surface) return false;
-  const owner = world.squads.find((unit) => unit.id === selfId)?.ownerId;
-  const ship = world.squads.some((unit) => unit.hp > 0 && unit.id !== selfId && unit.ownerId !== owner
-    && unit.x === cell.x && unit.y === cell.y);
-  const guardian = world.guardians.some((unit) => unit.hp > 0 && unit.x === cell.x && unit.y === cell.y);
+  const holds = (unit: Squad | Guardian) => (unit.x === cell.x && unit.y === cell.y)
+    || (!!unit.transit && unit.transit.untilTick > world.tick
+      && unit.transit.from.x === cell.x && unit.transit.from.y === cell.y);
+  const ship = world.squads.some((unit) => unit.hp > 0 && unit.id !== selfId
+    && holds(unit));
+  const guardian = world.guardians.some((unit) => unit.hp > 0 && unit.id !== selfId && holds(unit));
   return ship || guardian;
+}
+
+/** Replan around live traffic without changing the static terrain or losing the order. */
+function trafficStep(world: World, squad: Squad, destination: Position): Position | null {
+  if (cellOccupied(world, destination, squad.id)) {
+    if (withinReach({ diagonalReach: world.surface !== null }, squad, destination)) return null;
+    // A blocked objective still needs a legal approach, especially in the legacy drill
+    // where a diagonal neighbour is outside weapons range.
+    const approach = DIRECTIONS.map(([dx, dy]) => ({ x: destination.x + dx, y: destination.y + dy }))
+      .filter((point) => cellOnBoard(world, point) && !cellOccupied(world, point, squad.id)
+        && withinReach({ diagonalReach: world.surface !== null }, point, destination)
+        && routeExists(world, squad, point))
+      .sort((a, b) => distance(a, squad) - distance(b, squad) || a.y - b.y || a.x - b.x)[0];
+    if (!approach) return null;
+    destination = approach;
+  }
+  const direct = nextStep(world, squad, destination);
+  const clear = (point: Position) => !cellOccupied(world, point, squad.id);
+  const cornerClear = (point: Position) => point.x === squad.x || point.y === squad.y
+    || (clear({ x: point.x, y: squad.y }) && clear({ x: squad.x, y: point.y }));
+  if (!direct || (clear(direct) && cornerClear(direct))) return direct;
+  // An occupied goal is allowed in the search (e.g. an attack target), but never entered.
+  const open = (point: Position) => (point.x === destination.x && point.y === destination.y) || clear(point);
+  let alternative: Position | null;
+  if (world.surface) {
+    const walkable = world.surface.walkable.map((walkable, index) => walkable
+      && open({ x: index % world.width, y: Math.floor(index / world.width) }));
+    walkable[squad.y * world.width + squad.x] = true;
+    const route = findSurfacePath({ ...world.surface, walkable }, squad, destination);
+    alternative = route.status === 'found' ? route.path[0] ?? null : null;
+  } else {
+    const occupied = [...world.squads.filter((unit) => unit.hp > 0 && unit.id !== squad.id),
+      ...world.guardians.filter((unit) => unit.hp > 0)].filter((unit) => !open(unit));
+    alternative = findPath(squad, destination, world.width, world.height, [...world.obstacles, ...occupied])[1] ?? null;
+  }
+  return alternative && clear(alternative) && cornerClear(alternative) ? alternative : null;
 }
 function commitOrder(world: World, playerId: PlayerId, seq: number, squadId: string, write: (squad: Squad) => void): CommandResult {
   const next = cloneWorld(world);
@@ -482,30 +526,118 @@ function moveGuardians(world: World): void {
     if (goal.x === guardian.x && goal.y === guardian.y) continue;
     const next = nextStep(world, guardian, goal);
     if (!next || distance(next, post) > GUARDIAN_AGGRO_RADIUS) continue;
-    const taken = world.squads.some((unit) => unit.hp > 0 && unit.x === next.x && unit.y === next.y)
-      || world.guardians.some((other) => other.id !== guardian.id && other.hp > 0 && other.x === next.x && other.y === next.y);
+    const taken = cellOccupied(world, next, guardian.id)
+      || (next.x !== guardian.x && next.y !== guardian.y
+        && (cellOccupied(world, { x: next.x, y: guardian.y }, guardian.id)
+          || cellOccupied(world, { x: guardian.x, y: next.y }, guardian.id)));
     if (taken) continue;
+    guardian.transit = { from: { x: guardian.x, y: guardian.y }, untilTick: world.tick + GUARDIAN_MOVE_TICKS };
     guardian.x = next.x;
     guardian.y = next.y;
   }
 }
+/** Only mutually blocked allies may exchange cells, atomically on a shared movement beat. */
+function swapBlockedAllies(world: World, squad: Squad, destination: Position, moved: Set<string>): boolean {
+  const step = nextStep(world, squad, destination);
+  if (!step || (squad.transit && squad.transit.untilTick > world.tick)) return false;
+  const other = world.squads.find((unit) => unit.hp > 0 && unit.ownerId === squad.ownerId
+    && unit.id !== squad.id && unit.x === step.x && unit.y === step.y);
+  if (!other || moved.has(other.id) || (other.transit && other.transit.untilTick > world.tick)) return false;
+  const otherDestination = movementDestination(world, other);
+  const interval = (unit: Squad) => Math.max(1, Math.round(world.rules.moveEveryTicks * UNIT_STATS[unit.kind].moveIntervalFactor));
+  if (!otherDestination || world.tick % interval(other) !== 0) return false;
+  const otherStep = nextStep(world, other, otherDestination);
+  if (!otherStep || otherStep.x !== squad.x || otherStep.y !== squad.y
+    || trafficStep(world, other, otherDestination) !== null
+    || leashBlocks(squad, step, world.rules.visionRadius)
+    || leashBlocks(other, otherStep, world.rules.visionRadius)) return false;
+  // The exception belongs to this pair only. Third-party hulls and departure
+  // reservations, including diagonal corners, still block both movements.
+  const traffic = { ...world, squads: world.squads.filter((unit) => unit.id !== squad.id && unit.id !== other.id) };
+  const clear = (from: Position, to: Position) => !cellOccupied(traffic, to, '')
+    && (from.x === to.x || from.y === to.y || (!cellOccupied(traffic, { x: to.x, y: from.y }, '')
+      && !cellOccupied(traffic, { x: from.x, y: to.y }, '')));
+  if (!clear(squad, other) || !clear(other, squad)) return false;
+  const from = { x: squad.x, y: squad.y };
+  const otherFrom = { x: other.x, y: other.y };
+  squad.transit = { from, untilTick: world.tick + interval(squad) };
+  other.transit = { from: otherFrom, untilTick: world.tick + interval(other) };
+  Object.assign(squad, otherFrom);
+  Object.assign(other, from);
+  moved.add(squad.id);
+  moved.add(other.id);
+  consumeWaypoint(squad);
+  consumeWaypoint(other);
+  return true;
+}
+
+/** At a ramp or bend the ships may contest a third cell rather than each other's.
+ * The lower id takes a legal passing pocket and gives the other three beats. */
+function routeBlockedByTraffic(world: World, squad: Squad, destination: Position): boolean {
+  const step = nextStep(world, squad, destination);
+  return !!step && (cellOccupied(world, step, squad.id) || (step.x !== squad.x && step.y !== squad.y
+    && (cellOccupied(world, { x: step.x, y: squad.y }, squad.id)
+      || cellOccupied(world, { x: squad.x, y: step.y }, squad.id))));
+}
+
+function yieldToBlockedAlly(world: World, squad: Squad, destination: Position): boolean {
+  const direct = nextStep(world, squad, destination);
+  if (!direct) return false;
+  const other = [...world.squads].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+    .find((unit) => unit.hp > 0 && unit.ownerId === squad.ownerId && squad.id < unit.id
+      && distance(squad, unit) <= 2 && movementDestination(world, unit)
+      && routeBlockedByTraffic(world, unit, movementDestination(world, unit)!));
+  if (!other) return false;
+  const otherDestination = movementDestination(world, other)!;
+  const otherRoute = world.surface ? findSurfacePath(world.surface, other, otherDestination) : null;
+  const lane = otherRoute?.status === 'found' ? otherRoute.path : findPath(other, otherDestination, world.width, world.height, world.obstacles);
+  const pockets = DIRECTIONS.map(([dx, dy]) => ({ x: squad.x + dx, y: squad.y + dy }))
+    .filter((cell) => cellOnBoard(world, cell) && !cellOccupied(world, cell, squad.id)
+      && (cell.x !== direct.x || cell.y !== direct.y)
+      && !leashBlocks(squad, cell, world.rules.visionRadius)
+      && (cell.x === squad.x || cell.y === squad.y || (!cellOccupied(world, { x: cell.x, y: squad.y }, squad.id)
+        && !cellOccupied(world, { x: squad.x, y: cell.y }, squad.id)))
+      && (() => { const step = nextStep(world, squad, cell); return step?.x === cell.x && step.y === cell.y; })())
+    .sort((a, b) => Number(lane.some((point) => point.x === a.x && point.y === a.y))
+      - Number(lane.some((point) => point.x === b.x && point.y === b.y))
+      || distance(a, destination) - distance(b, destination) || a.y - b.y || a.x - b.x);
+  const pocket = pockets[0];
+  if (!pocket) return false;
+  const interval = Math.max(1, Math.round(world.rules.moveEveryTicks * UNIT_STATS[squad.kind].moveIntervalFactor));
+  const otherInterval = Math.max(1, Math.round(world.rules.moveEveryTicks * UNIT_STATS[other.kind].moveIntervalFactor));
+  squad.transit = { from: { x: squad.x, y: squad.y }, untilTick: world.tick + interval };
+  squad.trafficYieldUntil = world.tick + 3 * Math.max(interval, otherInterval);
+  Object.assign(squad, pocket);
+  return true;
+}
+
 function moveSquads(world: World): void {
+  const moved = new Set<string>();
+  // Resolve targets before traffic so a pair sees the same intentions regardless
+  // of which member is processed first.
   for (const squad of world.squads) {
     if (squad.hp <= 0) continue;
     releaseLostTarget(world, squad);
     acquireStanceTarget(world, squad);
+  }
+  for (const squad of world.squads) {
+    if (squad.hp <= 0 || moved.has(squad.id) || (squad.trafficYieldUntil ?? 0) > world.tick) continue;
     const destination = movementDestination(world, squad);
     if (!destination) continue;
     const interval = Math.max(1, Math.round(world.rules.moveEveryTicks * UNIT_STATS[squad.kind].moveIntervalFactor));
     if (world.tick % interval !== 0) continue;
-    const next = nextStep(world, squad, destination);
+    if (routeBlockedByTraffic(world, squad, destination) && yieldToBlockedAlly(world, squad, destination)) continue;
+    const next = trafficStep(world, squad, destination);
     if (!next) {
+      if (swapBlockedAllies(world, squad, destination, moved)) continue;
+      if (yieldToBlockedAlly(world, squad, destination)) continue;
       if (squad.x === destination.x && squad.y === destination.y) consumeWaypoint(squad);
-      else if (squad.attackTargetId && destination !== squad.target) squad.attackTargetId = null;
-      else clearStuckRoute(squad);
+      // Traffic is temporary: keep the command and retry when the lane frees up.
+      else if (!routeExists(world, squad, destination)) clearStuckRoute(squad);
       continue;
     }
     if (leashBlocks(squad, next, world.rules.visionRadius) || cellOccupied(world, next, squad.id)) continue;
+    squad.transit = { from: { x: squad.x, y: squad.y }, untilTick: world.tick + interval };
     squad.x = next.x;
     squad.y = next.y;
     consumeWaypoint(squad);
@@ -565,6 +697,7 @@ export function stepWorld(world: World): World {
   if (next.core.open) next.winner = advanceCapture(next, next.core, next.rules.coreCaptureTicks, capture);
   return next;
 }
+
 function releaseLostTarget(world: World, squad: Squad): void {
   if (!squad.attackTargetId) return;
   const enemy = attackTarget(world, squad.attackTargetId);

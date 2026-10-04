@@ -43,6 +43,9 @@ interface UnitVisual {
   healthPercent: number;
   gridX: number;
   gridY: number;
+  targetX: number;
+  targetY: number;
+  heading: number;
 }
 
 function coreColor(state: CoreState) {
@@ -149,6 +152,17 @@ export class MainScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number) {
+    // Frame-rate independent follow and shortest-angle turns; no tween is restarted per snapshot.
+    const seconds = Math.min(delta, 100) / 1000;
+    const follow = 1 - Math.exp(-seconds / 0.035);
+    const turn = 1 - Math.exp(-seconds / 0.14);
+    for (const visual of this.unitVisuals.values()) {
+      visual.container.x += (visual.targetX - visual.container.x) * follow;
+      visual.container.y += (visual.targetY - visual.container.y) * follow;
+      const angle = Math.atan2(Math.sin(visual.heading - visual.hull.rotation), Math.cos(visual.heading - visual.hull.rotation));
+      visual.hull.rotation += angle * turn;
+      visual.container.setDepth(DEPTH.units + visual.container.y);
+    }
     const camera = this.cameras.main;
     const distance = (Math.min(delta, 100) / 1000) * 650 / camera.zoom;
     const pointer = this.input.activePointer;
@@ -335,10 +349,11 @@ export class MainScene extends Phaser.Scene {
       visual.gridX = squad.gridX;
       visual.gridY = squad.gridY;
       const point = cellToIso(squad.gridX, squad.gridY);
-      visual.hull.rotation = Math.atan2(point.y - previous.y, point.x - previous.x) + Math.PI / 2;
-      this.tweens.killTweensOf(visual.container);
-      this.tweens.add({ targets: visual.container, x: point.x, y: point.y, duration: 50, ease: 'Linear' });
-      visual.container.setDepth(DEPTH.units + point.y);
+      if (Math.hypot(point.x - previous.x, point.y - previous.y) > 0.01)
+        visual.heading = Math.atan2(point.y - previous.y, point.x - previous.x) + Math.PI / 2;
+      visual.targetX = point.x;
+      visual.targetY = point.y;
+      if (Math.hypot(point.x - previous.x, point.y - previous.y) > 160) visual.container.setPosition(point.x, point.y);
     }
   }
 
@@ -396,7 +411,8 @@ export class MainScene extends Phaser.Scene {
     container.setInteractive(new Phaser.Geom.Ellipse(0, 0, 100, 80), Phaser.Geom.Ellipse.Contains);
     container.setData('unitId', squad.id);
     const visual = { container, selection, hull: marker, hitFlash, health,
-      healthPercent: squad.healthPercent, gridX: squad.gridX, gridY: squad.gridY };
+      healthPercent: squad.healthPercent, gridX: squad.gridX, gridY: squad.gridY,
+      targetX: point.x, targetY: point.y, heading: 0 };
     this.unitVisuals.set(squad.id, visual);
     return visual;
   }

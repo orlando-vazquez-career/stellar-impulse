@@ -148,19 +148,20 @@ describe('deterministic integer simulation', () => {
   });
   it('derives health and damage from unit type and applies distinct speeds', () => {
     const world = createWorld();
-    const frigate = createSquad('frigate', 'p1', 'frigate', { x: 2, y: 17 });
-    const bomber = createSquad('bomber', 'p1', 'bomber', { x: 2, y: 17 });
+    const frigate = createSquad('frigate', 'p1', 'frigate', { x: 5, y: 17 });
+    const bomber = createSquad('bomber', 'p1', 'bomber', { x: 8, y: 17 });
     expect([frigate.maxHp, frigate.damage]).toEqual([UNIT_STATS.frigate.maxHp, UNIT_STATS.frigate.damage]);
     expect([bomber.maxHp, bomber.damage]).toEqual([UNIT_STATS.bomber.maxHp, UNIT_STATS.bomber.damage]);
     world.squads.push(frigate, bomber);
-    for (const unit of world.squads.filter((unit) => unit.ownerId === 'p1')) unit.target = { x: 2, y: 15 };
+    // Independent lanes measure class speeds without an allied traffic jam.
+    for (const unit of world.squads.filter((unit) => unit.ownerId === 'p1')) unit.target = { x: unit.x, y: 15 };
     const moved = ticks(world, 3);
     expect(moved.squads[0]).toMatchObject({ x: 2, y: 16 });
-    expect(moved.squads[2]).toMatchObject({ x: 2, y: 17 });
-    expect(moved.squads[3]).toMatchObject({ x: 2, y: 17 });
+    expect(moved.squads[2]).toMatchObject({ x: 5, y: 17 });
+    expect(moved.squads[3]).toMatchObject({ x: 8, y: 17 });
     const later = ticks(moved, 3);
-    expect(later.squads[2]).toMatchObject({ x: 2, y: 16 });
-    expect(later.squads[3]).toMatchObject({ x: 2, y: 16 });
+    expect(later.squads[2]).toMatchObject({ x: 5, y: 16 });
+    expect(later.squads[3]).toMatchObject({ x: 8, y: 16 });
   });
   it('applies class advantage and keeps explorers noncombatant', () => {
     const world = createWorld();
