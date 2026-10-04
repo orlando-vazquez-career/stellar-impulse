@@ -215,6 +215,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       base: { upgrades: { ...(own.baseUpgrades ?? { damage: 0, capacity: 0 }) }, damage: view.base?.damage ?? 0,
         range: BASE_DEFENSE_RANGE, position:{...own.base}, upgradeCosts: view.base?.upgradeCosts ?? {damage:null,capacity:null} },
       result: view.winner === null ? null : view.winner === me ? 'victory' : 'defeat',
+      reward: view.reward,
       visibleCells: (() => {
         const cells = Array<boolean>(view.width * view.height).fill(false);
         for (const cell of view.visibleCells) cells[cell.y * view.width + cell.x] = true;
@@ -273,7 +274,8 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
   void (async () => {
     try {
       const testing = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
-      const joined = existingRoom ?? await new Client(serverUrl).create('training', { difficulty, map, duration,
+      const token=typeof sessionStorage==='undefined'?null:sessionStorage.getItem('impulso.auth-token');
+      const joined = existingRoom ?? await new Client(serverUrl).create('training', { difficulty, map, duration,token,
         testTimeScale: Number(testing.get('testTimeScale') ?? 1), ...(testing.has('testSeed')?{testSeed:Number(testing.get('testSeed'))}:{}) });
       if (destroyed) { void joined.leave(); return; }
       room = joined;

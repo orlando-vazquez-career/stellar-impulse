@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { emptyProgress, profileFor, rewardForMatch, type AccountProgress, type MatchReward, type PlayerId, type ProgressProfile, type RivalDifficulty, type World } from '@impulso/sim';
 
 const SESSION_MS = 24 * 60 * 60_000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -10,6 +11,7 @@ interface StoredUser {
   email: string;
   salt: string;
   passwordHash: string;
+  progress?: AccountProgress;
 }
 
 export interface PublicUser {
@@ -73,6 +75,21 @@ export class AuthService {
     return typeof token === 'string' && this.sessions.delete(token);
   }
 
+  profile(userId:string):ProgressProfile {
+    const user=[...this.users.values()].find(u=>u.id===userId);
+    if(!user)throw new AuthError(401,'authentication_required');
+    return profileFor(user.progress ?? emptyProgress());
+  }
+  awardMatch(userId:string,matchId:string,world:World,player:PlayerId,difficulty:RivalDifficulty|'pvp'):MatchReward {
+    const user=[...this.users.values()].find(u=>u.id===userId);
+    if(!user)throw new AuthError(401,'authentication_required');
+    const previous=user.progress;
+    const result=rewardForMatch(previous ?? emptyProgress(),matchId,world,player,difficulty);
+    if(result.progress===previous)return result.reward;
+    user.progress=result.progress;
+    try {this.persist();}catch(error){user.progress=previous;throw error;}
+    return result.reward;
+  }
   private validate(email: unknown, password: unknown): string {
     if (typeof email !== 'string' || typeof password !== 'string') throw new AuthError(400, 'invalid_credentials');
     const normalized = email.trim().toLowerCase();

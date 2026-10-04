@@ -17,7 +17,7 @@ it.each(['sector-01','espiral'] as const)('headless corpse cleanup preserves the
     full=stepWorld(full);cleaned=stepWorld(cleaned);cleaned.squads=cleaned.squads.filter(s=>s.hp>0);
     if(i%100===99){
       expect(cleaned.squads).toEqual(full.squads.filter(s=>s.hp>0));
-      for(const key of ['players','core','nodes','winner','built','production','events','knowledge'] as const)expect(cleaned[key]).toEqual(full[key]);
+      for(const key of ['players','core','nodes','winner','built','production','events','matchRecord','knowledge'] as const)expect(cleaned[key]).toEqual(full[key]);
     }
   }
 },15000);

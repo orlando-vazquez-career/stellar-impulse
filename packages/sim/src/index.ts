@@ -43,9 +43,12 @@ import { BASE_STATS, statsFor, moveInterval, type ShipStats, type StatModifier }
 export { BASE_STATS, SHIP_COUNTERS, statsFor, moveInterval, damageAgainst } from './stats.js';
 import { advanceAugmentClock, scheduleAugments, runAugmentEffects, cloneAugmentMatch, type AugmentMatch } from './augments/runtime.js';
 import { effectsFor, effectiveFleetCap, effectiveBaseDamage, baseIncome, visionSources, isConcealed, statsForUnit } from './augments/effects.js';
+import { cloneMatchRecord, recordMatchTick, type MatchRecord } from './progression.js';
 import { observeKnowledge, type AiKnowledge } from './inteligencia-enemiga/knowledge.js';
+export { CHALLENGES, emptyProgress, emptyMatchRecord, profileFor, unlockedPool, rewardForMatch, challengeProgress } from './progression.js';
+export type { AccountProgress, ProgressProfile, MatchReward, MatchRecord } from './progression.js';
 export { effectiveFleetCap, effectiveBaseDamage, effectsFor, statsForUnit, visionSources, isConcealed, captureDuration, metalIncomeRate } from './augments/effects.js';
-export { initializeAugments, grantAugment, pickAugment, rerollAugments, chooseAiAugment } from './augments/runtime.js';
+export { initializeAugments, setAugmentPool, grantAugment, pickAugment, rerollAugments, chooseAiAugment } from './augments/runtime.js';
 export { AUGMENT_CATALOG, AUGMENTS_BY_ID, INITIAL_AUGMENTS } from './augments/catalog.js';
 export type { Augment, AugmentTier, ChallengeId } from './augments/catalog.js';
 export type { AugmentOffer, AugmentMatch } from './augments/runtime.js';
@@ -181,6 +184,7 @@ export interface World {
   events?: SimEvent[];
   augmentMatch?: AugmentMatch;
   suddenDeath?: boolean;
+  matchRecord?: MatchRecord;
   knowledge?: Record<PlayerId,AiKnowledge>;
 }
 export type CommandRejection =
@@ -344,7 +348,7 @@ export function findPath(start: Position, target: Position, width: number, heigh
 }
 export function cloneWorld(world: World): World {
   return {
-    ...world, augmentMatch: cloneAugmentMatch(world.augmentMatch), events: [], rules: { ...world.rules }, obstacles: world.obstacles.map((point) => ({ ...point })),
+    ...world, matchRecord: cloneMatchRecord(world.matchRecord), augmentMatch: cloneAugmentMatch(world.augmentMatch), events: [], rules: { ...world.rules }, obstacles: world.obstacles.map((point) => ({ ...point })),
     players: {
       p1: { ...world.players.p1, augments: world.players.p1.augments && [...world.players.p1.augments], base: { ...world.players.p1.base }, statModifiers: world.players.p1.statModifiers?.map((modifier) => ({ ...modifier })), baseUpgrades: world.players.p1.baseUpgrades && { ...world.players.p1.baseUpgrades } },
       p2: { ...world.players.p2, augments: world.players.p2.augments && [...world.players.p2.augments], base: { ...world.players.p2.base }, statModifiers: world.players.p2.statModifiers?.map((modifier) => ({ ...modifier })), baseUpgrades: world.players.p2.baseUpgrades && { ...world.players.p2.baseUpgrades } },
@@ -530,6 +534,7 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
     const ids = new Set(command.squadIds);
     next.players[playerId].lastSequence = command.seq;
     for (const unit of next.squads) if (ids.has(unit.id)) {
+      if(unit.kind!=='explorer'&&!unit.isDecoy&&next.matchRecord)next.matchRecord.players[playerId].combatLosses++;
       holdGround(unit);
       unit.hp = 0;
       delete unit.transit;
@@ -841,6 +846,7 @@ export function stepWorld(world: World): World {
   }
   if (next.core.open) next.winner = advanceCapture(next, next.core, next.rules.coreCaptureTicks, capture);
   runAugmentEffects(next);
+  recordMatchTick(next,world);
   observeKnowledge(next);
   return next;
 }

@@ -1,0 +1,24 @@
+import {expect,test} from '@playwright/test';
+test('shows an authenticated official match reward and the saved account profile',async({page,request})=>{
+  const response=await request.post('http://127.0.0.1:2567/auth/register',{data:{email:`progress-${Date.now()}@example.com`,password:'test-password-123'}});
+  expect(response.status()).toBe(201);
+  const account=await response.json() as {token:string};
+  await page.addInitScript(token=>sessionStorage.setItem('impulso.auth-token',token),account.token);
+  await page.goto('/?testTimeScale=10&testSeed=42');
+  await page.getByRole('button',{name:/Preparar operación/}).click();
+  await page.getByLabel('Estoy listo para desplegar').check();
+  await page.getByRole('button',{name:'Iniciar operación'}).click();
+  const opening=page.locator('.augment-opening .augment-card');
+  await expect(opening).toHaveCount(3);await opening.first().click();
+  await expect(page.locator('.match-progress')).toBeVisible({timeout:50000});
+  await expect(page.locator('.match-progress')).toContainText(/\+\d+ XP/);
+  await page.screenshot({path:'test-results/match-progression.png'});
+  const profile=await request.get('http://127.0.0.1:2567/auth/profile',{headers:{Authorization:`Bearer ${account.token}`}});
+  const saved=await profile.json() as {xp:number};expect(saved.xp).toBeGreaterThan(0);
+  await page.getByRole('button',{name:'Salir',exact:true}).click();
+  await page.getByRole('button',{name:'Perfil',exact:true}).click();
+  await expect(page.locator('.profile-level')).toContainText(`${saved.xp} acumulada`);
+  await expect(page.locator('.profile-catalog .augment-card')).toHaveCount(44);
+  await expect(page.locator('.profile-challenges article')).toHaveCount(7);
+  await page.screenshot({path:'test-results/account-profile.png'});
+});

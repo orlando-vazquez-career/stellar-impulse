@@ -105,6 +105,7 @@ export interface GameplayViewModel {
   productionForbidden?: SquadType[];
   base?: { upgrades: BaseUpgrades; damage: number; range: number; position?:{x:number;y:number}; upgradeCosts: Record<BaseUpgradeKind, number | null> };
   result: 'victory' | 'defeat' | null;
+  reward?: import('@impulso/sim').MatchReward;
   /** Last server rejection or connection message, already localized by key. */
   notice: string | null;
   connection: ConnectionState;

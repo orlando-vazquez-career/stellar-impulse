@@ -1,6 +1,6 @@
 import { defineServer, defineRoom, createRouter, createEndpoint } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { TrainingRoom } from './training-room';
+import { trainingRoomWith } from './training-room';
 import { BattlefieldRoom } from './battlefield-room';
 import { campaignRoomWith } from './campaign-room';
 import type { CampaignConfig } from './campaign/machine';
@@ -43,7 +43,7 @@ export function createGameServer(options: GameServerOptions = {}) {
     transport,
     greet: false,
     rooms: {
-      training: defineRoom(TrainingRoom),
+      training: defineRoom(trainingRoomWith(auth)),
       battlefield: defineRoom(BattlefieldRoom),
       campaign: defineRoom(campaignRoomWith(options.campaign ?? {}, auth)),
     },
@@ -61,6 +61,8 @@ export function createGameServer(options: GameServerOptions = {}) {
       }),
       me: createEndpoint('/auth/me', { method: 'GET' }, async (ctx) =>
         respond(() => ({ user: authenticated(ctx.request?.headers.get('authorization') ?? null).user }))),
+      profile: createEndpoint('/auth/profile', {method:'GET'}, async(ctx)=>respond(()=>
+        auth.profile(authenticated(ctx.request?.headers.get('authorization') ?? null).user.id))),
       logout: createEndpoint('/auth/logout', { method: 'POST' }, async (ctx) => {
         try {
           const { token } = authenticated(ctx.request?.headers.get('authorization') ?? null);

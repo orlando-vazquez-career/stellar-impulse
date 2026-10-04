@@ -82,6 +82,12 @@ export function grantAugment(world: World, player: PlayerId, id: string): void {
   observeKnowledge(world);
 }
 export type AugmentResult = { accepted: true; world: World } | { accepted: false; reason: string; world: World };
+/** Account pools are supplied by trusted admission, before that player chooses. */
+export function setAugmentPool(world:World,player:PlayerId,pool:readonly string[]):void {
+  const state=world.augmentMatch?.players[player];
+  if(!state || state.chosen.length || world.tick!==0)return;
+  state.unlocked=[...pool];offer(world,player,0);
+}
 function validOffer(world: World, player: PlayerId, choice: unknown): AugmentOffer | null {
   const match = world.augmentMatch;
   const offered = match?.players[player]?.offer;

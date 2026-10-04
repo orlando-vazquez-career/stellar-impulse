@@ -4,7 +4,7 @@ Las 44 cartas, traducciones y efectos están en `packages/sim/src/augments/catal
 
 La semilla de partida, jugador, número de elección y renovación determinan las cartas. Las elecciones iniciales esperan hasta 30 segundos; las siguientes duran 20 segundos mientras sigue el reloj. El vencimiento asigna una carta usando la misma fuente determinista. No hay costo de Metal.
 
-Las cartas elegidas se revelan a ambos jugadores. Las ofertas, pools y semilla no se exponen al rival. Las etiquetas costo, ingreso-base y flota excluyen cartas incompatibles. Una renovación evita todas las cartas anteriores cuando hay tres alternativas; con los pools iniciales de cinco cartas de oro y prismáticas es imposible obtener dos manos disjuntas de tres. En ese caso permite coincidencias, cambiando las tres posiciones.
+Las cartas elegidas se revelan a ambos jugadores. Las ofertas, pools y semilla no se exponen al rival. Las etiquetas costo, ingreso-base y flota excluyen cartas incompatibles. Una renovación evita todas las cartas anteriores cuando hay tres alternativas. Cada pool inicial tiene diez cartas. Si las exclusiones reducen el pool y ya no quedan tres alternativas distintas, permite coincidencias con la mano anterior, cambiando las tres posiciones.
 
 La IA descubre nodos mediante visión y conserva su última información visible. Cartografía agrega coordenadas fijas, sin revelar cambios de dueño fuera de visión. Los Exploradores recorren terreno desconocido y no persiguen objetivos para atacarlos. La IA revisa todas sus naves una vez por segundo; las naves siguen moviéndose y disparando en la simulación de 10 ticks/s. Con Reciclaje no espera una reparación en base que ya no existe.
 

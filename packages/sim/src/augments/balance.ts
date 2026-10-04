@@ -7,6 +7,8 @@ const checkpoints=new Map<string,Checkpoint>();
 function checkpoint(seed:number,map:TrainingMapId,mode:DurationMode,at:number):Checkpoint {
   const key=`${seed}:${map}:${mode}:${at}`;const cached=checkpoints.get(key);if(cached)return cached;
   let world=createMatchWorld(map,mode,seed);
+  // Account bookkeeping cannot affect combat; omit it from this benchmark.
+  world.matchRecord=undefined;
   world.augmentMatch!.started=true;
   for(const player of ['p1','p2'] as const){world.augmentMatch!.players[player].offer=null;world.augmentMatch!.players[player].nextChoice=3;}
   const memories:Record<PlayerId,ReadonlyMap<string,AiMemory>>={p1:new Map(),p2:new Map()};

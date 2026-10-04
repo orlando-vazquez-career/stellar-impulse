@@ -51,6 +51,7 @@ export interface PlayerView {
   winner: PlayerId | null;
   metalRate?:number;
   coreFraction?:number;
+  reward?: import('@impulso/sim').MatchReward;
 }
 /** Fresh whitelist snapshot. Never send the authoritative world to a player. */
 export function viewFor(world: World, playerId: PlayerId): PlayerView {

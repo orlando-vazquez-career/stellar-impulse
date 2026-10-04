@@ -1,4 +1,5 @@
 import { initializeAugments } from './augments/runtime.js';
+import { emptyMatchRecord } from './progression.js';
 import { emptyKnowledge, observeKnowledge } from './inteligencia-enemiga/knowledge.js';
 import { createSectorWorld, type TrainingMapId, type World } from './index.js';
 export type DurationMode = 'complete' | 'skirmish';
@@ -17,6 +18,7 @@ export function createMatchWorld(map: TrainingMapId = 'espiral', duration: Durat
   world.seed = seed >>> 0;
   world.rules = { ...world.rules, coreOpenTick: DURATION_MODES[duration].coreOpenTick, coreCaptureTicks: DURATION_MODES[duration].coreCaptureTicks };
   initializeAugments(world);
+  world.matchRecord=emptyMatchRecord();
   world.knowledge=emptyKnowledge(world);observeKnowledge(world);
   return world;
 }
