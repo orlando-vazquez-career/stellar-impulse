@@ -15,6 +15,12 @@ async function gamePoint(page: import('@playwright/test').Page, x: number, y: nu
   };
 }
 
+async function advanceMockCombat(page: import('@playwright/test').Page) {
+  // Elapsed-time movement accepts steps up to 100 ms. Keep that bound while
+  // skipping intermediate render frames; a slow renderer cannot lose game time.
+  for (let step = 0; step < 200; step++) await page.clock.fastForward(100);
+}
+
 test.describe('visual interface foundation', () => {
   test('opens Visual as the only main entry and keeps the legacy lobby out', async ({ page }) => {
     await openApp(page, '/');
@@ -241,6 +247,9 @@ test.describe('visual interface foundation', () => {
   });
 
   test('selects with left click and moves with right click', async ({ page }) => {
+    test.setTimeout(120000);
+    // Control mock time rather than depending on runner frame rate.
+    await page.clock.install();
     await page.setViewportSize({ width: 1366, height: 768 });
     await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
@@ -276,10 +285,13 @@ test.describe('visual interface foundation', () => {
     const enemy = await gamePoint(page, 17, 14);
     await page.mouse.click(enemy.x, enemy.y, { button: 'right' });
     await expect(page.getByText('Atacando')).toBeVisible();
-    await expect(page.locator('.map-enemy')).toHaveCount(0, { timeout: 20000 });
+    await advanceMockCombat(page);
+    await expect(page.locator('.map-enemy')).toHaveCount(0);
   });
 
   test('selects several allied ships by dragging and orders them together', async ({ page }) => {
+    test.setTimeout(120000);
+    await page.clock.install();
     await page.setViewportSize({ width: 1366, height: 768 });
     await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
@@ -306,7 +318,8 @@ test.describe('visual interface foundation', () => {
     await expect(page.getByText('3 unidades seleccionadas')).toBeVisible();
     const enemy = await gamePoint(page, 17, 14);
     await page.mouse.click(enemy.x, enemy.y, { button: 'right' });
-    await expect(page.locator('.map-enemy')).toHaveCount(0, { timeout: 20000 });
+    await advanceMockCombat(page);
+    await expect(page.locator('.map-enemy')).toHaveCount(0);
   });
 
   test('shows the desktop-only warning below 1024 px', async ({ page }) => {

@@ -64,6 +64,7 @@ export function CommandCenter({
   onHangar,
   onSettings,
   onSignOut,
+  onProfile,
 }: {
   alias: string;
   accountEmail?: string;
@@ -73,6 +74,7 @@ export function CommandCenter({
   onHangar(): void;
   onSettings(): void;
   onSignOut(): void;
+  onProfile?(): void;
 }) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -106,6 +108,7 @@ export function CommandCenter({
         <Brand />
         <div className="vi-header-actions">
           <LanguageToggle />
+          {onProfile&&<button className="vi-text-button" onClick={onProfile}>{t('profile')}</button>}
           <button className="vi-text-button" onClick={onSignOut}>{t(accountEmail ? 'accountLogout' : 'signOut')}</button>
         </div>
       </header>

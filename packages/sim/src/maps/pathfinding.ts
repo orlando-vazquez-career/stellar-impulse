@@ -58,7 +58,31 @@ class MinHeap {
 /** Static-terrain A*: eight neighbors with diagonal corner blocking and octile distance.
  * Returned path omits start and includes goal. All outcomes report popped-cell expansions.
  */
+const staticPaths = new WeakMap<PathMap, Map<string, PathResult>>();
 export function findPath(map: PathMap, start: MapCell, goal: MapCell, options: PathOptions = {}): PathResult {
+  const result=cachedPath(map,start,goal,options);
+  return result.status === 'found' ? { ...result, path: result.path.map((cell) => ({ ...cell })) } : { ...result };
+}
+/** Internal queries avoid allocating a full path when only the next cell/status is needed. */
+export function firstPathStep(map:PathMap,start:MapCell,goal:MapCell):MapCell|null {
+  const result=cachedPath(map,start,goal,{}),step=result.status==='found'?result.path[0]:undefined;
+  return step?{...step}:null;
+}
+export function pathExists(map:PathMap,start:MapCell,goal:MapCell):boolean{return cachedPath(map,start,goal,{}).status==='found';}
+function cachedPath(map:PathMap,start:MapCell,goal:MapCell,options:PathOptions):PathResult {
+  if (!Object.isFrozen(map)) return computePath(map, start, goal, options);
+  let cache = staticPaths.get(map);
+  if (!cache) { cache = new Map(); staticPaths.set(map, cache); }
+  const key = `${start.x},${start.y}:${goal.x},${goal.y}:${options.maxExpansions ?? 'default'}`;
+  let result = cache.get(key);
+  if (!result) {
+    result = computePath(map, start, goal, options);
+    if (cache.size >= 4096) cache.delete(cache.keys().next().value!);
+    cache.set(key, result);
+  }
+  return result;
+}
+function computePath(map: PathMap, start: MapCell, goal: MapCell, options: PathOptions = {}): PathResult {
   const { width, height, walkable, level, ramp } = map;
   const validCell = (cell: MapCell): boolean => Number.isSafeInteger(cell.x) && Number.isSafeInteger(cell.y)
     && cell.x >= 0 && cell.y >= 0 && cell.x < width && cell.y < height;

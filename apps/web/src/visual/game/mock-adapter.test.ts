@@ -3,6 +3,34 @@ import { createMockGameplayAdapter } from './mock-adapter';
 import { sectorSurface } from '../map/sector-map';
 
 describe('visual presentation adapter', () => {
+  it('retires moving selected ships, clears selection and frees housing without a refund', () => {
+    vi.useFakeTimers();
+    const adapter = createMockGameplayAdapter();
+    try {
+      adapter.dispatch({ type: 'select-squads', squadIds: ['blue-alpha', 'blue-beta'] });
+      adapter.dispatch({ type: 'move-selected', x: 14, y: 14 });
+      const metal = adapter.getSnapshot().resources.metal;
+      adapter.dispatch({ type: 'disband-selected' });
+      vi.advanceTimersByTime(2000);
+      expect(adapter.getSnapshot().selectedSquadIds).toEqual([]);
+      expect(adapter.getSnapshot().moveOrder).toBeNull();
+      expect(adapter.getSnapshot().resources.fleet).toBe(1);
+      expect(adapter.getSnapshot().resources.metal).toBe(metal);
+      expect(adapter.getSnapshot().squads.filter((unit) => unit.owner === 'blue' && unit.visible).map((unit) => unit.id))
+        .toEqual(['blue-gamma']);
+    } finally { adapter.destroy(); vi.useRealTimers(); }
+  });
+  it('updates base levels and capacity from Metal and stops at the maximum', () => {
+    const adapter = createMockGameplayAdapter();
+    try {
+      for (let i = 0; i < 4; i++) adapter.dispatch({ type: 'upgrade-base', upgrade: 'capacity' });
+      expect(adapter.getSnapshot().resources).toMatchObject({ metal: 180, fleetCap: 24 });
+      expect(adapter.getSnapshot().base?.upgrades.capacity).toBe(3);
+      expect(adapter.getSnapshot().base?.upgradeCosts.capacity).toBeNull();
+      adapter.dispatch({ type: 'upgrade-base', upgrade: 'damage' });
+      expect(adapter.getSnapshot().base?.damage).toBe(10);
+    } finally { adapter.destroy(); }
+  });
   it('spawns on the playable Tiled surface and rejects blocked move orders', () => {
     const adapter = createMockGameplayAdapter();
     const alpha = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')!;
@@ -172,7 +200,7 @@ describe('visual presentation adapter', () => {
       adapter.dispatch({ type: 'attack-selected', targetId: 'red-sigma' });
       vi.setSystemTime(Date.now() + 450);
       vi.advanceTimersByTime(50);
-      expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'red-sigma')?.healthPercent).toBe(62.1);
+      expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'red-sigma')?.healthPercent).toBe(65.7);
     } finally {
       adapter.destroy();
       vi.useRealTimers();

@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { UNIT_STATS } from '@impulso/state';
-import { UNIT_COSTS } from '@impulso/sim';
+import { useEffect, useState } from 'react';
+import { SHIP_COUNTERS, UNIT_COSTS } from '@impulso/sim';
 import { useI18n } from '../i18n';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { Panel } from '../shared/Panel';
@@ -42,6 +41,7 @@ function SectorHud({ view }: { view: GameplayViewModel }) {
   return <Panel className="vi-sector-status">
     <div><span>{t('sector')}</span><strong>{String(view.sector).padStart(2, '0')}</strong></div>
     <time>{formatTime(view.elapsedSeconds)}</time>
+    {view.suddenDeath && <strong role="status" className="vi-sudden-death">{t('suddenDeath')}</strong>}
     <div className={`vi-core-state vi-core-state--${view.core.state}`}><span aria-hidden="true" />
       <strong>{coreLabel(view.core.state, t)}</strong>
       {view.core.state === 'locked' && <small>{t('opensIn', { time: formatTime(view.core.opensInSeconds) })}</small>}
@@ -115,6 +115,9 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
       {/* Batch terrain into two paths so every server view does not reconcile thousands of SVG elements. */}
       <path d={terrainPath} fill="#34587a" />
       <path d={view.visibleCells ? floor.filter(seen).map((cell) => cell.path).join(' ') : terrainPath} fill="#5b95c4" />
+      {[...(view.chart?.nodes??[]),...(view.chart?.guardians??[])].map((cell,index)=>{
+        const point=miniPoint(cell.x,cell.y);return <circle key={`chart-${index}`} className="map-chart-marker" cx={point.x} cy={point.y} r="2.4" fill="none" stroke="#b5c4d1" opacity=".65"/>;
+      })}
       {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); return <rect key={node.id} x={point.x - 2.2} y={point.y - 2.2} width="4.4" height="4.4"
         transform={`rotate(45 ${point.x} ${point.y})`} fill={node.owner ? OWNER_FILL[node.owner] : '#8aa0b8'} />; })}
       <circle className="map-core" cx={miniPoint(core.x, core.y).x} cy={miniPoint(core.x, core.y).y} r="4" />
@@ -134,7 +137,7 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
   </Panel>;
 }
 
-function SquadHud({ view }: { view: GameplayViewModel }) {
+function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
   const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
   const selected = view.squads.filter((candidate) => view.selectedSquadIds.includes(candidate.id) && candidate.visible && candidate.healthPercent > 0);
@@ -142,22 +145,27 @@ function SquadHud({ view }: { view: GameplayViewModel }) {
   const squad = view.squads.find((candidate) => candidate.id === view.selectedSquadId);
   if (!squad) return null;
   const status = squad.status === 'moving' ? t('moving') : squad.status === 'attacking' ? t('attacking') : squad.status === 'holding' ? t('holding') : squad.status === 'capturing' ? t('capturing') : t('idle');
-  const stats = UNIT_STATS[squad.unitType];
+  const stats = squad.stats ?? view.unitStats?.[squad.unitType];
   const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
   return <Panel className={`vi-squad ${collapsed ? 'is-collapsed' : ''}`}>
-    <header><span>{selected.length > 1 ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span><button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></header>
-    {!collapsed && selected.length > 1 ? <div className="vi-squad__group">{selected.map((unit) => <div className="vi-squad__group-unit" key={unit.id}>
-      <strong>{unit.callSign}</strong><span>{unitNames[unit.unitType]}</span><progress aria-label={`${unit.callSign} HP`} value={unit.healthPercent} max="100" />
-    </div>)}</div> : !collapsed && <div className="vi-squad__body">
+    <header><span>{selected.length > 1 ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span>
+      <div className="vi-squad__tools"><button className="vi-retire" disabled={!!view.result}
+        title={t('retireShipsHelp')} onClick={() => adapter.dispatch({ type: 'disband-selected' })}>{t('retireShips')}</button>
+        <button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></div></header>
+    {!collapsed && selected.length > 1 ? <div className="vi-squad__group">{(['explorer','interceptor','frigate','bomber'] as const).map(kind=>{
+      const ships=selected.filter(s=>s.unitType===kind);if(!ships.length)return null;
+      const hp=ships.reduce((n,s)=>n+(s.hp??s.healthPercent),0),maxHp=ships.reduce((n,s)=>n+(s.maxHp??100),0);
+      return <div className="vi-squad__group-unit" key={kind}><strong>{ships.length} × {unitNames[kind]}</strong><span>{Math.round(hp)}/{maxHp} {t('totalHealth')}</span><progress aria-label={`${unitNames[kind]} HP`} value={hp} max={maxHp}/></div>;
+    })}</div> : !collapsed && <div className="vi-squad__body">
       <div className="vi-squad__identity"><span aria-hidden="true">△</span><div><h2>{t('squad')} {squad.callSign}</h2><p>{status}</p></div></div>
       <div className="vi-squad__composition">
         <strong>{unitNames[squad.unitType]}</strong>
-        <span>{t('unitStats', { hp: stats.maxHp, damage: stats.damage, speed: squad.speedCellsPerSecond?.toFixed(1) ?? '—' })}</span>
+        <span>{t('shipNumbers', { hp: squad.hp?.toFixed(0) ?? '—', maxHp: squad.maxHp ?? stats?.maxHp ?? '—', damage: stats?.damage ?? '—', rhythm: stats?.attackTicks ? stats.attackTicks / 10 : '—', armor: stats?.armor ?? '—', range: stats?.range ?? '—', speed: stats?.speed ?? squad.speedCellsPerSecond?.toFixed(1) ?? '—' })}</span>
         {squad.composition.interceptors > 0 && <span>{t('interceptors', { count: squad.composition.interceptors })}</span>}
         {squad.composition.frigates > 0 && <span>{t('frigates', { count: squad.composition.frigates })}</span>}
         {squad.composition.bombers && <span>{t('bombers', { count: squad.composition.bombers })}</span>}
       </div>
-      <div className="vi-health"><div><span>{t('totalHealth')}</span><strong>{squad.healthPercent}%</strong></div><progress value={squad.healthPercent} max="100" /></div>
+      <div className="vi-health"><div><span>{t('totalHealth')}</span><strong>{squad.hp?.toFixed(0) ?? '—'}/{squad.maxHp ?? '—'}</strong></div><progress value={squad.healthPercent} max="100" /></div>
     </div>}
   </Panel>;
 }
@@ -187,25 +195,56 @@ const PRODUCTION_ORDER = [
 ] as const;
 
 /** Base hangar: one ship at a time, paid in Metal. Hidden in the offline mock. */
-function ProductionHud({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
-  const { t } = useI18n();
+function ProductionHud({ view, adapter,onBaseRange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter;onBaseRange?:(show:boolean)=>void }) {
+  const { t,locale } = useI18n();
+  const [tab, setTab] = useState<'hangar' | 'base'>('hangar');
+  const [hovered,setHovered]=useState<keyof typeof UNIT_COSTS|null>(null);
+  useEffect(()=>{onBaseRange?.(tab==='base');return ()=>onBaseRange?.(false);},[tab,onBaseRange]);
   if (view.connection === 'local' || view.canProduce === false) return null;
   const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
   const full = view.resources.fleet >= view.resources.fleetCap;
-  return <Panel className="vi-production"><span className="vi-actions__label">Hangar</span>
+  return <Panel className="vi-production"><div className="vi-production__tabs" role="tablist" aria-label={t('baseTab')}>
+    <button id="hangar-tab" role="tab" aria-selected={tab === 'hangar'} aria-controls="hangar-panel" onClick={() => setTab('hangar')}>{t('hangar')}</button>
+    <button id="base-tab" role="tab" aria-selected={tab === 'base'} aria-controls="base-panel" disabled={!view.base} onClick={() => setTab('base')}>{t('baseTab')}</button>
+  </div>
+    {tab === 'base' && view.base ? <div role="tabpanel" id="base-panel" aria-labelledby="base-tab">
+      <p className="vi-production__queue">{t('baseSummary', { damage: view.base.damage, fleet: view.resources.fleet, cap: view.resources.fleetCap })}</p>
+      <p className="vi-base-range">{t('attackRange')}: <strong>{view.base.range} {t('cells')}</strong></p>
+      <div className="vi-base-upgrades">{(['damage', 'capacity'] as const).map((upgrade) => {
+        const cost = view.base!.upgradeCosts[upgrade];
+        return <button key={upgrade} disabled={cost === null || view.resources.metal < cost || !!view.result || view.connection !== 'online'}
+          title={t(upgrade === 'damage' ? 'baseDamageHelp' : 'baseCapacityHelp')}
+          onClick={() => adapter.dispatch({ type: 'upgrade-base', upgrade })}>
+          <strong>{t(upgrade === 'damage' ? 'baseDamage' : 'baseCapacity')}</strong>
+          <span>{t('upgradeLevel', { level: view.base!.upgrades[upgrade] })}</span>
+          <small>{cost === null ? t('upgradeMaxed') : `${cost} Metal`}</small>
+        </button>;
+      })}</div>
+    </div> : <div role="tabpanel" id="hangar-panel" aria-labelledby="hangar-tab">
     {view.production
       ? <p className="vi-production__queue">{unitNames[view.production.kind]} · {view.production.remainingSeconds} s</p>
       : <p className="vi-production__queue">{full ? 'Flota completa' : 'Listo para construir'}</p>}
     <div className="vi-production__list">
       {PRODUCTION_ORDER.map(({ kind, key }) => {
-        const cost = UNIT_COSTS[kind];
-        const disabled = !!view.production || full || view.resources.metal < cost || !!view.result;
-        return <button key={kind} disabled={disabled} onClick={() => adapter.dispatch({ type: 'produce', kind })}
-          title={`${unitNames[kind]} · ${cost} Metal`}>
-          <span>{unitNames[kind]}</span><small>{cost} M</small><kbd>{key}</kbd>
-        </button>;
+        const cost = view.unitStats?.[kind]?.cost ?? UNIT_COSTS[kind];
+        const disabled = !!view.production || !!view.productionForbidden?.includes(kind) || full || view.resources.metal < cost || !!view.result;
+        const stats=view.unitStats?.[kind];
+        const counters=Object.entries(SHIP_COUNTERS[kind]??{});
+        const names=(strong:boolean)=>counters.filter(([,multiplier])=>strong?multiplier>1:multiplier<1).map(([target,multiplier])=>`${target==='guardian'?t('guardiansCore'):unitNames[target as keyof typeof unitNames]} ×${multiplier}`).join(', ');
+        return <div className="vi-production__unit" key={kind} onMouseEnter={()=>setHovered(kind)} onMouseLeave={()=>setHovered(null)} onFocus={()=>setHovered(kind)} onBlur={()=>setHovered(null)}>
+          <button disabled={disabled} onClick={() => adapter.dispatch({ type: 'produce', kind })} aria-describedby={hovered===kind?`build-guide-${kind}`:undefined}>
+            <span>{unitNames[kind]}</span><small>{cost} M · {t('attackRange')} {stats?.range??'—'}</small><kbd>{key}</kbd>
+          </button>
+          {hovered===kind&&stats&&<div className="vi-unit-guide" role="tooltip" id={`build-guide-${kind}`}>
+            <header><strong>{unitNames[kind]}</strong><span>{cost} Metal · {stats.buildTicks/10} s</span></header>
+            <dl><div><dt>{locale==='es'?'Vida':'Health'}</dt><dd>{stats.maxHp}</dd></div><div><dt>{locale==='es'?'Armadura':'Armor'}</dt><dd>{stats.armor}</dd></div><div><dt>{locale==='es'?'Daño / ritmo':'Damage / cadence'}</dt><dd>{stats.damage} / {stats.attackTicks?`${stats.attackTicks/10} s`:'—'}</dd></div><div><dt>{t('attackRange')}</dt><dd>{stats.range} {t('cells')}</dd></div><div><dt>{locale==='es'?'Velocidad':'Speed'}</dt><dd>{stats.speed} c/s</dd></div><div><dt>{locale==='es'?'Visión':'Vision'}</dt><dd>{stats.vision} {t('cells')}</dd></div></dl>
+            {names(true)&&<p className="vi-unit-guide__strong">{t('effectiveAgainst')}: {names(true)}</p>}
+            {names(false)&&<p className="vi-unit-guide__weak">{t('weakAgainst')}: {names(false)}</p>}
+            {!stats.canCapture&&<p>{locale==='es'?'Reconoce el mapa. No ataca ni captura.':'Scouts the map. Cannot attack or capture.'}</p>}
+          </div>}
+        </div>;
       })}
-    </div>
+    </div></div>}
   </Panel>;
 }
 
@@ -214,16 +253,16 @@ function NoticeHud({ view }: { view: GameplayViewModel }) {
   return <div className={`vi-notice vi-notice--${view.connection}`} role="status">{view.notice}</div>;
 }
 
-export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave, multiplayer }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void; multiplayer?: boolean }) {
+export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave,onBaseRange, multiplayer }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void;onBaseRange?:(show:boolean)=>void; multiplayer?:boolean }) {
   const { t } = useI18n();
   return <div className="vi-hud" aria-label={t('hud')}>
     <ResourceHud view={view} />
     <SectorHud view={view} />
     <TopControls onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} multiplayer={multiplayer} />
     <Minimap view={view} cameraView={cameraView} onPanMap={onPanMap} />
-    <SquadHud view={view} />
+    <SquadHud view={view} adapter={adapter} />
     <ActionHud view={view} adapter={adapter} controls={controls} />
-    <ProductionHud view={view} adapter={adapter} />
+    <ProductionHud view={view} adapter={adapter} onBaseRange={onBaseRange}/>
     <NoticeHud view={view} />
   </div>;
 }

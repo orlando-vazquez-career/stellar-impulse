@@ -142,14 +142,14 @@ describe('battlefield world', () => {
 
   it('keeps simultaneous fatal combat, capture and metal income', () => {
     let world = createBattlefieldWorld(map(), { attackEveryTicks: 1, moveEveryTicks: 100, tickRate: 1, nodeCaptureTicks: 2 });
-    world.squads[0]!.x = 2; world.squads[0]!.y = 3; world.squads[0]!.hp = 2;
+    world.squads[0]!.x = 2; world.squads[0]!.y = 3; world.squads[0]!.hp = 1;
     world.squads[0]!.stance = 'attack';
     world.squads[0]!.attackTargetId = 'metal-guardian';
-    world.guardians.find((unit) => unit.id === 'metal-guardian')!.hp = 12;
+    world.guardians.find((unit) => unit.id === 'metal-guardian')!.hp = 6;
     const fought = stepBattlefieldWorld(world);
     expect(fought.squads[0]!.hp).toBe(0);
     expect(fought.guardians.find((unit) => unit.id === 'metal-guardian')!.hp).toBe(0);
-    expect(world.squads[0]!.hp).toBe(2);
+    expect(world.squads[0]!.hp).toBe(1);
     world = createBattlefieldWorld(map(), { attackEveryTicks: 100, moveEveryTicks: 100, tickRate: 1, nodeCaptureTicks: 2 });
     world.squads[0]!.x = 2; world.squads[0]!.y = 3;
     world.guardians.find((unit) => unit.id === 'metal-guardian')!.hp = 0;

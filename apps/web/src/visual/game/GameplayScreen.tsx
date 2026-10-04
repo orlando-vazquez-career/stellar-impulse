@@ -1,6 +1,9 @@
-import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { DurationMode } from '@impulso/sim';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { DevelopmentControls } from './DevelopmentControls';
 import { Hud } from './Hud';
+import { AugmentHud } from './AugmentHud';
+import { MatchProgress } from '../profile/MatchProgress';
 import { createMockGameplayAdapter } from './mock-adapter';
 import { createServerGameplayAdapter } from './server-adapter';
 import { createCampaignGameplayAdapter } from './campaign-adapter';
@@ -22,20 +25,20 @@ const PRODUCTION_KEYS: Record<string, 'explorer' | 'interceptor' | 'frigate' | '
 const emptySubscribe = () => () => {};
 const emptyMultiplayer = () => null;
 
-export function GameplayScreen({ preferences, difficulty = 'medium', map = 'espiral', multiplayerSession, onLeave }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; multiplayerSession?: MultiplayerSession; onLeave(): void }) {
+export function GameplayScreen({ preferences, difficulty = 'medium', map = 'espiral', duration = 'skirmish', multiplayerSession, onLeave }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; duration?: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void }) {
   const [match, setMatch] = useState(0);
   // The local mock only knows Sector 01. Selecting before the children render keeps scene, HUD and server on one map.
   const chosen = multiplayerSession || wantsLocalMock() ? 'sector-01' : map;
   selectMap(chosen);
-  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
+  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} duration={duration} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
 }
 
 /** The adapter lives exactly as long as the mounted match, so a server room is never left orphaned. */
-function GameplayMatch({ preferences, difficulty, map, multiplayerSession, onLeave, onRestart }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void }) {
+function GameplayMatch({ preferences, difficulty, map, duration, multiplayerSession, onLeave, onRestart }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; duration: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void }) {
   const [adapter, setAdapter] = useState<GameplayPresentationAdapter | null>(null);
   useEffect(() => {
     const created = multiplayerSession ? createCampaignGameplayAdapter(multiplayerSession)
-      : wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL, difficulty, map);
+      : wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL, difficulty, map, duration);
     setAdapter(created);
     return () => created.destroy();
   }, []);
@@ -70,6 +73,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
   const [developmentOpen, setDevelopmentOpen] = useState(false);
   const [cameraView, setCameraView] = useState<CameraView | null>(null);
   const battlefieldRef = useRef<PhaserBattlefieldHandle>(null);
+  const previewBaseRange=useCallback((enabled:boolean)=>battlefieldRef.current?.previewBaseRange(enabled),[]);
   const centered = useRef(false);
   // Open the match looking at your own fleet, not at the map origin.
   useEffect(() => {
@@ -82,6 +86,11 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
       const key = event.key === ' ' ? 'Space' : event.key === 'Escape' ? 'Esc' : event.key;
+      if (key === 'Delete' && !event.repeat) {
+        event.preventDefault();
+        adapter.dispatch({ type: 'disband-selected' });
+        return;
+      }
       if (/^[wasd]$/i.test(key)) return; // Camera navigation is never an action shortcut.
       if (view.canProduce !== false && PRODUCTION_KEYS[key] && !event.repeat) { adapter.dispatch({ type: 'produce', kind: PRODUCTION_KEYS[key] }); return; }
       if (key.toLowerCase() === preferences.controls.cancel.toLowerCase()) adapter.dispatch({ type: 'set-action', action: null });
@@ -100,8 +109,9 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
         onAttackSelected={(targetId) => adapter.dispatch({ type: 'attack-selected', targetId })}
         onCameraChange={setCameraView} />
     </Suspense>
-    <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)} onResetCamera={() => battlefieldRef.current?.resetCamera()} onDevelopment={() => setDevelopmentOpen(true)} onLeave={onLeave} multiplayer={Boolean(multiplayerSession)} />
+    <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onBaseRange={previewBaseRange} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)} onResetCamera={() => battlefieldRef.current?.resetCamera()} onDevelopment={() => setDevelopmentOpen(true)} onLeave={onLeave} multiplayer={Boolean(multiplayerSession)} />
     {developmentOpen && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}
+    <AugmentHud view={view} adapter={adapter} sound={!preferences.audio.muted && preferences.audio.effects > 0 && preferences.audio.master > 0} />
     {announcement && !view.result && <div key={announcement.id} className={`vi-announcement vi-announcement--${announcement.tone}`} role="status">{announcement.text}</div>}
     {roomState?.phase?.phase === 'transition' && <div className="vi-result" role="dialog" aria-label={english ? 'Next sector' : 'Siguiente sector'}><div className="vi-result__card">
       <h2>{english ? 'Preparing sector' : 'Preparando sector'} {roomState.phase.sector + 1}</h2>
@@ -114,8 +124,10 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
     </div></div>}
     {view.result && <div className="vi-result" role="dialog" aria-label={view.result === 'victory' ? 'Victoria' : 'Derrota'}>
       <div className={`vi-result__card vi-result__card--${view.result}`}>
-        <h2>{multiplayerSession ? (view.result === 'victory' ? (english ? 'Victory' : 'Victoria') : (english ? 'Defeat' : 'Derrota')) : view.result === 'victory' ? 'Núcleo asegurado' : 'El rival tomó el Núcleo'}</h2>
+        <div className="vi-result__crest" aria-hidden="true">{view.result === 'victory'?'✦':'⌁'}</div>
+        <h2>{multiplayerSession ? (view.result === 'victory' ? (english ? 'Victory' : 'Victoria') : (english ? 'Defeat' : 'Derrota')) : view.result === 'victory' ? 'VICTORIA' : 'DERROTA'}</h2>
         <p>{multiplayerSession ? (resultReason === 'forfeit' ? (english ? 'A player left the match.' : 'Un jugador abandonó la partida.') : (english ? 'The campaign has ended.' : 'La campaña ha terminado.')) : view.result === 'victory' ? 'Victoria. Tu flota controla el sector.' : 'Derrota. Reagrupa la flota y vuelve a intentarlo.'}</p>
+        {view.reward&&<MatchProgress reward={view.reward}/>}
         <div><button className="vi-primary" onClick={onRestart}>{multiplayerSession ? (english ? 'Back to command center' : 'Volver al mando') : 'Jugar de nuevo'}</button><button onClick={onLeave}>{english ? 'Leave' : 'Salir'}</button></div>
       </div>
     </div>}

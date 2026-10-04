@@ -1,3 +1,4 @@
+import type { DurationMode } from '@impulso/sim';
 import { useEffect, useRef, useState } from 'react';
 import { MusicPlayer } from './music';
 import { AccessScreen } from './access/AccessScreen';
@@ -15,6 +16,7 @@ import { CommandCenter } from './menu/CommandCenter';
 import { loadVisualPreferences, saveVisualPreferences } from './settings/preferences';
 import { SettingsScreen } from './settings/SettingsScreen';
 import { Brand } from './shared/Brand';
+import { ProfileScreen } from './profile/ProfileScreen';
 import '@fontsource/inter/latin-400.css';
 import '@fontsource/inter/latin-600.css';
 import '@fontsource/rajdhani/latin-500.css';
@@ -22,7 +24,7 @@ import '@fontsource/rajdhani/latin-600.css';
 import '@fontsource/rajdhani/latin-700.css';
 import './visual.css';
 
-type Screen = 'access' | 'command' | 'lobby' | 'multiplayer' | 'map' | 'hangar' | 'settings' | 'gameplay';
+type Screen = 'access' | 'command' | 'lobby' | 'multiplayer' | 'map' | 'hangar' | 'settings' | 'gameplay' | 'profile';
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567';
 
 function VisualPrototypeContent() {
@@ -38,6 +40,7 @@ function VisualPrototypeContent() {
   const [joinCode, setJoinCode] = useState('');
   const [lobbyMode, setLobbyMode] = useState<LobbyMode>('create');
   const [preferences, setPreferences] = useState(loadVisualPreferences);
+  const [duration, setDuration] = useState<DurationMode>('skirmish');
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
   const [map, setMap] = useState<TrainingMapId>('espiral');
   const music = useRef<MusicPlayer | null>(null);
@@ -149,13 +152,14 @@ function VisualPrototypeContent() {
       onCreateTraining={(value) => { setAlias(value); setPendingMultiplayer(null); setSessionNotice(''); setMultiplayerMatch(false); setLobbyMode('create'); setScreen('lobby'); }}
       onJoinRoom={(code, value) => { setAlias(value); openMultiplayer('join', code); }}
     />}
-    {screen === 'command' && <CommandCenter alias={alias} accountEmail={account?.email} onCreateRoom={() => { setMultiplayerMatch(false); setLobbyMode('create'); setScreen('lobby'); }} onCreateMultiplayer={() => openMultiplayer('create')} onJoinRoom={() => openMultiplayer('join')} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => void signOut()} />}
-    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} onBack={() => setScreen('command')} onExploreMap={() => { selectMap('sector-01'); setScreen('map'); }} onDeploy={(chosen, chosenMap) => { setDifficulty(chosen); setMap(chosenMap); setScreen('gameplay'); }} />}
+    {screen === 'command' && <CommandCenter alias={alias} accountEmail={account?.email} onProfile={()=>setScreen('profile')} onCreateRoom={() => { setMultiplayerMatch(false); setLobbyMode('create'); setScreen('lobby'); }} onCreateMultiplayer={() => openMultiplayer('create')} onJoinRoom={() => openMultiplayer('join')} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => void signOut()} />}
+    {screen==='profile'&&<ProfileScreen onBack={()=>setScreen('command')}/>}
+    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} onBack={() => setScreen('command')} onExploreMap={() => { selectMap('sector-01'); setScreen('map'); }} onDeploy={(chosen, chosenMap, chosenDuration) => { setDuration(chosenDuration); setDifficulty(chosen); setMap(chosenMap); setScreen('gameplay'); }} />}
     {screen === 'multiplayer' && multiplayer && <MultiplayerLobby alias={alias} token={sessionToken() || ''} mode={lobbyMode} session={multiplayer} initialJoinCode={joinCode} onBack={() => { setMultiplayerMatch(false); setJoinCode(''); setScreen('command'); }} />}
     {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
     {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} />}
     {screen === 'settings' && <SettingsScreen preferences={preferences} onBack={() => setScreen('command')} onSave={(nextPreferences) => { saveVisualPreferences(nextPreferences); setPreferences(nextPreferences); }} />}
-    {screen === 'gameplay' && <GameplayScreen preferences={preferences} difficulty={difficulty} map={map} multiplayerSession={multiplayerMatch ? multiplayer ?? undefined : undefined} onLeave={() => multiplayerMatch ? void leaveMultiplayer() : setScreen('command')} />}
+    {screen === 'gameplay' && <GameplayScreen preferences={preferences} difficulty={difficulty} map={map} duration={duration} multiplayerSession={multiplayerMatch ? multiplayer ?? undefined : undefined} onLeave={() => multiplayerMatch ? void leaveMultiplayer() : setScreen('command')} />}
     <div className="vi-resolution-warning" role="alert"><div><Brand /><h1>{t('resolutionWarningTitle')}</h1><p>{t('resolutionWarningBody')}</p></div></div>
   </div>;
 }

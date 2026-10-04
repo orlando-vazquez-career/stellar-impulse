@@ -12,6 +12,7 @@ export interface AiUnit {
   readonly maxHealth: number;
   readonly attackRange: number;
   readonly sightRange: number;
+  readonly canRepair?:boolean;
 }
 
 /** Read-only world. The machine returns orders and never writes the match. */

@@ -17,7 +17,7 @@ describe('finite shift route', () => {
     world = applyCommand(world, 'p1', enqueue(1, 3, 17)).world;
     world = applyCommand(world, 'p1', enqueue(2, 4, 17)).world;
     world = applyCommand(world, 'p1', enqueue(3, 5, 17)).world;
-    const arrived = ticks(world, 9);
+    const arrived = ticks(world, 18);
     expect(arrived.squads[0]).toMatchObject({ x: 5, y: 17, target: null, stance: 'march' });
     expect(arrived.squads[0]!.route).toEqual([]);
     const later = ticks(arrived, 30);
@@ -44,6 +44,12 @@ describe('finite shift route', () => {
     const replaced = applyCommand(world, 'p1', { seq: 3, type: 'move', squadId: 'p1-interceptor', x: 2, y: 15 });
     expect(replaced.world.squads[0]).toMatchObject({ target: { x: 2, y: 15 }, stance: 'march' });
     expect(replaced.world.squads[0]!.route).toEqual([]);
+  });
+  it('accepts a new shift route after the previous destination was reached',()=>{
+    let world=applyCommand(createWorld(),'p1',enqueue(1,3,17)).world;
+    world=ticks(world,12);expect(world.squads[0]!.target).toBeNull();
+    world=applyCommand(world,'p1',enqueue(2,5,17)).world;
+    expect(ticks(world,24).squads[0]).toMatchObject({x:5,y:17,target:null});
   });
 });
 
@@ -77,9 +83,9 @@ describe('command card stances', () => {
     const held = applyCommand(createWorld(), 'p1', { seq: 1, type: 'stance', squadId: 'p1-interceptor', stance: 'guard' }).world;
     held.squads[0]!.x = 5;
     const home = { x: 2, y: 17 };
-    const stepped = ticks(held, 3);
+    const stepped = ticks(held, 6);
     expect(stepped.squads[0]).toMatchObject(findPath({ x: 5, y: 17 }, home, held.width, held.height, held.obstacles)[1]!);
-    expect(ticks(stepped, 6).squads[0]).toMatchObject({ x: home.x, y: home.y, stance: 'guard' });
+    expect(ticks(stepped, 12).squads[0]).toMatchObject({ x: home.x, y: home.y, stance: 'guard' });
   });
 
   it('loops only after patrol is chosen', () => {

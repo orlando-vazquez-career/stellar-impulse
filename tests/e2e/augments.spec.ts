@@ -1,0 +1,53 @@
+import { expect, test } from '@playwright/test';
+import { openApp } from './helpers';
+test('chooses a free opening card, rerolls once, and chooses gold during a running skirmish', async ({page}) => {
+  // Keep ten real seconds to pick: screenshots on CI can outlast a 5× offer.
+  test.setTimeout(120000);
+  await page.setViewportSize({width:1366,height:768});
+  await openApp(page,'/?testTimeScale=2&testSeed=42');
+  await page.getByLabel('Identificador de comandante').fill('Nova');
+  await page.getByRole('button',{name:'Continuar como invitado'}).click();
+  await page.getByRole('button',{name:/Preparar operación/}).click();
+  await page.getByLabel('Estoy listo para desplegar').check();
+  await page.getByRole('button',{name:'Iniciar operación'}).click();
+  const opening=page.locator('.augment-opening');
+  await expect(opening.locator('.augment-card')).toHaveCount(3);
+  const before=await opening.locator('.augment-card').allTextContents();
+  await opening.getByRole('button',{name:/Renovar cartas/}).click();
+  await expect(opening.getByRole('button',{name:/Renovar cartas/})).toBeDisabled();
+  expect(await opening.locator('.augment-card').allTextContents()).not.toEqual(before);
+  await page.screenshot({path:'test-results/augment-opening.png'});
+  const chosen=await opening.locator('.augment-card').first().getAttribute('aria-label');
+  await opening.locator('.augment-card').first().click();
+  await expect(opening).toHaveCount(0);
+  await expect(page.locator('.augment-strip').getByLabel(chosen!,{exact:true})).toBeVisible();
+  await expect(page.locator('.augment-strip__row').nth(1).locator('.augment-badge')).toHaveCount(1);
+  await page.locator('.vi-production__unit').nth(2).hover();
+  const guide=page.getByRole('tooltip');
+  await expect(guide).toContainText('Bombardero');
+  await expect(guide).toContainText('Fragata ×2');
+  await expect(guide).toContainText('Interceptor ×0.5');
+  await expect(guide).toContainText('4 casillas');
+  await page.screenshot({path:'test-results/ship-build-guide.png'});
+  await page.getByRole('tab',{name:'Base',exact:true}).click();
+  await expect(page.locator('.vi-base-range')).toContainText('4 casillas');
+  await page.getByRole('tab',{name:'Hangar',exact:true}).click();
+  const side=page.locator('.augment-side');
+  await expect(side).toBeVisible({timeout:75000});
+  await expect(side.locator('.augment-card--gold')).toHaveCount(3);
+  const overlap=await page.evaluate(()=>{
+    const panel=document.querySelector('.augment-side')!.getBoundingClientRect();
+    return ['.vi-minimap','.vi-actions'].some(selector=>{
+      const r=document.querySelector(selector)?.getBoundingClientRect();
+      return r && panel.x<r.right && panel.right>r.x && panel.y<r.bottom && panel.bottom>r.y;
+    });
+  });
+  expect(overlap).toBe(false);
+  const gold=side.locator('.augment-card--gold').first();
+  const goldName=await gold.getAttribute('aria-label');
+  await gold.click({timeout:5000});
+  await expect(side).toHaveCount(0);
+  await expect(page.locator('.augment-strip__row').first().locator('.augment-badge')).toHaveCount(2);
+  await expect(page.locator('.augment-strip__row').first().getByLabel(goldName!,{exact:true})).toBeVisible();
+  await page.screenshot({path:'test-results/augment-gold.png'});
+});

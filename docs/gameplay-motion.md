@@ -9,7 +9,7 @@ Todas las naves vivas, aliadas y enemigas, y los guardianes bloquean su casilla.
 La casilla de salida queda reservada durante el desplazamiento para que una nave
 que viene detrás no atraviese a la primera durante la interpolación. Las rutas
 buscan un desvío al encontrar tráfico; si no hay paso, la orden espera y se retoma
-al liberarse. Los movimientos diagonales respetan las esquinas ocupadas.
+al liberarse. Las esquinas enemigas y de guardianes también bloquean el paso diagonal.
 Dos aliadas bloqueadas de frente intercambian casillas en un mismo tick, cuando
 coinciden sus ritmos de movimiento. En cruces o rampas, la de id menor puede
 ceder hacia una vecina libre y esperar tres intervalos antes de retomar su orden.
@@ -28,3 +28,7 @@ Las pruebas cubren cruces de frente en ambos mapas, determinismo, bloqueos
 enemigos, desvíos, espera, reanudación, reservas,
 formaciones de 12 naves, desplazamientos diagonales, aceleración, llegada y
 redirección hacia un ataque con tráfico cercano.
+
+## Flotas grandes
+
+Los puestos de llegada se mantienen mientras la orden está en curso y se eligen entre casillas alcanzables. Una aliada ya estacionada puede intercambiar posiciones para dejar pasar a otra sin perder su orden. Las aliadas también pueden pasar junto a las esquinas en diagonal; las casillas de destino y las reservas de salida siguen siendo exclusivas. Enemigos y guardianes mantienen su bloqueo. Las regresiones cubren flotas mixtas de 24 naves en ambos mapas, los cruces de frente y el determinismo.

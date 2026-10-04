@@ -1,5 +1,8 @@
+import type { AugmentView } from '@impulso/state';
 export type SquadOwner = 'blue' | 'red' | 'neutral';
+import type { ShipStats } from '@impulso/sim';
 import type { UnitKind } from '@impulso/state';
+import type { BaseUpgradeKind, BaseUpgrades } from '@impulso/sim';
 export type SquadType = UnitKind;
 
 export interface SquadViewModel {
@@ -8,6 +11,8 @@ export interface SquadViewModel {
   owner: SquadOwner;
   unitType: SquadType;
   speedCellsPerSecond?: number;
+  isDecoy?: boolean;
+  hp?: number; maxHp?: number; stats?: ShipStats;
   // Continuous map coordinates; integer values are tile centers.
   gridX: number;
   gridY: number;
@@ -73,6 +78,7 @@ export interface GameplayViewModel {
   tick: number;
   sector: number;
   elapsedSeconds: number;
+  suddenDeath?: boolean;
   selectedSquadId: string | null;
   selectedSquadIds: string[];
   activeAction: GameplayAction;
@@ -93,7 +99,13 @@ export interface GameplayViewModel {
   production: ProductionViewModel | null;
   /** The campaign battlefield currently provides a fixed starting fleet. */
   canProduce?: boolean;
+  unitStats?: Record<SquadType, ShipStats>;
+  augments?: AugmentView;
+  chart?: {nodes:{x:number;y:number}[];guardians:{x:number;y:number}[]};
+  productionForbidden?: SquadType[];
+  base?: { upgrades: BaseUpgrades; damage: number; range: number; position?:{x:number;y:number}; upgradeCosts: Record<BaseUpgradeKind, number | null> };
   result: 'victory' | 'defeat' | null;
+  reward?: import('@impulso/sim').MatchReward;
   /** Last server rejection or connection message, already localized by key. */
   notice: string | null;
   connection: ConnectionState;
@@ -121,7 +133,11 @@ export type PresentationIntent =
   | { type: 'set-resource'; resource: 'metal' | 'energy'; value: number }
   | { type: 'set-enemy-visibility'; visible: boolean }
   | { type: 'set-clock-running'; running: boolean }
-  | { type: 'produce'; kind: SquadType };
+  | { type: 'produce'; kind: SquadType }
+  | { type: 'disband-selected' }
+  | { type: 'upgrade-base'; upgrade: BaseUpgradeKind }
+  | {type:'augment-pick';choice:number;id:string}
+  | {type:'augment-reroll';choice:number};
 
 export interface GameplayPresentationAdapter {
   getSnapshot(): GameplayViewModel;

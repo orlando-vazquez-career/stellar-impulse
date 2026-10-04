@@ -596,7 +596,7 @@
 .vi-squad__identity h2 { font-family: var(--vi-display); font-size: 18px; line-height: 1; }
 .vi-squad__identity p { margin-top: 5px; color: var(--vi-muted); font-size: 12px; }
 .vi-squad__composition { display: grid; gap: 3px; color: var(--vi-muted); font-size: 12px; }
-.vi-squad__group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 10px; }
+.vi-squad__group { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 8px; max-height:88px; overflow:auto; }
 .vi-squad__group-unit { min-width: 0; padding: 8px; display: grid; gap: 3px; border: 1px solid var(--vi-border); background: var(--vi-surface-raised); }
 .vi-squad__group-unit strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vi-display); }
 .vi-squad__group-unit span { color: var(--vi-muted); font-size: 11px; }
@@ -680,21 +680,53 @@
 /* Hangar, notices and match result (server-backed gameplay). */
 .vi-production { position: absolute; right: 20px; bottom: 20px; width: 262px; padding: 10px; box-sizing: border-box; }
 .vi-production__queue { margin: 0 5px 8px; color: var(--vi-text); font-size: 13px; }
+.vi-production__tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.vi-production__tabs button { padding: 4px 9px; border: 1px solid var(--vi-border); color: var(--vi-muted); font-family: var(--vi-display); font-size: 14px; }
+.vi-production__tabs button[aria-selected="true"] { color: var(--vi-blue-light); border-color: var(--vi-blue); background: var(--vi-surface-raised); }
+.vi-base-upgrades { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.vi-base-upgrades button { display: grid; gap: 3px; padding: 8px; border: 1px solid var(--vi-border); color: var(--vi-text); text-align: left; font-size: 13px; }
+.vi-base-upgrades button span { color: var(--vi-muted); }
+.vi-base-upgrades button small { color: var(--vi-blue-light); font-size: 12px; }
+.vi-base-upgrades button:hover:not(:disabled) { border-color: var(--vi-blue); background: var(--vi-surface-raised); }
+.vi-base-upgrades button:disabled { opacity: .45; }
+.vi-squad__tools { display: flex; gap: 10px; align-items: center; }
+.vi-squad header button.vi-retire { color: var(--vi-warning); }
+.vi-squad.is-collapsed .vi-retire { display: none; }
 .vi-production__list { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .vi-production__list button { min-width: 0; min-height: 44px; padding: 5px 7px; border: 1px solid var(--vi-border); display: grid; grid-template-columns: 1fr auto; gap: 2px 5px; align-items: center; color: var(--vi-text); text-align: left; font-size: 13px; }
 .vi-production__list button small { grid-column: 1; color: var(--vi-muted); }
 .vi-production__list button kbd { grid-row: 1 / span 2; grid-column: 2; min-width: 18px; padding: 1px 4px; border: 1px solid var(--vi-border); border-radius: 2px; color: var(--vi-muted); font-size: 11px; text-align: center; }
 .vi-production__list button:hover:not(:disabled) { border-color: var(--vi-blue); background: var(--vi-surface-raised); }
 .vi-production__list button:disabled { opacity: .4; }
+.vi-production__unit { min-width:0; }
+.vi-production__unit>button { width:100%; }
+.vi-production__list button small { font-size:10px; }
+.vi-unit-guide { position:absolute; right:calc(100% + 12px); bottom:0; width:280px; padding:16px; background:#0b1727f5; border:1px solid #527b9b; box-shadow:0 8px 28px #0009; color:var(--vi-text); pointer-events:none; z-index:15; }
+.vi-unit-guide header { display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:12px; }
+.vi-unit-guide header strong { font:600 20px var(--vi-display); color:#a7e1ff; }
+.vi-unit-guide header span { font-size:11px; color:var(--vi-muted); }
+.vi-unit-guide dl { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:0 0 12px; }
+.vi-unit-guide dl div { display:grid; gap:2px; }
+.vi-unit-guide dt { font-size:11px; color:var(--vi-muted); }
+.vi-unit-guide dd { margin:0; font:600 17px var(--vi-display); }
+.vi-unit-guide p { font-size:12px; line-height:1.5; margin:6px 0 0; }
+.vi-unit-guide__strong { color:#74dec0; }
+.vi-unit-guide__weak { color:#ff9aa4; }
+.vi-base-range { color:#a7e1ff; font-size:12px; margin:8px 0; }
 .vi-notice { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border: 1px solid var(--vi-border); background: #0d1522ee; color: var(--vi-text); font-size: 14px; pointer-events: none; }
 .vi-notice--offline { border-color: var(--vi-warning); color: var(--vi-warning); }
 .vi-result { position: absolute; inset: 0; z-index: 30; display: grid; place-items: center; background: rgb(3 8 15 / 62%); }
 .vi-result__card { width: min(440px, 90vw); padding: 28px; border: 1px solid var(--vi-blue); background: #0d1522f7; text-align: center; }
 .vi-result__card--defeat { border-color: #ff4f64; }
-.vi-result__card h2 { margin: 0 0 8px; font-family: var(--vi-display); font-size: 30px; letter-spacing: .04em; }
+.vi-result__card h2 { margin: 0 0 8px; font-family: var(--vi-display); font-size: clamp(38px,5vw,64px); letter-spacing: .13em; color:#e8c9a1; text-shadow:0 2px 0 #2a1217,0 0 28px #ff4f6444; }
+.vi-result__card { position:relative; border-top:3px solid #77baff; background:radial-gradient(ellipse at 50% 0,#203d53 0,transparent 65%),#0b1422f7; box-shadow:0 0 50px #122f5677,0 24px 80px #0009; }
+.vi-result__card--defeat { border-top-color:#ed6574; background:radial-gradient(ellipse at 50% 0,#401b29 0,transparent 65%),#0b1422f7; box-shadow:0 0 50px #e33a5322,0 24px 80px #0009; }
+.vi-result__card .vi-result__crest { display:grid; place-items:center; width:70px; height:70px; margin:0 auto 10px; font:60px var(--vi-display); color:#9cdaff; border:1px solid #5c99be; transform:rotate(45deg); background:#122838; }
+.vi-result__crest { line-height:1; }
+.vi-result__card--defeat .vi-result__crest { color:#ff7789; border-color:#b64860; background:#311725; }
 .vi-result__card p { margin: 0 0 20px; color: var(--vi-muted); }
 .vi-result__card div { display: flex; justify-content: center; gap: 10px; }
-.vi-result__card button { min-height: 42px; padding: 0 18px; border: 1px solid var(--vi-border); color: var(--vi-text); }
+.vi-result__card button { min-height: 42px; padding: 0 18px; border: 1px solid #45617d; color: var(--vi-text); background:#142333; }
 .vi-result__card .vi-primary { border-color: var(--vi-blue); background: var(--vi-blue); color: #04111d; font-weight: 600; }
 
 /* Phase and event announcements. */

@@ -3,6 +3,20 @@ import { parseCommand } from './index.js';
 
 const valid = { seq: 1, type: 'move', squadId: 'p1-interceptor', x: 3, y: 4 };
 describe('command boundary', () => {
+  it('validates retirement groups and base upgrades without trusting costs from the client', () => {
+    const disband = { seq: 1, type: 'disband', squadIds: ['p1-explorer', 'p1-interceptor'] };
+    expect(parseCommand(disband)).toEqual({ ok: true, command: disband });
+    expect(parseCommand({ ...disband, squadIds: [] }).ok).toBe(false);
+    expect(parseCommand({ ...disband, squadIds: ['p1-explorer', 'p1-explorer'] }).ok).toBe(false);
+    expect(parseCommand({ ...disband, squadIds: Array.from({ length: 25 }, (_, i) => `ship-${i}`) }).ok).toBe(false);
+    const ids = ['p1-explorer'];
+    Object.defineProperty(ids, '0', { get() { throw new Error('must not execute'); } });
+    expect(parseCommand({ ...disband, squadIds: ids }).ok).toBe(false);
+    const upgrade = { seq: 2, type: 'upgrade_base', upgrade: 'capacity' };
+    expect(parseCommand(upgrade)).toEqual({ ok: true, command: upgrade });
+    expect(parseCommand({ ...upgrade, upgrade: 'free_metal' }).ok).toBe(false);
+    expect(parseCommand({ ...upgrade, cost: 0 }).ok).toBe(false);
+  });
   it('accepts only the serializable move intention', () => {
     expect(parseCommand(valid)).toEqual({ ok: true, command: valid });
     const source = { ...valid };

@@ -1,3 +1,4 @@
+import type { DurationMode } from '@impulso/sim';
 import { useState, useRef, useEffect, type FormEvent } from 'react';
 import { useI18n } from '../i18n';
 import { Brand } from '../shared/Brand';
@@ -33,13 +34,14 @@ export function PreparationLobby({
   mode: LobbyMode;
   onBack(): void;
   onExploreMap(): void;
-  onDeploy(difficulty: RivalDifficulty, map: TrainingMapId): void;
+  onDeploy(difficulty: RivalDifficulty, map: TrainingMapId, duration: DurationMode): void;
   initialJoinCode?: string;
 }) {
   const { t } = useI18n();
   const sound = useSpaceSound();
   const canvas = useRef<HTMLCanvasElement>(null);
 
+  const [duration, setDuration] = useState<DurationMode>('skirmish');
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
   const [map, setMap] = useState<TrainingMapId>('espiral');
   const [side, setSide] = useState<FleetSide>('blue');
@@ -136,7 +138,7 @@ export function PreparationLobby({
               </div>
               <div>
                 <dt>{t('duration')}</dt>
-                <dd>{t('durationValue')}</dd>
+                <dd>{duration==='complete'?'~20 min':'~8 min'}</dd>
               </div>
               <div>
                 <dt>{t('fleetFormat')}</dt>
@@ -293,6 +295,10 @@ export function PreparationLobby({
                   </fieldset>
                 )}
 
+                <fieldset className="vi-duration"><legend>{t('durationMode')}</legend>
+                  <select aria-label={t('durationMode')} value={duration} onChange={(event) => setDuration(event.target.value as DurationMode)}>
+                    <option value="skirmish">{t('skirmishMode')}</option><option value="complete">{t('completeMode')}</option>
+                  </select></fieldset>
                 <div className="vi-ready-controls">
                   <label>
                     <input
@@ -316,7 +322,7 @@ export function PreparationLobby({
                     }}
                     onClick={() => {
                       sound.playEnter();
-                      onDeploy(difficulty, map);
+                      onDeploy(difficulty, map, duration);
                     }}
                   >
                     {t('launchOperation')}

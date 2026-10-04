@@ -16,6 +16,19 @@ export const BASE_INCOME_TICKS = 20;
 export const REPAIR_RADIUS = 2;
 export const STARTING_METAL = 6;
 
+export type BaseUpgradeKind = 'damage' | 'capacity';
+export interface BaseUpgrades { damage: number; capacity: number }
+export const MAX_BASE_UPGRADE_LEVEL = 3;
+export const BASE_DEFENSE_RANGE = 4;
+export const CAPACITY_PER_LEVEL = 4;
+export const BASE_DAMAGE_PER_LEVEL = 10;
+export function baseUpgradeCost(kind: BaseUpgradeKind, upgrades?: BaseUpgrades): number | null {
+  const level = upgrades?.[kind] ?? 0;
+  return level >= MAX_BASE_UPGRADE_LEVEL ? null : (kind === 'damage' ? 12 : 10) * (level + 1);
+}
+export const fleetCapacity = (upgrades?: BaseUpgrades): number => FLEET_CAP + (upgrades?.capacity ?? 0) * CAPACITY_PER_LEVEL;
+export const baseDamage = (upgrades?: BaseUpgrades): number => (upgrades?.damage ?? 0) * BASE_DAMAGE_PER_LEVEL;
+
 export interface ProductionOrder {
   kind: UnitKind;
   readyTick: number;

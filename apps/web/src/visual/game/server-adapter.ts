@@ -1,6 +1,7 @@
+import type { DurationMode } from '@impulso/sim';
 import { Client, type Room } from '@colyseus/sdk';
-import { FLEET_CAP } from '@impulso/sim';
-import { UNIT_STATS, type PlayerView, type UnitKind } from '@impulso/state';
+import { FLEET_CAP, BASE_DEFENSE_RANGE } from '@impulso/sim';
+import { type PlayerView, type UnitKind } from '@impulso/state';
 import { sectorSurface, type TrainingMapId } from '../map/sector-map';
 import type {
   CoreState, GameplayEvent, GameplayPresentationAdapter, GameplayViewModel, PresentationIntent, SquadOwner, SquadViewModel,
@@ -24,6 +25,7 @@ export const REJECTION_TEXT: Record<string, string> = {
   insufficient_metal: 'No alcanza el Metal.',
   fleet_full: 'Flota completa.',
   production_busy: 'El hangar ya está construyendo.',
+  upgrade_maxed: 'Esta mejora ya está al máximo.',
   blocked_destination: 'No se puede volar a ese punto.',
   unreachable_destination: 'No hay ruta hasta ese punto.',
   target_not_visible: 'El objetivo no está a la vista.',
@@ -116,7 +118,7 @@ function coreState(view: PlayerView): CoreState {
  * server rival (or a second human who joins the same room). The browser only sends intentions.
  */
 export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy' | 'medium' | 'hard' = 'medium',
-  map: TrainingMapId = 'espiral'): GameplayPresentationAdapter {
+  map: TrainingMapId = 'espiral', duration: DurationMode = 'skirmish', existingRoom?:Room): GameplayPresentationAdapter {
   let snapshot = blankSnapshot();
   let latest: PlayerView | null = null;
   let room: Room | null = null;
@@ -156,8 +158,8 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       const moving = own && (squad.target || (squad.route?.length ?? 0) > 0);
       return {
         id: squad.id, callSign: `${UNIT_LABEL[squad.kind]}-${count}`, owner: ownerOf(squad.ownerId),
-        unitType: squad.kind, gridX: at.x, gridY: at.y,
-        speedCellsPerSecond: view.rules.tickRate / Math.max(1, Math.round(view.rules.moveEveryTicks * UNIT_STATS[squad.kind].moveIntervalFactor)),
+        isDecoy:squad.isDecoy, unitType: squad.kind, gridX: at.x, gridY: at.y,
+        speedCellsPerSecond: squad.stats?.speed, hp: squad.hp, maxHp: squad.maxHp, stats: squad.stats,
         healthPercent: Math.round(squad.hp / squad.maxHp * 100),
         attackTargetId: own ? squad.attackTargetId ?? null : null,
         selected: selectedIds.includes(squad.id), visible: true,
@@ -187,29 +189,33 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       ...snapshot,
       tick: view.tick,
       elapsedSeconds: Math.floor(view.tick / TICKS_PER_SECOND),
+      suddenDeath: view.suddenDeath,
       selectedSquadIds: selectedIds,
       selectedSquadId: selectedIds[0] ?? null,
       moveOrder: leader && leaderAt && waypoints.length
         ? { squadId: leader.id, destination: { ...waypoints.at(-1)! }, route: [{ x: leaderAt.x, y: leaderAt.y }, ...waypoints] }
         : null,
       resources: {
-        metal: own.metal ?? 0, metalRate: ownedMetal + 0.5, energy: 0, energyRate: 0,
-        fleet: ownIds.size, fleetCap: FLEET_CAP,
+        metal: own.metal ?? 0, metalRate: view.metalRate ?? ownedMetal + 0.5, energy: 0, energyRate: 0,
+        fleet: alive.filter((u)=>u.ownerId===me && !u.isDecoy).length, fleetCap: view.base?.fleetCap ?? FLEET_CAP,
       },
-      squads,
+      squads, unitStats: view.unitStats, augments:view.augments, chart:view.chart, productionForbidden:view.productionForbidden,
       nodes: view.nodes.map((node) => ({
         id: node.id, kind: node.kind, x: node.x, y: node.y,
         owner: node.ownerId === null ? null : ownerOf(node.ownerId),
       })),
       core: {
         state: coreState(view),
-        progress: Math.round(Math.max(view.core.progress.p1, view.core.progress.p2) / view.rules.coreCaptureTicks * 100),
+        progress: Math.round((view.coreFraction ?? Math.max(view.core.progress.p1, view.core.progress.p2) / view.rules.coreCaptureTicks) * 100),
         opensInSeconds: Math.max(0, Math.ceil((view.rules.coreOpenTick - view.tick) / TICKS_PER_SECOND)),
       },
       production: own.production
         ? { kind: own.production.kind, remainingSeconds: Math.ceil(own.production.remainingTicks / TICKS_PER_SECOND) }
         : null,
+      base: { upgrades: { ...(own.baseUpgrades ?? { damage: 0, capacity: 0 }) }, damage: view.base?.damage ?? 0,
+        range: BASE_DEFENSE_RANGE, position:{...own.base}, upgradeCosts: view.base?.upgradeCosts ?? {damage:null,capacity:null} },
       result: view.winner === null ? null : view.winner === me ? 'victory' : 'defeat',
+      reward: view.reward,
       visibleCells: (() => {
         const cells = Array<boolean>(view.width * view.height).fill(false);
         for (const cell of view.visibleCells) cells[cell.y * view.width + cell.x] = true;
@@ -256,7 +262,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         transits.delete(unit.id);
       } else if (!old || old.x !== unit.x || old.y !== unit.y) {
         const ticks = 'kind' in unit
-          ? Math.max(1, Math.round(view.rules.moveEveryTicks * UNIT_STATS[unit.kind].moveIntervalFactor)) : 9;
+          ? 'moveTicks' in unit && typeof unit.moveTicks === 'number' ? unit.moveTicks : view.rules.moveEveryTicks : 9;
         transits.set(unit.id, { from: { ...at }, to: { x: unit.x, y: unit.y },
           startedAt: performance.now(), duration: ticks * 1000 / view.rules.tickRate });
       }
@@ -267,10 +273,14 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
 
   void (async () => {
     try {
-      const joined = await new Client(serverUrl).create('training', { difficulty, map });
+      const testing = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
+      const token=typeof sessionStorage==='undefined'?null:sessionStorage.getItem('impulso.auth-token');
+      const joined = existingRoom ?? await new Client(serverUrl).create('training', { difficulty, map, duration,token,
+        testTimeScale: Number(testing.get('testTimeScale') ?? 1), ...(testing.has('testSeed')?{testSeed:Number(testing.get('testSeed'))}:{}) });
       if (destroyed) { void joined.leave(); return; }
       room = joined;
       joined.onMessage('view', onView);
+      joined.onMessage('augmentOffer',()=>{});joined.onMessage('augmentChosen',()=>{});
       joined.onMessage('ack', () => { /* the next view already reflects accepted orders */ });
       joined.onMessage('rejected', (message: { reason?: string }) => {
         snapshot = { ...snapshot, notice: REJECTION_TEXT[message.reason ?? ''] ?? 'Orden rechazada.' };
@@ -299,6 +309,23 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       return () => eventListeners.delete(listener);
     },
     dispatch(intent: PresentationIntent) {
+      if(intent.type==='augment-pick' || intent.type==='augment-reroll') {
+        room?.send(intent.type==='augment-pick'?'augmentPick':'augmentReroll',intent.type==='augment-pick'?{choice:intent.choice,id:intent.id}:{choice:intent.choice});return;
+      }
+      if (intent.type === 'disband-selected') {
+        const squadIds = selectedOwn().map((squad) => squad.id);
+        if (!squadIds.length) return;
+        send({ type: 'disband', squadIds });
+        snapshot = { ...snapshot, activeAction: null, notice: null };
+        emit();
+        return;
+      }
+      if (intent.type === 'upgrade-base') {
+        send({ type: 'upgrade_base', upgrade: intent.upgrade });
+        snapshot = { ...snapshot, notice: null };
+        emit();
+        return;
+      }
       if (intent.type === 'select-squad' || intent.type === 'select-squads') {
         const requested = intent.type === 'select-squad' ? [intent.squadId] : intent.squadIds;
         const ids = [...new Set(requested)].filter((id) => snapshot.squads.some((squad) => squad.id === id && squad.owner === 'blue'));
@@ -333,7 +360,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         return;
       }
       if (intent.type === 'attack-selected' || intent.type === 'attack-squad') {
-        const attackers = selectedOwn().filter((squad) => UNIT_STATS[squad.unitType].damage > 0
+        const attackers = selectedOwn().filter((squad) => (squad.stats?.damage ?? 0) > 0
           && (intent.type === 'attack-selected' || squad.id === intent.squadId));
         for (const squad of attackers) send({ type: 'attack', squadId: squad.id, targetId: intent.targetId });
         snapshot = { ...snapshot, activeAction: null, notice: null };
