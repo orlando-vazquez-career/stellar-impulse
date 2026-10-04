@@ -7,6 +7,7 @@ import { activeMapId } from '../../map/sector-map';
 
 export interface PhaserBattlefieldHandle {
   resetCamera(): void;
+  previewBaseRange(enabled:boolean):void;
   /** False while the Phaser scene is still loading. */
   centerOnCell(x: number, y: number): boolean;
 }
@@ -40,6 +41,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
 
   useImperativeHandle(forwardedRef, () => ({
     resetCamera: () => sceneRef.current?.resetCamera(),
+    previewBaseRange:enabled=>sceneRef.current?.previewBaseRange(enabled),
     centerOnCell: (x, y) => sceneRef.current?.centerOnCell(x, y) ?? false,
   }), []);
 

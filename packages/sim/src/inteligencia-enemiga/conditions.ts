@@ -5,10 +5,10 @@ import type { Perception } from './types.js';
 const healthRatio = ({ unit }: Perception): number => unit.maxHealth <= 0 ? 0 : unit.health / unit.maxHealth;
 
 export const isBadlyDamaged = (perception: Perception): boolean =>
-  healthRatio(perception) < AI_CONFIG.retreatBelowHealthRatio;
+  perception.unit.canRepair!==false && healthRatio(perception) < AI_CONFIG.retreatBelowHealthRatio;
 
 export const hasRecovered = (perception: Perception): boolean =>
-  healthRatio(perception) > AI_CONFIG.recoverAboveHealthRatio;
+  perception.unit.canRepair===false || healthRatio(perception) > AI_CONFIG.recoverAboveHealthRatio;
 
 export const seesEnemy = ({ nearestVisibleEnemy }: Perception): boolean => nearestVisibleEnemy !== null;
 

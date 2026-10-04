@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openApp } from './helpers';
+import { openApp, chooseOpening } from './helpers';
 
 test('retires an accidental ship with Delete and buys capacity and damage upgrades with Metal', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
@@ -9,6 +9,7 @@ test('retires an accidental ship with Delete and buys capacity and damage upgrad
   await page.getByRole('button', { name: /Preparar operación/ }).click();
   await page.getByLabel('Estoy listo para desplegar').check();
   await page.getByRole('button', { name: 'Iniciar operación' }).click();
+  await chooseOpening(page);
   await expect(page.locator('.vi-resources')).toContainText('2/12');
   const production = page.locator('.vi-production');
   await production.getByRole('button', { name: /Explorador/ }).click();
@@ -59,6 +60,7 @@ test('plays Espiral Estelar against the server rival and builds a ship', async (
   await page.getByRole('button', { name: /Preparar operación/ }).click();
   await page.getByLabel('Estoy listo para desplegar').check();
   await page.getByRole('button', { name: 'Iniciar operación' }).click();
+  await chooseOpening(page);
 
   const resources = page.locator('.vi-resources');
   // Authoritative start: a scout and one combat ship, plus the opening Metal.
@@ -77,6 +79,7 @@ test('double click on a ship selects every ship of its class on screen', async (
   await page.getByRole('button', { name: /Preparar operación/ }).click();
   await page.getByLabel('Estoy listo para desplegar').check();
   await page.getByRole('button', { name: 'Iniciar operación' }).click();
+  await chooseOpening(page);
   await expect(page.locator('.vi-resources')).toContainText('2/12', { timeout: 10000 });
   await page.locator('.vi-production').getByRole('button', { name: /Interceptor/ }).click();
   await expect(page.locator('.vi-resources')).toContainText('3/12', { timeout: 10000 });
@@ -99,6 +102,9 @@ test('double click on a ship selects every ship of its class on screen', async (
     await page.waitForTimeout(500);
     await page.mouse.dblclick(x, y);
     await expect(page.locator('.vi-squad')).toContainText('2 unidades seleccionadas');
+    await expect(page.locator('.vi-squad__group-unit')).toHaveCount(1);
+    await expect(page.locator('.vi-squad__group-unit')).toContainText('2 × Interceptor');
+    expect((await page.locator('.vi-squad').boundingBox())!.height).toBeLessThan(150);
     return;
   }
   throw new Error('No Interceptor found on screen');
@@ -133,3 +139,4 @@ test('can continue as a guest while the empty room-code form is open', async ({ 
   await page.getByRole('button', { name: 'Continuar como invitado' }).click();
   await expect(page.getByRole('heading', { name: 'Comandante Vega, el sector espera.' })).toBeVisible();
 });
+

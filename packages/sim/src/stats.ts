@@ -17,7 +17,7 @@ export const BASE_STATS: Readonly<Record<UnitKind, Readonly<ShipStats>>> = Objec
   frigate: Object.freeze({ cost: 9, buildTicks: 60, maxHp: 220, armor: 3, damage: 5, attackTicks: 10, range: 2, speed: 1.25, vision: 4, canCapture: true, splashRadius: 0, splashFactor: 0 }),
   bomber: Object.freeze({ cost: 12, buildTicks: 80, maxHp: 150, armor: 1, damage: 36, attackTicks: 30, range: 4, speed: 0.8, vision: 4, canCapture: true, splashRadius: 1, splashFactor: 0.5 }),
 });
-const COUNTERS: Partial<Record<UnitKind, Partial<Record<UnitKind | 'guardian', number>>>> = {
+export const SHIP_COUNTERS: Readonly<Partial<Record<UnitKind, Partial<Record<UnitKind | 'guardian', number>>>>> = {
   interceptor: { bomber: 2.5, frigate: 0.5 },
   frigate: { interceptor: 2.5, bomber: 0.5 },
   bomber: { frigate: 2, interceptor: 0.5, guardian: 1.5 },
@@ -25,7 +25,9 @@ const COUNTERS: Partial<Record<UnitKind, Partial<Record<UnitKind | 'guardian', n
 /** Pure effective values. Modifiers are supplied exclusively by the authoritative simulation. */
 export function statsFor(world: StatsContext, playerId: PlayerId, kind: UnitKind): ShipStats {
   const stats = { ...BASE_STATS[kind], attackTicks: BASE_STATS[kind].attackTicks ? Math.max(1, Math.round(BASE_STATS[kind].attackTicks * world.rules.tickRate / 10)) : 0 };
-  for (const modifier of world.players?.[playerId]?.statModifiers ?? []) {
+  const modifiers=world.players?.[playerId]?.statModifiers ?? [];
+  // A fixed value replaces the base; discounts and bonuses then stack above it.
+  for (const modifier of [...modifiers.filter(m=>m.operation==='set'),...modifiers.filter(m=>m.operation!=='set')]) {
     if (modifier.kind && modifier.kind !== kind) continue;
     stats[modifier.stat] = modifier.operation === 'set' ? modifier.value
       : modifier.operation === 'multiply' ? stats[modifier.stat] * modifier.value : stats[modifier.stat] + modifier.value;
@@ -41,5 +43,5 @@ export function moveInterval(world: StatsContext, playerId: PlayerId, kind: Unit
 }
 /** Counter is applied before armor; fractional damage is intentionally preserved. */
 export function damageAgainst(attacker: UnitKind, defender: UnitKind | 'guardian', damage = BASE_STATS[attacker].damage, armor = 0): number {
-  return Math.max(1, damage * (COUNTERS[attacker]?.[defender] ?? 1) - armor);
+  return Math.max(1, damage * (SHIP_COUNTERS[attacker]?.[defender] ?? 1) - armor);
 }

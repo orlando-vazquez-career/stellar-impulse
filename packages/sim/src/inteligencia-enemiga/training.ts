@@ -3,6 +3,7 @@ import type { AiMemory, AiUnit, Vec2 } from './types.js';
 
 export interface EnemyScene {
   tick: number;
+  thinkAll?:boolean;
   units: readonly AiUnit[];
   enemies: readonly AiUnit[];
   patrolByUnit: Readonly<Record<string, readonly Vec2[]>>;
@@ -15,5 +16,5 @@ export function planEnemyTurn(scene: EnemyScene, memories: ReadonlyMap<string, A
     enemiesOf: () => scene.enemies,
     patrolRouteOf: (unit) => scene.patrolByUnit[unit.id] ?? [],
     retreatPointOf: (unit) => scene.retreatByUnit[unit.id] ?? { x: 0, y: 0 },
-  }, memories, scene.tick);
+  }, memories, scene.tick, scene.thinkAll);
 }

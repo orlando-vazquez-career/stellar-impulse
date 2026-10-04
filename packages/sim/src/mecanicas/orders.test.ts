@@ -45,6 +45,12 @@ describe('finite shift route', () => {
     expect(replaced.world.squads[0]).toMatchObject({ target: { x: 2, y: 15 }, stance: 'march' });
     expect(replaced.world.squads[0]!.route).toEqual([]);
   });
+  it('accepts a new shift route after the previous destination was reached',()=>{
+    let world=applyCommand(createWorld(),'p1',enqueue(1,3,17)).world;
+    world=ticks(world,12);expect(world.squads[0]!.target).toBeNull();
+    world=applyCommand(world,'p1',enqueue(2,5,17)).world;
+    expect(ticks(world,24).squads[0]).toMatchObject({x:5,y:17,target:null});
+  });
 });
 
 describe('arrival ring', () => {

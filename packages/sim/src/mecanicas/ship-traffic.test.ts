@@ -98,6 +98,16 @@ describe('ship traffic', () => {
     for (let tick = 0; tick < 6; tick++) world = stepWorld(world);
     expect(world.squads[1]).toMatchObject({ x: 3, y: 3 });
   });
+  it.each(['ally','enemy','guardian'] as const)('diagonal passing keeps a %s corner rule without sharing destination cells',blocker=>{
+    let world=field();world.economy=false;
+    if(blocker==='enemy')world.squads[1]!.ownerId='p2';
+    if(blocker==='guardian'){world.squads.pop();world.guardians=[{id:'corner',objectiveId:'core',x:4,y:3,hp:1000,maxHp:1000,damage:0}];}
+    world=applyCommand(world,'p1',{seq:1,type:'move',squadId:'lead',x:4,y:4}).world;
+    for(let i=0;i<6;i++)world=stepWorld(world);
+    if(blocker==='ally')expect(world.squads[0]).toMatchObject({x:4,y:4,target:null});
+    else expect(world.squads[0]!.x===4&&world.squads[0]!.y===4).toBe(false);
+    expect(world.squads[0]!.x===4&&world.squads[0]!.y===3).toBe(false);
+  });
 
   it('gives a full fleet distinct arrival seats even at a blocked map edge', () => {
     const seats = assignArrival(Array.from({ length: 12 }, (_, index) => `ship-${index}`), { x: 0, y: 0 },
@@ -105,5 +115,36 @@ describe('ship traffic', () => {
     expect(seats.size).toBe(12);
     expect(new Set([...seats.values()].map((cell) => `${cell.x},${cell.y}`)).size).toBe(12);
     expect([...seats.values()].every((cell) => cell.x >= 0 && cell.y >= 0)).toBe(true);
+  });
+  it('all 24 members finish their orders without overlapping in a crowded formation',()=>{
+    let world=field();world.economy=false;world.rules.coreOpenTick=100000;
+    world.squads=Array.from({length:24},(_,i)=>createSquad(`fleet-${String(i).padStart(2,'0')}`,'p1',i%3===0?'bomber':i%3===1?'frigate':'interceptor',{x:1+i%6,y:1+Math.floor(i/6)}));
+    for(let i=0;i<24;i++)world=applyCommand(world,'p1',{seq:i+1,type:'move',squadId:world.squads[i]!.id,x:14,y:14}).world;
+    const seats=new Map(world.squads.map(s=>[s.id,{...s.target!}]));
+    for(let t=0;t<1500;t++){
+      world=stepWorld(world);
+      expect(new Set(world.squads.map(s=>`${s.x},${s.y}`)).size).toBe(24);
+      for(const s of world.squads)if(s.target)expect(s.target).toEqual(seats.get(s.id));
+    }
+    expect(world.squads.filter(s=>s.target).map(s=>({id:s.id,x:s.x,y:s.y,target:s.target}))).toEqual([]);
+    for(const s of world.squads){expect(s.target).toBeNull();expect(Math.max(Math.abs(s.x-14),Math.abs(s.y-14))).toBeLessThanOrEqual(6);}
+  });
+  it.each(['sector-01','espiral'] as const)('a 24-ship fleet reaches a crowded destination on %s',(map)=>{
+    let world=createSectorWorld(map);world.guardians=[];world.economy=false;world.rules.coreOpenTick=100000;
+    const route=(findTiledPath(world.surface!,world.players.p1.base,world.core) as {path:{x:number;y:number}[]}).path;
+    const destination=route[Math.min(20,route.length-1)]!;
+    const cells=world.surface!.walkable.flatMap((open,i)=>open?[{x:i%world.width,y:Math.floor(i/world.width)}]:[])
+      .filter(cell=>findTiledPath(world.surface!,cell,destination).status==='found')
+      .sort((a,b)=>Math.abs(a.x-world.players.p1.base.x)+Math.abs(a.y-world.players.p1.base.y)-Math.abs(b.x-world.players.p1.base.x)-Math.abs(b.y-world.players.p1.base.y)||a.y-b.y||a.x-b.x);
+    world.squads=cells.slice(0,24).map((cell,i)=>createSquad(`fleet-${String(i).padStart(2,'0')}`,'p1',i%3===0?'bomber':i%3===1?'frigate':'interceptor',cell));
+    for(let i=0;i<24;i++)world=applyCommand(world,'p1',{seq:i+1,type:'move',squadId:world.squads[i]!.id,...destination}).world;
+    for(let t=0;t<3000;t++){world=stepWorld(world);expect(new Set(world.squads.map(s=>`${s.x},${s.y}`)).size).toBe(24);}
+    expect(world.squads.filter(s=>s.target).map(s=>({id:s.id,x:s.x,y:s.y,target:s.target}))).toEqual([]);
+  });
+  it('a parked ally yields in a corridor when it blocks a route beyond its cell',()=>{
+    let world=field();world.economy=false;world.surface!.walkable=world.surface!.walkable.map((_,i)=>Math.floor(i/20)===3);
+    world=applyCommand(world,'p1',{seq:1,type:'move',squadId:'lead',x:7,y:3}).world;
+    for(let t=0;t<120;t++)world=stepWorld(world);
+    expect(world.squads[0]).toMatchObject({x:7,y:3,target:null});expect(world.squads[1]).toMatchObject({x:3,y:3});
   });
 });

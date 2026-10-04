@@ -1,6 +1,6 @@
 import type { DurationMode } from '@impulso/sim';
 import { Client, type Room } from '@colyseus/sdk';
-import { FLEET_CAP, fleetCapacity, baseDamage, baseUpgradeCost, BASE_DEFENSE_RANGE } from '@impulso/sim';
+import { FLEET_CAP, BASE_DEFENSE_RANGE } from '@impulso/sim';
 import { type PlayerView, type UnitKind } from '@impulso/state';
 import { sectorSurface, type TrainingMapId } from '../map/sector-map';
 import type {
@@ -118,7 +118,7 @@ function coreState(view: PlayerView): CoreState {
  * server rival (or a second human who joins the same room). The browser only sends intentions.
  */
 export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy' | 'medium' | 'hard' = 'medium',
-  map: TrainingMapId = 'espiral', duration: DurationMode = 'skirmish'): GameplayPresentationAdapter {
+  map: TrainingMapId = 'espiral', duration: DurationMode = 'skirmish', existingRoom?:Room): GameplayPresentationAdapter {
   let snapshot = blankSnapshot();
   let latest: PlayerView | null = null;
   let room: Room | null = null;
@@ -158,7 +158,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       const moving = own && (squad.target || (squad.route?.length ?? 0) > 0);
       return {
         id: squad.id, callSign: `${UNIT_LABEL[squad.kind]}-${count}`, owner: ownerOf(squad.ownerId),
-        unitType: squad.kind, gridX: at.x, gridY: at.y,
+        isDecoy:squad.isDecoy, unitType: squad.kind, gridX: at.x, gridY: at.y,
         speedCellsPerSecond: squad.stats?.speed, hp: squad.hp, maxHp: squad.maxHp, stats: squad.stats,
         healthPercent: Math.round(squad.hp / squad.maxHp * 100),
         attackTargetId: own ? squad.attackTargetId ?? null : null,
@@ -189,30 +189,31 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       ...snapshot,
       tick: view.tick,
       elapsedSeconds: Math.floor(view.tick / TICKS_PER_SECOND),
+      suddenDeath: view.suddenDeath,
       selectedSquadIds: selectedIds,
       selectedSquadId: selectedIds[0] ?? null,
       moveOrder: leader && leaderAt && waypoints.length
         ? { squadId: leader.id, destination: { ...waypoints.at(-1)! }, route: [{ x: leaderAt.x, y: leaderAt.y }, ...waypoints] }
         : null,
       resources: {
-        metal: own.metal ?? 0, metalRate: ownedMetal + 0.5, energy: 0, energyRate: 0,
-        fleet: ownIds.size, fleetCap: fleetCapacity(own.baseUpgrades),
+        metal: own.metal ?? 0, metalRate: view.metalRate ?? ownedMetal + 0.5, energy: 0, energyRate: 0,
+        fleet: alive.filter((u)=>u.ownerId===me && !u.isDecoy).length, fleetCap: view.base?.fleetCap ?? FLEET_CAP,
       },
-      squads, unitStats: view.unitStats,
+      squads, unitStats: view.unitStats, augments:view.augments, chart:view.chart, productionForbidden:view.productionForbidden,
       nodes: view.nodes.map((node) => ({
         id: node.id, kind: node.kind, x: node.x, y: node.y,
         owner: node.ownerId === null ? null : ownerOf(node.ownerId),
       })),
       core: {
         state: coreState(view),
-        progress: Math.round(Math.max(view.core.progress.p1, view.core.progress.p2) / view.rules.coreCaptureTicks * 100),
+        progress: Math.round((view.coreFraction ?? Math.max(view.core.progress.p1, view.core.progress.p2) / view.rules.coreCaptureTicks) * 100),
         opensInSeconds: Math.max(0, Math.ceil((view.rules.coreOpenTick - view.tick) / TICKS_PER_SECOND)),
       },
       production: own.production
         ? { kind: own.production.kind, remainingSeconds: Math.ceil(own.production.remainingTicks / TICKS_PER_SECOND) }
         : null,
-      base: { upgrades: { ...(own.baseUpgrades ?? { damage: 0, capacity: 0 }) }, damage: baseDamage(own.baseUpgrades),
-        range: BASE_DEFENSE_RANGE, upgradeCosts: { damage: baseUpgradeCost('damage', own.baseUpgrades), capacity: baseUpgradeCost('capacity', own.baseUpgrades) } },
+      base: { upgrades: { ...(own.baseUpgrades ?? { damage: 0, capacity: 0 }) }, damage: view.base?.damage ?? 0,
+        range: BASE_DEFENSE_RANGE, position:{...own.base}, upgradeCosts: view.base?.upgradeCosts ?? {damage:null,capacity:null} },
       result: view.winner === null ? null : view.winner === me ? 'victory' : 'defeat',
       visibleCells: (() => {
         const cells = Array<boolean>(view.width * view.height).fill(false);
@@ -271,10 +272,13 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
 
   void (async () => {
     try {
-      const joined = await new Client(serverUrl).create('training', { difficulty, map, duration });
+      const testing = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
+      const joined = existingRoom ?? await new Client(serverUrl).create('training', { difficulty, map, duration,
+        testTimeScale: Number(testing.get('testTimeScale') ?? 1), ...(testing.has('testSeed')?{testSeed:Number(testing.get('testSeed'))}:{}) });
       if (destroyed) { void joined.leave(); return; }
       room = joined;
       joined.onMessage('view', onView);
+      joined.onMessage('augmentOffer',()=>{});joined.onMessage('augmentChosen',()=>{});
       joined.onMessage('ack', () => { /* the next view already reflects accepted orders */ });
       joined.onMessage('rejected', (message: { reason?: string }) => {
         snapshot = { ...snapshot, notice: REJECTION_TEXT[message.reason ?? ''] ?? 'Orden rechazada.' };
@@ -303,6 +307,9 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       return () => eventListeners.delete(listener);
     },
     dispatch(intent: PresentationIntent) {
+      if(intent.type==='augment-pick' || intent.type==='augment-reroll') {
+        room?.send(intent.type==='augment-pick'?'augmentPick':'augmentReroll',intent.type==='augment-pick'?{choice:intent.choice,id:intent.id}:{choice:intent.choice});return;
+      }
       if (intent.type === 'disband-selected') {
         const squadIds = selectedOwn().map((squad) => squad.id);
         if (!squadIds.length) return;

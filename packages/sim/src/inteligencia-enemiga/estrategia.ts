@@ -1,6 +1,9 @@
+import { randomFor } from '../augments/random.js';
 import { FLEET_CAP, UNIT_COSTS } from '../economia.js';
 import type { PlayerId, Position, UnitKind, World } from '../index.js';
+import { effectiveFleetCap, effectsFor } from '../augments/effects.js';
 import { statsFor } from '../stats.js';
+import { knownObjectives, explorationGoal } from './knowledge.js';
 
 export type RivalDifficulty = 'easy' | 'medium' | 'hard';
 
@@ -55,24 +58,26 @@ export function rivalGoals(world: World, rival: PlayerId, canSee: (target: Posit
   const profile = RIVAL_PROFILES[difficulty];
   const base = world.players[rival].base;
   const fleet = world.squads.filter((unit) => unit.ownerId === rival && unit.hp > 0);
-  const combat = fleet.filter((unit) => unit.kind !== 'explorer');
+  const combat = fleet.filter((unit) => unit.kind !== 'explorer' && !unit.isDecoy);
   const goals = new Map<string, Position>();
   const threatened = world.squads.some((unit) => unit.ownerId !== rival && unit.hp > 0
     && manhattan(unit, base) <= profile.threatRadius && canSee(unit));
-  const targets = world.nodes.filter((node) => node.kind === 'metal' && node.ownerId !== rival
+  const known=knownObjectives(world,rival);
+  const targets = known.filter((node) => node.kind === 'metal' && node.ownerId !== rival
     && (profile.raidsPlayer || node.ownerId === null))
     .sort(byDistanceFrom(base));
   let front: Position;
-  const mine = world.nodes.filter((node) => node.kind === 'metal' && node.ownerId === rival).length;
-  const theirs = world.nodes.filter((node) => node.kind === 'metal' && node.ownerId !== null && node.ownerId !== rival).length;
-  const contestCore = world.core.open && (mine >= theirs || !targets.length);
-  if (threatened) front = base;
+  const mine = known.filter((node) => node.kind === 'metal' && node.ownerId === rival).length;
+  const theirs = known.filter((node) => node.kind === 'metal' && node.ownerId !== null && node.ownerId !== rival).length;
+  const contestCore = world.core.open && (world.suddenDeath || mine >= theirs || !targets.length);
+  if (world.suddenDeath) front = world.core;
+  else if (threatened) front = base;
   else if (contestCore) front = world.core;
   else if (world.core.open && targets[0]) front = targets[0];
   else if (combat.length < profile.attackGroup) front = targets[0] && manhattan(targets[0], base) <= 8 ? targets[0] : base;
-  else front = targets[0] ?? world.core;
+  else front = targets[0] ?? explorationGoal(world,rival,combat[0] ?? base);
   // Hard: a big enough fleet sends its newest ships to raid the player's own Metal.
-  const raidTarget = world.nodes.filter((node) => node.kind === 'metal' && node.ownerId !== null && node.ownerId !== rival)
+  const raidTarget = known.filter((node) => node.kind === 'metal' && node.ownerId !== null && node.ownerId !== rival)
     .sort(byDistanceFrom(base))[0];
   const raiders = !threatened && !world.core.open && raidTarget && profile.raidSplitAt > 0 && combat.length >= profile.raidSplitAt
     ? new Set(combat.slice(-Math.floor(combat.length / 2)).map((unit) => unit.id)) : new Set<string>();
@@ -86,8 +91,10 @@ export function rivalGoals(world: World, rival: PlayerId, canSee: (target: Posit
     goals.set(unit.id, { x: goal.x, y: goal.y });
   });
   // Scouts look ahead: the next uncontested node, then the core.
-  const scoutTarget = targets[1] ?? targets[0] ?? world.core;
-  for (const unit of fleet) if (unit.kind === 'explorer') goals.set(unit.id, { x: scoutTarget.x, y: scoutTarget.y });
+  const scoutTarget = targets[1] ?? targets[0];
+  for (const unit of fleet) if (unit.kind === 'explorer') {
+    const target=scoutTarget ?? explorationGoal(world,rival,unit);goals.set(unit.id,{x:target.x,y:target.y});
+  }
   return goals;
 }
 
@@ -95,9 +102,11 @@ export function rivalGoals(world: World, rival: PlayerId, canSee: (target: Posit
 export function rivalProduction(world: World, rival: PlayerId, difficulty: RivalDifficulty = 'medium'): UnitKind | null {
   const profile = RIVAL_PROFILES[difficulty];
   if (world.production[rival]) return null;
-  const alive = world.squads.filter((unit) => unit.ownerId === rival && unit.hp > 0).length;
-  if (alive >= Math.min(FLEET_CAP, profile.fleetLimit)) return null;
+  const alive = world.squads.filter((unit) => unit.ownerId === rival && unit.hp > 0 && !unit.isDecoy).length;
+  if (alive >= Math.min(effectiveFleetCap(world,rival), profile.fleetLimit)) return null;
   if (world.tick < (world.built[rival] + 1) * profile.buildSpacingTicks) return null;
-  const kind = profile.buildOrder[world.built[rival] % profile.buildOrder.length]!;
+  const allowed=profile.buildOrder.filter((kind)=>!effectsFor(world,rival).some((e)=>e.hook==='no-production' && e.kind===kind));
+  const offset=world.seed===undefined?0:Math.floor(randomFor(world.seed,rival,'doctrine')()*allowed.length);
+  const kind = allowed[(world.built[rival]+offset) % allowed.length]!;
   return world.players[rival].metal >= statsFor(world, rival, kind).cost ? kind : null;
 }

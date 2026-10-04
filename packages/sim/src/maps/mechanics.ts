@@ -1,4 +1,5 @@
-import { statsFor, damageAgainst, type Player, type SimEvent, type CaptureObjective, type Core, type Guardian, type PlayerId, type Rules, type Squad } from '../index.js';
+import { captureDuration, counterBonus, statsForUnit, isConcealed, type EffectContext } from '../augments/effects.js';
+import { statsFor, damageAgainst, type World, type Player, type SimEvent, type CaptureObjective, type Core, type Guardian, type PlayerId, type Rules, type Squad } from '../index.js';
 import { createSpatialIndex, type SpatialIndex } from './spatial-index.js';
 
 /** Structural mechanics shared by training and battlefield without changing either world type. */
@@ -7,6 +8,7 @@ export interface MechanicsWorld {
   width: number;
   height: number;
   tick: number;
+  suddenDeath?: boolean;
   rules: Rules;
   squads: Squad[];
   guardians: Guardian[];
@@ -42,7 +44,7 @@ export interface CaptureContext {
 export function captureContext(world: MechanicsWorld): CaptureContext {
   return {
     index: squadIndex(world),
-    owners: new Map(world.squads.filter((unit) => unit.hp > 0 && statsFor(world, unit.ownerId, unit.kind).canCapture)
+    owners: new Map(world.squads.filter((unit) => unit.hp > 0 && statsFor(world, unit.ownerId, unit.kind).canCapture && !unit.isDecoy)
       .map((unit) => [unit.id, unit.ownerId])),
     liveGuardians: new Set(world.guardians.filter((unit) => unit.hp > 0).map((unit) => unit.id)),
   };
@@ -60,9 +62,10 @@ export function resolveCombat(world: MechanicsWorld): void {
     const list = hits.get(target.id) ?? []; list.push({ damage, attacker, shot }); hits.set(target.id, list);
   };
   for (const squad of squads) {
-    const stats = statsFor(world, squad.ownerId, squad.kind);
+    const stats = statsForUnit(world,squad);
     if (stats.damage <= 0 || world.tick % stats.attackTicks !== 0) continue;
     const inRange = all.filter((unit) => unit.id !== squad.id && gap(squad, unit) <= stats.range
+      && (!('kind' in unit) || !isConcealed(world as World, unit))
       && (!('ownerId' in unit) || unit.ownerId !== squad.ownerId))
       .sort((a, b) => gap(squad, a) - gap(squad, b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const chosen = squad.attackTargetId ? inRange.find((unit) => unit.id === squad.attackTargetId) : undefined;
@@ -75,29 +78,29 @@ export function resolveCombat(world: MechanicsWorld): void {
       if ('ownerId' in victim && victim.ownerId === squad.ownerId) continue;
       const primary = victim.id === target.id;
       if (!primary && (stats.splashRadius === 0 || gap(target, victim) > stats.splashRadius)) continue;
-      const armor = 'kind' in victim ? statsFor(world, victim.ownerId, victim.kind).armor : 0;
-      const damage = damageAgainst(squad.kind, 'kind' in victim ? victim.kind : 'guardian', stats.damage * (primary ? 1 : stats.splashFactor), armor);
+      const armor = 'kind' in victim ? statsForUnit(world,victim).armor : 0;
+      const damage = damageAgainst(squad.kind, 'kind' in victim ? victim.kind : 'guardian', (stats.damage + ('kind' in victim ? counterBonus(world,squad,victim.kind) : 0)) * (primary ? 1 : stats.splashFactor), armor);
       add(victim, damage, shot, squad);
     }
   }
   if (world.tick % world.rules.attackEveryTicks === 0) for (const guardian of guardians) {
     const target = squads.filter((unit) => withinReach(world, guardian, unit))
       .sort((a,b) => gap(guardian,a) - gap(guardian,b) || (a.id < b.id ? -1 : 1))[0];
-    if (target) add(target, Math.max(1, guardian.damage - statsFor(world, target.ownerId, target.kind).armor), `${world.tick}:${guardian.id}`);
+    if (target) add(target, Math.max(1, guardian.damage - statsForUnit(world,target).armor), `${world.tick}:${guardian.id}`);
   }
   for (const unit of all) {
     const attacks = hits.get(unit.id) ?? [];
     const before = unit.hp;
     unit.hp = Math.max(0, unit.hp - attacks.reduce((total, hit) => total + hit.damage, 0));
     if ('kind' in unit && attacks.length) unit.lastDamageTick = world.tick;
-    if ('kind' in unit && before > 0 && unit.hp === 0) {
+    if ('kind' in unit && !unit.isDecoy && before > 0 && unit.hp === 0) {
       // The first planned hostile shot crossing zero receives the official kill.
       let health = before;
       const fatal = attacks.find((hit) => { health -= hit.damage; return health <= 0; });
-      if (fatal?.attacker) {
-        fatal.attacker.kills = (fatal.attacker.kills ?? 0) + 1;
-        world.events?.push({ type: 'destroyed', tick: world.tick, attackerId: fatal.attacker.id,
-          attackerOwner: fatal.attacker.ownerId, victimId: unit.id, victimOwner: unit.ownerId, kind: unit.kind,
+      if (fatal) {
+        if (fatal.attacker) fatal.attacker.kills = (fatal.attacker.kills ?? 0) + 1;
+        world.events?.push({ type: 'destroyed', tick: world.tick, attackerId: fatal.attacker?.id ?? fatal.shot.split(':')[1]!,
+          attackerOwner: fatal.attacker?.ownerId ?? null, victimId: unit.id, victimOwner: unit.ownerId, kind: unit.kind,
           cost: statsFor(world, unit.ownerId, unit.kind).cost, shot: fatal.shot });
       }
     }
@@ -113,12 +116,13 @@ export function advanceCapture(world: MechanicsWorld, objective: CaptureObjectiv
     .filter((owner): owner is PlayerId => owner === 'p1' || owner === 'p2'));
   if (present.size === 2) return null;
   for (const playerId of ['p1', 'p2'] as const) {
+    const duration=captureDuration(world,playerId,required,objective.id===world.core.id);
     objective.progress[playerId] = present.has(playerId)
-      ? Math.min(required, objective.progress[playerId] + 1)
+      ? Math.min(duration, objective.progress[playerId] + 1)
       : Math.max(0, objective.progress[playerId] - 1);
   }
   for (const playerId of ['p1', 'p2'] as const) {
-    if (objective.progress[playerId] >= required && present.has(playerId)) return playerId;
+    if (objective.progress[playerId] >= captureDuration(world,playerId,required,objective.id===world.core.id) && present.has(playerId)) return playerId;
   }
   return null;
 }

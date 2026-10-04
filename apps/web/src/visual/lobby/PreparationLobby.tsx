@@ -138,7 +138,7 @@ export function PreparationLobby({
               </div>
               <div>
                 <dt>{t('duration')}</dt>
-                <dd>{t('durationValue')}</dd>
+                <dd>{duration==='complete'?'~20 min':'~8 min'}</dd>
               </div>
               <div>
                 <dt>{t('fleetFormat')}</dt>

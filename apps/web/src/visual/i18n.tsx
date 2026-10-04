@@ -3,6 +3,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 export type Locale = 'es' | 'en';
 
 const es = {
+  attackRange:'Alcance de ataque',cells:'casillas',effectiveAgainst:'Eficiente contra',weakAgainst:'Débil contra',noWeapons:'No ataca ni captura; reconoce el mapa',guardiansCore:'guardianes y núcleo',
+  suddenDeath: 'Muerte súbita: capturar el núcleo da la victoria inmediata',
   accessEyebrow: 'PROTOCOLO DE ACCESO',
   accessTitle: 'Toma el mando.',
   accessBody: 'Inicia sesión con tu cuenta o entrena como invitado. No necesitas billetera.',
@@ -205,6 +207,8 @@ const es = {
 type MessageKey = keyof typeof es;
 
 const en: Record<MessageKey, string> = {
+  attackRange:'Attack range',cells:'cells',effectiveAgainst:'Effective against',weakAgainst:'Weak against',noWeapons:'No weapons or capture; scouts the map',guardiansCore:'guardians and core',
+  suddenDeath: 'Sudden death: capture the core to win immediately',
   accessEyebrow: 'ACCESS PROTOCOL',
   accessTitle: 'Take command.',
   accessBody: 'Sign in with your account or train as a guest. No wallet required.',

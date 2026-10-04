@@ -12,6 +12,9 @@ export interface Cell {
 
 export interface RouteUnit {
   id: string;
+  ownerId?:string;
+  arrivalLocked?:boolean;
+  arrivalSeat?:Cell|null;
   x: number;
   y: number;
   stance: PlayerStance;
@@ -81,22 +84,29 @@ export function assignArrival(ids: readonly string[], origin: Cell, board: WalkB
   return assigned;
 }
 
-export function refreshArrivals<T extends RouteUnit>(units: readonly T[], board: WalkBoard): void {
+export function refreshArrivals<T extends RouteUnit>(units: readonly T[], board: WalkBoard, canReach:(from:Cell,to:Cell)=>boolean=()=>true): void {
   const groups = new Map<string, T[]>();
   for (const unit of units) {
     if (!unit.gather) continue;
-    const key = cellKey(unit.gather);
+    const key = `${unit.ownerId??''}:${cellKey(unit.gather)}`;
     const group = groups.get(key);
     if (group) group.push(unit);
     else groups.set(key, [unit]);
   }
   for (const group of groups.values()) {
+    if(group.every(u=>u.arrivalLocked))continue;
     const origin = group[0]?.gather;
     if (!origin) continue;
     const seats = assignArrival(group.map((unit) => unit.id), origin, board);
-    for (const unit of group) {
-      const seat = seats.get(unit.id);
-      if (seat) unit.target = copy(seat);
+    const reserved=new Set(units.filter(u=>u.ownerId===group[0]!.ownerId&&u.arrivalLocked&&u.arrivalSeat
+      &&(u.target||sameCell(u,u.arrivalSeat))).map(u=>cellKey(u.arrivalSeat!)));
+    const candidates=[copy(origin),...assignArrival(Array.from({length:units.length+8},(_,i)=>String(i)),origin,board).values()];
+    for (const unit of [...group].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)) {
+      if(unit.arrivalLocked)continue;
+      const desired=seats.get(unit.id);
+      const usable=(cell:Cell)=>!reserved.has(cellKey(cell))&&!board.blocked.has(cellKey(cell))&&canReach(unit,cell);
+      const seat=desired&&usable(desired)?desired:candidates.find(usable);
+      if(seat){unit.target=copy(seat);unit.arrivalSeat=copy(seat);reserved.add(cellKey(seat));}
     }
   }
 }
@@ -105,6 +115,7 @@ export type OrderWrite = 'ok' | 'route_full';
 
 /** A plain click replaces the route and cancels guard, patrol and attack. */
 export function replaceDestination(unit: RouteUnit, point: Cell): void {
+  unit.arrivalLocked=false;unit.arrivalSeat=null;unit.target=null;
   unit.stance = 'march';
   unit.anchor = null;
   unit.attackTargetId = null;
@@ -119,12 +130,13 @@ export function appendDestination(unit: RouteUnit, point: Cell): OrderWrite {
   if (unit.stance !== 'attack') unit.stance = 'march';
   unit.anchor = null;
   unit.attackTargetId = null;
-  if (!unit.gather) unit.gather = copy(point);
+  if (!unit.gather) { unit.arrivalLocked=false;unit.arrivalSeat=null;unit.target=null;unit.gather = copy(point); }
   else unit.route = [...unit.route, copy(point)];
   return 'ok';
 }
 
 export function holdGround(unit: RouteUnit): void {
+  unit.arrivalLocked=false;unit.arrivalSeat=null;
   unit.stance = 'guard';
   unit.anchor = { x: unit.x, y: unit.y };
   unit.gather = null;
@@ -140,6 +152,7 @@ export function armAttack(unit: RouteUnit): void {
 
 /** Turn the current route into a loop. Without one, pace to the first free ring cell. */
 export function loopRoute(unit: RouteUnit, board: WalkBoard): void {
+  unit.arrivalLocked=false;unit.arrivalSeat=null;
   const here = { x: unit.x, y: unit.y };
   const planned = [here, ...(unit.gather ? [unit.gather] : []), ...unit.route];
   const loop = collapse(planned);
@@ -163,6 +176,7 @@ export function loopRoute(unit: RouteUnit, board: WalkBoard): void {
 export function consumeWaypoint(unit: RouteUnit): void {
   if (!unit.target || unit.x !== unit.target.x || unit.y !== unit.target.y) return;
   if (unit.stance === 'patrol' && unit.gather) {
+    unit.arrivalLocked=false;unit.arrivalSeat=null;
     const next = unit.route[0];
     if (!next) {
       unit.target = null;
@@ -181,6 +195,7 @@ export function consumeWaypoint(unit: RouteUnit): void {
     return;
   }
   unit.route = unit.route.slice(1);
+  unit.arrivalLocked=false;unit.arrivalSeat=null;
   unit.gather = copy(next);
   unit.target = copy(next);
 }

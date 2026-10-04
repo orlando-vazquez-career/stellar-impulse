@@ -38,6 +38,7 @@ interface UnitVisual {
   container: Phaser.GameObjects.Container;
   selection: Phaser.GameObjects.Graphics;
   hull: Phaser.GameObjects.Graphics;
+  label: Phaser.GameObjects.Text;
   hitFlash: Phaser.GameObjects.Graphics;
   health: Phaser.GameObjects.Rectangle;
   healthPercent: number;
@@ -69,6 +70,8 @@ export class MainScene extends Phaser.Scene {
   private readonly onReady: () => void;
   private terrain?: Phaser.GameObjects.Graphics;
   private route?: Phaser.GameObjects.Graphics;
+  private attackRanges?:Phaser.GameObjects.Graphics;
+  private showBaseRange=false;
   private selectionBox?: Phaser.GameObjects.Graphics;
   private core?: Phaser.GameObjects.Graphics;
   private nodeMarks?: Phaser.GameObjects.Graphics;
@@ -128,6 +131,7 @@ export class MainScene extends Phaser.Scene {
     this.cameras.main.setBounds(-margin, -margin, ISO_WORLD_WIDTH + margin * 2, ISO_WORLD_HEIGHT + margin * 2);
     this.terrain = this.add.graphics().setDepth(0);
     this.route = this.add.graphics().setDepth(DEPTH.route);
+    this.attackRanges=this.add.graphics().setDepth(DEPTH.nodes+1);
     this.selectionBox = this.add.graphics().setScrollFactor(0).setDepth(DEPTH.selection);
     this.core = this.add.graphics().setDepth(DEPTH.core);
     this.nodeMarks = this.add.graphics().setDepth(DEPTH.nodes);
@@ -322,11 +326,37 @@ export class MainScene extends Phaser.Scene {
     this.fogShown = Array.from({ length: total }, (_, index) => (cells ? cells[index] === true : true));
   }
 
+  previewBaseRange(enabled:boolean):void {
+    this.showBaseRange=enabled;
+    this.drawAttackRanges();
+  }
+
+  /** A visual guide from server-provided stats; hit validation stays in the simulation. */
+  private drawAttackRanges():void {
+    const graphics=this.attackRanges;graphics?.clear();if(!graphics)return;
+    const selected=this.snapshot.squads.find(s=>s.id===this.snapshot.selectedSquadId&&s.visible&&s.healthPercent>0);
+    const base=this.showBaseRange?this.snapshot.base:undefined;
+    const origin=base?.position??(selected?{x:Math.round(selected.gridX),y:Math.round(selected.gridY)}:undefined);
+    const range=base?.range??selected?.stats?.range??(selected?this.snapshot.unitStats?.[selected.unitType]?.range:0)??0;
+    if(!origin||range<=0)return;
+    const hue=base?0x78d7d0:0x84c8fa;
+    for(let dy=-range;dy<=range;dy++)for(let dx=-range;dx<=range;dx++){
+      if(base&&Math.abs(dx)+Math.abs(dy)>range)continue;
+      const x=origin.x+dx,y=origin.y+dy;
+      if(x<0||y<0||x>=sectorMap.width||y>=sectorMap.height)continue;
+      if(!sectorSurface.walkable[y*sectorMap.width+x])continue;
+      const at=cellToIso(x,y),points=[{x:at.x,y:at.y-16},{x:at.x+32,y:at.y},{x:at.x,y:at.y+16},{x:at.x-32,y:at.y}];
+      graphics.fillStyle(hue,.055);graphics.fillPoints(polygon(points),true);
+      graphics.lineStyle(1,hue,.23);graphics.strokePoints(polygon(points),true);
+    }
+  }
+
   private renderSnapshot() {
     this.drawCore();
     this.drawNodes();
     this.drawFog();
     this.drawRoute();
+    this.drawAttackRanges();
     const visible = new Set(this.snapshot.squads.filter((squad) => squad.visible).map((squad) => squad.id));
     for (const [id, visual] of this.unitVisuals) {
       if (visible.has(id)) continue;
@@ -337,13 +367,14 @@ export class MainScene extends Phaser.Scene {
     for (const squad of this.snapshot.squads.filter((candidate) => candidate.visible)) {
       const visual = this.unitVisuals.get(squad.id) ?? this.createUnit(squad);
       visual.selection.setVisible(squad.selected);
+      visual.label.setVisible(squad.selected);
       if (squad.healthPercent < visual.healthPercent) {
         visual.hitFlash.setAlpha(0.9);
         this.tweens.killTweensOf(visual.hitFlash);
         this.tweens.add({ targets: visual.hitFlash, alpha: 0, duration: 250 });
       }
       visual.healthPercent = squad.healthPercent;
-      visual.health.width = 54 * squad.healthPercent / 100;
+      visual.health.width = 38 * squad.healthPercent / 100;
       if (visual.gridX === squad.gridX && visual.gridY === squad.gridY) continue;
       const previous = cellToIso(visual.gridX, visual.gridY);
       visual.gridX = squad.gridX;
@@ -366,12 +397,12 @@ export class MainScene extends Phaser.Scene {
     const container = this.add.container(point.x, point.y).setDepth(DEPTH.units + point.y);
     const selection = this.add.graphics();
     selection.lineStyle(2, light, 0.98);
-    selection.strokeEllipse(0, 9, 90, 46);
+    selection.strokeEllipse(0, 6, 55, 28);
     selection.lineStyle(1, light, 0.4);
-    selection.strokeEllipse(0, 9, 105, 57);
+    selection.strokeEllipse(0, 6, 62, 34);
     const shadow = this.add.graphics();
     shadow.fillStyle(0x020912, 0.7);
-    shadow.fillEllipse(0, 13, 80, 30);
+    shadow.fillEllipse(0, 9, 46, 18);
     const marker = this.add.graphics();
     marker.fillStyle(allied ? 0xa4d8e5 : neutral ? 0xe6cf95 : 0xe1a1a9, 1);
     if (squad.unitType === 'interceptor') {
@@ -402,15 +433,16 @@ export class MainScene extends Phaser.Scene {
     hitFlash.fillStyle(0xffd4a1, 0.75);
     hitFlash.fillCircle(0, -8, 28);
     hitFlash.setAlpha(0);
-    const label = this.add.text(0, 31, squad.callSign.toUpperCase(), {
-      color: allied ? '#83d4ff' : neutral ? '#f7d774' : '#ff9ba7', fontFamily: 'Rajdhani, sans-serif', fontSize: '15px', fontStyle: '600', letterSpacing: 2,
+    marker.setScale(squad.unitType==='bomber'?0.65:0.58);
+    const label = this.add.text(0, 27, squad.callSign.toUpperCase(), {
+      color: allied ? '#83d4ff' : neutral ? '#f7d774' : '#ff9ba7', fontFamily: 'Rajdhani, sans-serif', fontSize: '11px', fontStyle: '600', letterSpacing: 1,
     }).setOrigin(0.5, 0);
-    const healthBack = this.add.rectangle(0, 51, 54, 4, color.grid).setOrigin(0.5);
-    const health = this.add.rectangle(-27, 51, 54 * squad.healthPercent / 100, 4, squad.healthPercent > 35 ? 0x4ad69a : color.red).setOrigin(0, 0.5);
+    const healthBack = this.add.rectangle(0, 23, 38, 3, color.grid).setOrigin(0.5);
+    const health = this.add.rectangle(-19, 23, 38 * squad.healthPercent / 100, 3, squad.healthPercent > 35 ? 0x4ad69a : color.red).setOrigin(0, 0.5);
     container.add([selection, shadow, marker, hitFlash, label, healthBack, health]);
-    container.setInteractive(new Phaser.Geom.Ellipse(0, 0, 100, 80), Phaser.Geom.Ellipse.Contains);
+    container.setInteractive(new Phaser.Geom.Ellipse(0, 0, 62, 55), Phaser.Geom.Ellipse.Contains);
     container.setData('unitId', squad.id);
-    const visual = { container, selection, hull: marker, hitFlash, health,
+    const visual = { container, selection, hull: marker, label, hitFlash, health,
       healthPercent: squad.healthPercent, gridX: squad.gridX, gridY: squad.gridY,
       targetX: point.x, targetY: point.y, heading: 0 };
     this.unitVisuals.set(squad.id, visual);

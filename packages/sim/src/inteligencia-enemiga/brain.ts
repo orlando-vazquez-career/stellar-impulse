@@ -30,13 +30,14 @@ export function runEnemyAi(
   world: AiWorld,
   memories: ReadonlyMap<string, AiMemory>,
   tick: number,
+  thinkAll = false,
 ): AiTickResult {
   const nextMemories = new Map(memories);
   const orders: AiOrder[] = [];
   const ordered = [...units].sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
   for (let index = 0; index < ordered.length; index += 1) {
     const unit = ordered[index];
-    if (!unit || (tick + index) % AI_CONFIG.thinkIntervalTicks !== 0) continue;
+    if (!unit || (!thinkAll && (tick + index) % AI_CONFIG.thinkIntervalTicks !== 0)) continue;
     const result = thinkUnit(unit, world, memories.get(unit.id) ?? INITIAL_MEMORY);
     nextMemories.set(unit.id, result.memory);
     if (result.order) orders.push(result.order);
@@ -48,8 +49,8 @@ function perceive(unit: AiUnit, world: AiWorld, memory: AiMemory): Perception {
   const enemies = world.enemiesOf(unit);
   return {
     unit, world, memory,
-    nearestVisibleEnemy: nearestWithin(unit.position, enemies, unit.sightRange),
-    currentTarget: enemies.find((enemy) => enemy.id === memory.targetId) ?? null,
+    nearestVisibleEnemy: unit.attackRange>0 ? nearestWithin(unit.position, enemies, unit.sightRange) : null,
+    currentTarget: unit.attackRange>0 ? enemies.find((enemy) => enemy.id === memory.targetId) ?? null : null,
   };
 }
 

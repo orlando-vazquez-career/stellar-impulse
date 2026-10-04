@@ -1,3 +1,4 @@
+import { AUGMENTS_BY_ID, DURATION_MODES, effectsFor, effectiveFleetCap, effectiveBaseDamage, visionSources, isConcealed, statsForUnit, baseUpgradeCost, metalIncomeRate, captureDuration, type Augment } from '@impulso/sim';
 import { distance, statsFor, moveInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
 export { UNIT_STATS, damageAgainst, findPath } from '@impulso/sim';
 export type { UnitKind } from '@impulso/sim';
@@ -12,11 +13,22 @@ export interface VisibleSquad extends Omit<Squad, 'target' | 'attackTargetId' | 
   anchor?: Position | null;
   route?: Position[];
 }
+export type AugmentCardView = Pick<Augment,'id'|'tier'|'icon'|'text'>;
+export interface MatchLobbyView {
+  roomId:string; phase:'lobby'|'sector'|'results'; playerId:PlayerId;
+  map:'sector-01'|'espiral'; duration:'complete'|'skirmish';
+  seats:Record<PlayerId,{name:string;ready:boolean}|null>;
+}
+export interface AugmentView {
+  started: boolean; own: AugmentCardView[]; rival: AugmentCardView[]; nextChoiceTick: number | null;
+  offer: {choice:number;tier:Augment['tier'];cards:AugmentCardView[];remainingSeconds:number;rerolls:number} | null;
+}
 export interface PlayerView {
   schemaVersion: 1;
   mode: 'training';
   tick: number;
   duration?: World['duration'];
+  suddenDeath?: boolean;
   playerId: PlayerId;
   width: number;
   height: number;
@@ -25,6 +37,10 @@ export interface PlayerView {
   level?: number[];
   rules: Rules;
   unitStats?: Record<UnitKind, ShipStats>;
+  augments?: AugmentView;
+  chart?: { nodes: Position[]; guardians: Position[] };
+  base?: {damage:number;fleetCap:number;upgradeCosts:Record<'damage'|'capacity',number|null>};
+  productionForbidden?: UnitKind[];
   /** Metal and the hangar queue are private to their owner. */
   players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; baseUpgrades?: { damage: number; capacity: number }; production?: { kind: UnitKind; remainingTicks: number } | null }>;
   squads: VisibleSquad[];
@@ -33,16 +49,14 @@ export interface PlayerView {
   core: World['core'];
   visibleCells: Position[];
   winner: PlayerId | null;
+  metalRate?:number;
+  coreFraction?:number;
 }
 /** Fresh whitelist snapshot. Never send the authoritative world to a player. */
 export function viewFor(world: World, playerId: PlayerId): PlayerView {
   if (playerId !== 'p1' && playerId !== 'p2') throw new Error('Unknown player');
-  const sources: { position: Position; bonus: number }[] = [
-    { position: world.players[playerId].base, bonus: 0 },
-    ...world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0)
-      .map((unit) => ({ position: unit, bonus: statsFor(world, playerId, unit.kind).vision - world.rules.visionRadius })),
-  ];
-  const visible = (position: Position): boolean => sources.some((source) => distance(source.position, position) <= world.rules.visionRadius + source.bonus);
+  const sources=visionSources(world,playerId);
+  const visible=(position:Position)=>sources.some((source)=>distance(source.position,position)<=source.radius);
   const visibleCells: Position[] = [];
   for (let y = 0; y < world.height; y += 1) {
     for (let x = 0; x < world.width; x += 1) if (visible({ x, y })) visibleCells.push({ x, y });
@@ -55,22 +69,37 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
   players[playerId].baseUpgrades = { ...(world.players[playerId].baseUpgrades ?? { damage: 0, capacity: 0 }) };
   const order = world.production[playerId];
   players[playerId].production = order ? { kind: order.kind, remainingTicks: Math.max(0, order.readyTick - world.tick) } : null;
+  const card=(id:string):AugmentCardView=>{const a=AUGMENTS_BY_ID.get(id)!;return {id:a.id,tier:a.tier,icon:a.icon,text:{es:{...a.text.es},en:{...a.text.en}}};};
+  const match=world.augmentMatch, augmentPlayer=match?.players[playerId];
+  const offer=augmentPlayer?.offer;
+  const rivalId=playerId==='p1'?'p2':'p1';
   return {
-    schemaVersion: 1, mode: 'training', tick: world.tick, playerId, duration: world.duration,
+    metalRate:metalIncomeRate(world,playerId),
+    coreFraction:Math.max(...(['p1','p2'] as const).map(p=>world.core.progress[p]/captureDuration(world,p,world.rules.coreCaptureTicks,true))),
+    augments: match && augmentPlayer ? {started:match.started,own:augmentPlayer.chosen.map(card),rival:match.players[rivalId].chosen.map(card),
+      nextChoiceTick:world.duration && augmentPlayer.nextChoice<3 ? DURATION_MODES[world.duration].choices[augmentPlayer.nextChoice]! : null,
+      offer:offer ? {choice:offer.choice,tier:offer.tier,cards:offer.cards.map(card),remainingSeconds:Math.max(0,Math.ceil((offer.deadline-match.clock)/world.rules.tickRate)),rerolls:offer.rerolls} : null} : undefined,
+    chart:augmentPlayer?.chart ? {nodes:augmentPlayer.chart.nodes.map((p)=>({...p})),guardians:augmentPlayer.chart.guardians.map((p)=>({...p}))} : undefined,
+    base:{damage:effectiveBaseDamage(world,playerId),fleetCap:effectiveFleetCap(world,playerId),upgradeCosts:{damage:baseUpgradeCost('damage',world.players[playerId].baseUpgrades),capacity:baseUpgradeCost('capacity',world.players[playerId].baseUpgrades)}},
+    productionForbidden:effectsFor(world,playerId).flatMap((e)=>e.hook==='no-production'?[e.kind]:[]),
+    schemaVersion: 1, mode: 'training', tick: world.tick, playerId, duration: world.duration, suddenDeath: world.suddenDeath,
     width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })),
     ...(world.surface ? { walkable: [...world.surface.walkable], level: [...world.surface.level] } : {}),
     rules: { ...world.rules }, players,
     unitStats: Object.fromEntries(['explorer', 'interceptor', 'frigate', 'bomber'].map((kind) => [kind, statsFor(world, playerId, kind as UnitKind)])) as Record<UnitKind, ShipStats>,
-    squads: world.squads.filter((unit) => unit.ownerId === playerId || (unit.hp > 0 && visible(unit))).map((unit) => {
+    squads: world.squads.filter((unit) => unit.ownerId === playerId || (unit.hp > 0 && visible(unit) && !isConcealed(world,unit))).map((unit) => {
       const { target, attackTargetId } = unit;
+      const disguised=unit.isDecoy && unit.ownerId!==playerId;
+      const stats=statsForUnit(world,disguised?{...unit,isDecoy:false}:unit);
+      const maxHp=disguised?stats.maxHp:unit.maxHp;
       const publicUnit = {
         id: unit.id, ownerId: unit.ownerId, kind: unit.kind,
-        x: unit.x, y: unit.y, hp: unit.hp, maxHp: unit.maxHp, damage: statsFor(world, unit.ownerId, unit.kind).damage,
-        stats: statsFor(world, unit.ownerId, unit.kind), moveTicks: moveInterval(world, unit.ownerId, unit.kind),
+        x: unit.x, y: unit.y, hp: disguised?unit.hp/unit.maxHp*maxHp:unit.hp, maxHp, damage: stats.damage,
+        stats, moveTicks: moveInterval(world, unit.ownerId, unit.kind),
       };
       return unit.ownerId === playerId
         ? {
-          ...publicUnit, target: target ? { ...target } : null, attackTargetId, stance: unit.stance,
+          ...publicUnit, isDecoy:unit.isDecoy, target: target ? { ...target } : null, attackTargetId, stance: unit.stance,
           anchor: unit.anchor ? { ...unit.anchor } : null, route: unit.route.map((cell) => ({ ...cell })),
         }
         : publicUnit;

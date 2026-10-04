@@ -47,6 +47,12 @@ test('accepts a move and stop order, acknowledges them, and explains rejected ac
   });
   try {
     const rejected = next<{ reason: string; message: string }>('rejected');
+    const offered=await next<PlayerView>('view');
+    room.send('augmentPick',{choice:0,id:offered.augments!.offer!.cards[0]!.id});
+    await new Promise<void>((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(Error('opening timeout')),5000);
+      const off=room.onMessage('view',(view:PlayerView)=>{if(view.augments?.started){clearTimeout(timer);off();resolve();}});
+    });
     room.send('command', { seq: 1, type: 'attack', squadId: 'p1-interceptor', targetId: 'p1-interceptor' });
     expect(await rejected).toMatchObject({ reason: 'friendly_target', message: 'No puedo hacer eso.' });
 

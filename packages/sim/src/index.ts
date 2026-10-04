@@ -9,7 +9,7 @@ import {
   leashBlocks, loopRoute, MAX_ROUTE_POINTS, refreshArrivals, replaceDestination,
   type PlayerStance, type WalkBoard,
 } from './mecanicas/orders.js';
-import { findPath as findSurfacePath } from './maps/pathfinding.js';
+import { findPath as findSurfacePath, firstPathStep, pathExists } from './maps/pathfinding.js';
 import { SECTOR_01 } from './mapas/sector-01.js';
 import {
   BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, launchCell, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS,
@@ -40,14 +40,23 @@ export type PlayerId = 'p1' | 'p2';
 export interface Position { x: number; y: number }
 export type UnitKind = 'explorer' | 'interceptor' | 'frigate' | 'bomber';
 import { BASE_STATS, statsFor, moveInterval, type ShipStats, type StatModifier } from './stats.js';
-export { BASE_STATS, statsFor, moveInterval, damageAgainst } from './stats.js';
+export { BASE_STATS, SHIP_COUNTERS, statsFor, moveInterval, damageAgainst } from './stats.js';
+import { advanceAugmentClock, scheduleAugments, runAugmentEffects, cloneAugmentMatch, type AugmentMatch } from './augments/runtime.js';
+import { effectsFor, effectiveFleetCap, effectiveBaseDamage, baseIncome, visionSources, isConcealed, statsForUnit } from './augments/effects.js';
+import { observeKnowledge, type AiKnowledge } from './inteligencia-enemiga/knowledge.js';
+export { effectiveFleetCap, effectiveBaseDamage, effectsFor, statsForUnit, visionSources, isConcealed, captureDuration, metalIncomeRate } from './augments/effects.js';
+export { initializeAugments, grantAugment, pickAugment, rerollAugments, chooseAiAugment } from './augments/runtime.js';
+export { AUGMENT_CATALOG, AUGMENTS_BY_ID, INITIAL_AUGMENTS } from './augments/catalog.js';
+export type { Augment, AugmentTier, ChallengeId } from './augments/catalog.js';
+export type { AugmentOffer, AugmentMatch } from './augments/runtime.js';
 export type { ShipStats, StatModifier } from './stats.js';
+import { DURATION_MODES } from './match-modes.js';
 export { createMatchWorld, DURATION_MODES } from './match-modes.js';
 export type { DurationMode } from './match-modes.js';
 /** Compatibility metadata for the offline presentation sandbox. Authoritative rules use statsFor. */
 export const UNIT_STATS = Object.freeze(Object.fromEntries(Object.entries(BASE_STATS).map(([kind, stats]) =>
   [kind, Object.freeze({ ...stats, moveIntervalFactor: 1.7 / stats.speed, visionBonus: stats.vision - 4 })])) as Record<UnitKind, ShipStats & { moveIntervalFactor: number; visionBonus: number }>);
-export type SimEvent = { type: 'destroyed'; tick: number; attackerId: string; attackerOwner: PlayerId; victimId: string; victimOwner: PlayerId; kind: UnitKind; cost: number; shot: string };
+export type SimEvent = { type: 'destroyed'; tick: number; attackerId: string; attackerOwner: PlayerId | null; victimId: string; victimOwner: PlayerId; kind: UnitKind; cost: number; shot: string };
 export interface Rules {
   tickRate: number;
   moveEveryTicks: number;
@@ -92,8 +101,11 @@ export interface Player {
   lastSequence: number;
   baseUpgrades?: BaseUpgrades;
   statModifiers?: StatModifier[];
+  augments?: string[];
 }
 export interface Squad extends Position {
+  arrivalLocked?:boolean;
+  arrivalSeat?:Position|null;
   id: string;
   ownerId: PlayerId;
   kind: UnitKind;
@@ -104,6 +116,9 @@ export interface Squad extends Position {
   lastDamageTick?: number;
   lastMovedTick?: number;
   kills?: number;
+  veteran?: boolean;
+  isDecoy?: boolean;
+  expiresAt?: number;
   stance: PlayerStance;
   anchor: Position | null;
   gather: Position | null;
@@ -118,6 +133,7 @@ export interface Squad extends Position {
 export function createSquad(id: string, ownerId: PlayerId, kind: UnitKind, position: Position, world?: World): Squad {
   const stats = statsFor(world ?? { rules: TRAINING_RULES }, ownerId, kind);
   return { id, ownerId, kind, x: position.x, y: position.y,
+    lastMovedTick: world?.tick ?? 0, lastAttackTick: world?.tick ?? 0, lastDamageTick: world?.tick ?? 0,
     hp: stats.maxHp, maxHp: stats.maxHp, damage: stats.damage, stance: 'march',
     anchor: null, gather: null, target: null, route: [], attackTargetId: null };
 }
@@ -163,13 +179,16 @@ export interface World {
   duration?: import('./match-modes.js').DurationMode;
   seed?: number;
   events?: SimEvent[];
+  augmentMatch?: AugmentMatch;
+  suddenDeath?: boolean;
+  knowledge?: Record<PlayerId,AiKnowledge>;
 }
 export type CommandRejection =
   | 'invalid_command' | 'unknown_player' | 'stale_sequence'
   | 'unknown_squad' | 'not_owner' | 'squad_destroyed'
   | 'out_of_bounds' | 'blocked_destination' | 'unreachable_destination' | 'route_full' | 'match_finished'
   | 'unknown_target' | 'friendly_target' | 'target_destroyed' | 'target_not_visible' | 'cannot_attack' | 'target_unavailable'
-  | 'insufficient_metal' | 'fleet_full' | 'production_busy' | 'upgrade_maxed';
+  | 'insufficient_metal' | 'fleet_full' | 'production_busy' | 'upgrade_maxed' | 'production_forbidden' | 'opening_selection';
 export type CommandResult =
   | { accepted: true; world: World }
   | { accepted: false; reason: CommandRejection; world: World };
@@ -269,10 +288,9 @@ export function createWorldOn(sector: SectorLeido): World {
 export function distance(a: Position, b: Position): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
-function canSee(world: World, playerId: PlayerId, target: Position): boolean {
-  if (distance(world.players[playerId].base, target) <= world.rules.visionRadius) return true;
-  return world.squads.some((unit) => unit.ownerId === playerId && unit.hp > 0
-    && distance(unit, target) <= statsFor(world, unit.ownerId, unit.kind).vision);
+export function canSee(world: World, playerId: PlayerId, target: Position): boolean {
+  if ('ownerId' in target && target.ownerId !== playerId && 'kind' in target && isConcealed(world,target as Squad)) return false;
+  return visionSources(world,playerId).some((source) => distance(source.position,target)<=source.radius);
 }
 function attackTarget(world: World, id: string): Squad | Guardian | undefined {
   return world.squads.find((unit) => unit.id === id) ?? world.guardians.find((unit) => unit.id === id);
@@ -324,15 +342,16 @@ export function findPath(start: Position, target: Position, width: number, heigh
   path.push({ ...start });
   return path.reverse();
 }
-function cloneWorld(world: World): World {
+export function cloneWorld(world: World): World {
   return {
-    ...world, events: [], rules: { ...world.rules }, obstacles: world.obstacles.map((point) => ({ ...point })),
+    ...world, augmentMatch: cloneAugmentMatch(world.augmentMatch), events: [], rules: { ...world.rules }, obstacles: world.obstacles.map((point) => ({ ...point })),
     players: {
-      p1: { ...world.players.p1, base: { ...world.players.p1.base }, statModifiers: world.players.p1.statModifiers?.map((modifier) => ({ ...modifier })), baseUpgrades: world.players.p1.baseUpgrades && { ...world.players.p1.baseUpgrades } },
-      p2: { ...world.players.p2, base: { ...world.players.p2.base }, statModifiers: world.players.p2.statModifiers?.map((modifier) => ({ ...modifier })), baseUpgrades: world.players.p2.baseUpgrades && { ...world.players.p2.baseUpgrades } },
+      p1: { ...world.players.p1, augments: world.players.p1.augments && [...world.players.p1.augments], base: { ...world.players.p1.base }, statModifiers: world.players.p1.statModifiers?.map((modifier) => ({ ...modifier })), baseUpgrades: world.players.p1.baseUpgrades && { ...world.players.p1.baseUpgrades } },
+      p2: { ...world.players.p2, augments: world.players.p2.augments && [...world.players.p2.augments], base: { ...world.players.p2.base }, statModifiers: world.players.p2.statModifiers?.map((modifier) => ({ ...modifier })), baseUpgrades: world.players.p2.baseUpgrades && { ...world.players.p2.baseUpgrades } },
     },
     squads: world.squads.map((unit) => ({
       ...unit,
+      arrivalSeat:unit.arrivalSeat?{...unit.arrivalSeat}:null,
       anchor: unit.anchor ? { ...unit.anchor } : null,
       gather: unit.gather ? { ...unit.gather } : null,
       target: unit.target ? { ...unit.target } : null,
@@ -343,7 +362,7 @@ function cloneWorld(world: World): World {
       transit: unit.transit ? { ...unit.transit, from: { ...unit.transit.from } } : undefined })),
     nodes: world.nodes.map((node) => ({ ...node, progress: { ...node.progress } })),
     core: { ...world.core, progress: { ...world.core.progress } },
-    surface: copySurface(world.surface),
+    surface: world.duration ? world.surface : copySurface(world.surface),
     production: {
       p1: world.production.p1 ? { ...world.production.p1 } : null,
       p2: world.production.p2 ? { ...world.production.p2 } : null,
@@ -363,14 +382,18 @@ const PATROL_OFFSETS: readonly Position[] = [
   { x: 0, y: 0 }, { x: -1, y: 0 }, { x: -1, y: 1 }, { x: 0, y: 1 },
 ];
 
+const frozenBoards=new WeakMap<Superficie,WalkBoard>();
 function boardOf(world: World): WalkBoard {
   if (!world.surface) return { width: world.width, height: world.height, blocked: blockedCells(world.obstacles) };
+  const cached=frozenBoards.get(world.surface);if(cached)return cached;
   const blocked = new Set<string>();
   world.surface.walkable.forEach((open, index) => {
     if (open) return;
     blocked.add(`${index % world.width},${Math.floor(index / world.width)}`);
   });
-  return { width: world.width, height: world.height, blocked };
+  const board={ width: world.width, height: world.height, blocked };
+  if(Object.isFrozen(world.surface))frozenBoards.set(world.surface,board);
+  return board;
 }
 function queueOrigin(squad: Squad): Position {
   return squad.route.at(-1) ?? squad.gather ?? squad;
@@ -386,14 +409,13 @@ function rejectDestination(world: World, trip: { from: Position; x: number; y: n
 }
 function routeExists(world: World, from: Position, to: Position): boolean {
   if (from.x === to.x && from.y === to.y) return true;
-  if (world.surface) return findSurfacePath(world.surface, from, to).status === 'found';
+  if (world.surface) return pathExists(world.surface,from,to);
   return findPath(from, to, world.width, world.height, world.obstacles).length > 0;
 }
 function nextStep(world: World, from: Position, to: Position): Position | null {
   if (from.x === to.x && from.y === to.y) return null;
   if (world.surface) {
-    const result = findSurfacePath(world.surface, from, to);
-    return result.status === 'found' ? result.path[0] ?? null : null;
+    return firstPathStep(world.surface,from,to);
   }
   return findPath(from, to, world.width, world.height, world.obstacles)[1] ?? null;
 }
@@ -407,13 +429,22 @@ function cellOccupied(world: World, cell: Position, selfId: string): boolean {
   const guardian = world.guardians.some((unit) => unit.hp > 0 && unit.id !== selfId && holds(unit));
   return ship || guardian;
 }
+/** Allied hulls may pass beside each other diagonally; their destination cells
+ * and departure reservations remain exclusive. Hostile corners stay solid. */
+function cornerOccupied(world:World,cell:Position,squad:Squad):boolean {
+  const holds=(u:Squad|Guardian)=>(u.x===cell.x&&u.y===cell.y)||(!!u.transit&&u.transit.untilTick>world.tick&&u.transit.from.x===cell.x&&u.transit.from.y===cell.y);
+  return world.guardians.some(u=>u.hp>0&&holds(u))||world.squads.some(u=>u.hp>0&&u.id!==squad.id&&u.ownerId!==squad.ownerId&&holds(u));
+}
 
 /** Replan around live traffic without changing the static terrain or losing the order. */
+const trafficPaths=new WeakMap<Superficie,Map<string,Position|null>>();
 function trafficStep(world: World, squad: Squad, destination: Position): Position | null {
   if (cellOccupied(world, destination, squad.id)) {
     if (withinReach({ diagonalReach: world.surface !== null }, squad, destination)) return null;
     // A blocked objective still needs a legal approach, especially in the legacy drill
     // where a diagonal neighbour is outside weapons range.
+    const allied=world.squads.some(u=>u.hp>0&&u.ownerId===squad.ownerId&&u.x===destination.x&&u.y===destination.y);
+    if(!allied){
     const approach = DIRECTIONS.map(([dx, dy]) => ({ x: destination.x + dx, y: destination.y + dy }))
       .filter((point) => cellOnBoard(world, point) && !cellOccupied(world, point, squad.id)
         && withinReach({ diagonalReach: world.surface !== null }, point, destination)
@@ -421,21 +452,44 @@ function trafficStep(world: World, squad: Squad, destination: Position): Positio
       .sort((a, b) => distance(a, squad) - distance(b, squad) || a.y - b.y || a.x - b.x)[0];
     if (!approach) return null;
     destination = approach;
+    }
   }
   const direct = nextStep(world, squad, destination);
   const clear = (point: Position) => !cellOccupied(world, point, squad.id);
   const cornerClear = (point: Position) => point.x === squad.x || point.y === squad.y
-    || (clear({ x: point.x, y: squad.y }) && clear({ x: squad.x, y: point.y }));
+    || (!cornerOccupied(world,{ x: point.x, y: squad.y },squad) && !cornerOccupied(world,{ x: squad.x, y: point.y },squad));
   if (!direct || (clear(direct) && cornerClear(direct))) return direct;
+  if(world.squads.some(u=>u.hp>0&&u.ownerId===squad.ownerId&&u.arrivalSeat&&!movementDestination(world,u)&&u.x===direct.x&&u.y===direct.y))return null;
   // An occupied goal is allowed in the search (e.g. an attack target), but never entered.
   const open = (point: Position) => (point.x === destination.x && point.y === destination.y) || clear(point);
   let alternative: Position | null;
   if (world.surface) {
-    const walkable = world.surface.walkable.map((walkable, index) => walkable
-      && open({ x: index % world.width, y: Math.floor(index / world.width) }));
+    // Copy terrain once, then mark occupied cells. Scanning every hull for every
+    // map cell produces the same mask but dominates large headless experiments.
+    const walkable = world.surface.walkable.slice();
+    const block=(point:Position)=>{if(point.x!==destination.x||point.y!==destination.y)walkable[point.y*world.width+point.x]=false;};
+    for(const unit of [...world.squads,...world.guardians])if(unit.hp>0&&unit.id!==squad.id){
+      if('ownerId' in unit&&unit.ownerId===squad.ownerId&&unit.arrivalSeat&&!movementDestination(world,unit))continue;
+      block(unit);
+      if(unit.transit&&unit.transit.untilTick>world.tick)block(unit.transit.from);
+    }
     walkable[squad.y * world.width + squad.x] = true;
-    const route = findSurfacePath({ ...world.surface, walkable }, squad, destination);
-    alternative = route.status === 'found' ? route.path[0] ?? null : null;
+    let cache:Map<string,Position|null>|undefined,key='';
+    if(Object.isFrozen(world.surface)) {
+      cache=trafficPaths.get(world.surface);if(!cache){cache=new Map();trafficPaths.set(world.surface,cache);}
+      const occupied:number[]=[];
+      for(const unit of [...world.squads,...world.guardians])if(unit.hp>0&&unit.id!==squad.id) {
+        if('ownerId' in unit&&unit.ownerId===squad.ownerId&&unit.arrivalSeat&&!movementDestination(world,unit))continue;
+        occupied.push(unit.y*world.width+unit.x);
+        if(unit.transit&&unit.transit.untilTick>world.tick)occupied.push(unit.transit.from.y*world.width+unit.transit.from.x);
+      }
+      key=`${squad.x},${squad.y}:${destination.x},${destination.y}:${[...new Set(occupied)].sort((a,b)=>a-b).join(',')}`;
+    }
+    if(cache?.has(key))alternative=cache.get(key)!;
+    else {
+      alternative=firstPathStep({...world.surface,walkable},squad,destination);
+      if(cache){if(cache.size>=2048)cache.delete(cache.keys().next().value!);cache.set(key,alternative);}
+    }
   } else {
     const occupied = [...world.squads.filter((unit) => unit.hp > 0 && unit.id !== squad.id),
       ...world.guardians.filter((unit) => unit.hp > 0)].filter((unit) => !open(unit));
@@ -449,7 +503,7 @@ function commitOrder(world: World, playerId: PlayerId, seq: number, squadId: str
   const nextSquad = next.squads.find((unit) => unit.id === squadId);
   if (!nextSquad) return { accepted: false, reason: 'unknown_squad', world };
   write(nextSquad);
-  refreshArrivals(next.squads.filter((unit) => unit.hp > 0), boardOf(next));
+  refreshArrivals(next.squads.filter((unit) => unit.hp > 0), boardOf(next),(from,to)=>routeExists(next,from,to));
   return { accepted: true, world: next };
 }
 function cellOnBoard(world: World, cell: Position): boolean {
@@ -464,6 +518,7 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
   const parsed = parseCommand(raw);
   if (!parsed.ok) return reject(parsed.reason);
   if (world.winner !== null) return reject('match_finished');
+  if(world.augmentMatch && !world.augmentMatch.started) return reject('opening_selection');
   const command = parsed.command;
   if (command.seq <= world.players[playerId].lastSequence) return reject('stale_sequence');
   if (command.type === 'disband') {
@@ -479,7 +534,7 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
       unit.hp = 0;
       delete unit.transit;
     }
-    refreshArrivals(next.squads.filter((unit) => unit.hp > 0), boardOf(next));
+    refreshArrivals(next.squads.filter((unit) => unit.hp > 0), boardOf(next),(from,to)=>routeExists(next,from,to));
     return { accepted: true, world: next };
   }
   if (command.type === 'upgrade_base') {
@@ -576,26 +631,28 @@ function moveGuardians(world: World): void {
   }
 }
 /** Only mutually blocked allies may exchange cells, atomically on a shared movement beat. */
-function swapBlockedAllies(world: World, squad: Squad, destination: Position, moved: Set<string>): boolean {
-  const step = nextStep(world, squad, destination);
+function swapBlockedAllies(world: World, squad: Squad, destination: Position, moved: Set<string>, passingCell?: Position): boolean {
+  const step = nextStep(world, squad, passingCell ?? destination);
   if (!step || (squad.transit && squad.transit.untilTick > world.tick)) return false;
   const other = world.squads.find((unit) => unit.hp > 0 && unit.ownerId === squad.ownerId
     && unit.id !== squad.id && unit.x === step.x && unit.y === step.y);
   if (!other || moved.has(other.id) || (other.transit && other.transit.untilTick > world.tick)) return false;
   const otherDestination = movementDestination(world, other);
   const interval = (unit: Squad) => moveInterval(world, unit.ownerId, unit.kind);
-  if (!otherDestination || world.tick % interval(other) !== 0) return false;
-  const otherStep = nextStep(world, other, otherDestination);
+  const idle=!otherDestination&&other.stance==='march'&&!other.attackTargetId;
+  if(idle&&other.x===destination.x&&other.y===destination.y&&!other.arrivalSeat)return false;
+  if ((!otherDestination&&!idle) || (!idle&&world.tick % interval(other) !== 0)) return false;
+  const otherStep = idle?nextStep(world,other,squad):nextStep(world, other, otherDestination!);
   if (!otherStep || otherStep.x !== squad.x || otherStep.y !== squad.y
-    || trafficStep(world, other, otherDestination) !== null
+    || (!idle&&trafficStep(world, other, otherDestination!) !== null)
     || leashBlocks(squad, step, world.rules.visionRadius)
     || leashBlocks(other, otherStep, world.rules.visionRadius)) return false;
   // The exception belongs to this pair only. Third-party hulls and departure
-  // reservations, including diagonal corners, still block both movements.
+  // reservations still block both movements; hostile diagonal corners stay solid.
   const traffic = { ...world, squads: world.squads.filter((unit) => unit.id !== squad.id && unit.id !== other.id) };
   const clear = (from: Position, to: Position) => !cellOccupied(traffic, to, '')
-    && (from.x === to.x || from.y === to.y || (!cellOccupied(traffic, { x: to.x, y: from.y }, '')
-      && !cellOccupied(traffic, { x: from.x, y: to.y }, '')));
+    && (from.x === to.x || from.y === to.y || (!cornerOccupied(traffic, { x: to.x, y: from.y }, squad)
+      && !cornerOccupied(traffic, { x: from.x, y: to.y }, squad)));
   if (!clear(squad, other) || !clear(other, squad)) return false;
   const from = { x: squad.x, y: squad.y };
   const otherFrom = { x: other.x, y: other.y };
@@ -603,11 +660,28 @@ function swapBlockedAllies(world: World, squad: Squad, destination: Position, mo
   other.transit = { from: otherFrom, untilTick: world.tick + interval(other) };
   Object.assign(squad, otherFrom);
   Object.assign(other, from);
+  if(idle&&other.arrivalSeat)other.arrivalSeat={...from};
+  squad.lastMovedTick = other.lastMovedTick = world.tick;
   moved.add(squad.id);
   moved.add(other.id);
   consumeWaypoint(squad);
   consumeWaypoint(other);
   return true;
+}
+/** Cardinal exchanges open a packed formation even when diagonal corners are full. */
+function passParkedAlly(world:World,squad:Squad,destination:Position,moved:Set<string>):boolean {
+  const options=world.squads.filter(u=>u.hp>0&&u.ownerId===squad.ownerId&&u.id!==squad.id
+    &&u.stance==='march'&&!movementDestination(world,u)&&!u.attackTargetId&&!moved.has(u.id)
+    &&distance(squad,u)===1
+    &&(u.arrivalSeat||u.x!==destination.x||u.y!==destination.y))
+    .sort((a,b)=>distance(a,destination)-distance(b,destination)||(a.id<b.id?-1:a.id>b.id?1:0));
+  const length=(from:Position)=>{if(!world.surface)return findPath(from,destination,world.width,world.height,world.obstacles).length;const result=findSurfacePath(world.surface,from,destination);return result.status==='found'?result.path.length:Infinity;};
+  const remaining=length(squad);
+  for(const other of options){
+    if(length(other)>=remaining&&distance(other,destination)>=distance(squad,destination))continue;
+    if(swapBlockedAllies(world,squad,destination,moved,other))return true;
+  }
+  return false;
 }
 
 /** At a ramp or bend the ships may contest a third cell rather than each other's.
@@ -624,6 +698,7 @@ function yieldToBlockedAlly(world: World, squad: Squad, destination: Position): 
   if (!direct) return false;
   const other = [...world.squads].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
     .find((unit) => unit.hp > 0 && unit.ownerId === squad.ownerId && squad.id < unit.id
+      && !(squad.gather&&unit.gather&&squad.gather.x===unit.gather.x&&squad.gather.y===unit.gather.y)
       && distance(squad, unit) <= 2 && movementDestination(world, unit)
       && routeBlockedByTraffic(world, unit, movementDestination(world, unit)!));
   if (!other) return false;
@@ -647,6 +722,7 @@ function yieldToBlockedAlly(world: World, squad: Squad, destination: Position): 
   squad.transit = { from: { x: squad.x, y: squad.y }, untilTick: world.tick + interval };
   squad.trafficYieldUntil = world.tick + 3 * Math.max(interval, otherInterval);
   Object.assign(squad, pocket);
+  squad.lastMovedTick = world.tick;
   return true;
 }
 
@@ -656,6 +732,7 @@ function moveSquads(world: World): void {
   // of which member is processed first.
   for (const squad of world.squads) {
     if (squad.hp <= 0) continue;
+    if(squad.gather&&squad.target){squad.arrivalLocked=true;squad.arrivalSeat={...squad.target};}
     releaseLostTarget(world, squad);
     acquireStanceTarget(world, squad);
   }
@@ -665,10 +742,13 @@ function moveSquads(world: World): void {
     if (!destination) continue;
     const interval = moveInterval(world, squad.ownerId, squad.kind);
     if (world.tick % interval !== 0) continue;
-    if (routeBlockedByTraffic(world, squad, destination) && yieldToBlockedAlly(world, squad, destination)) continue;
+    if(routeBlockedByTraffic(world,squad,destination)){
+      if(yieldToBlockedAlly(world,squad,destination))continue;
+    }
     const next = trafficStep(world, squad, destination);
     if (!next) {
       if (swapBlockedAllies(world, squad, destination, moved)) continue;
+      if (passParkedAlly(world,squad,destination,moved)) continue;
       if (yieldToBlockedAlly(world, squad, destination)) continue;
       if (squad.x === destination.x && squad.y === destination.y) consumeWaypoint(squad);
       // Traffic is temporary: keep the command and retry when the lane frees up.
@@ -682,23 +762,27 @@ function moveSquads(world: World): void {
     squad.lastMovedTick = world.tick;
     consumeWaypoint(squad);
   }
-  refreshArrivals(world.squads.filter((unit) => unit.hp > 0), boardOf(world));
+  refreshArrivals(world.squads.filter((unit) => unit.hp > 0), boardOf(world),(from,to)=>routeExists(world,from,to));
 }
 function productionRefusal(world: World, playerId: PlayerId, kind: UnitKind): CommandRejection | null {
   if (world.production[playerId]) return 'production_busy';
-  if (world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0).length >= fleetCapacity(world.players[playerId].baseUpgrades)) return 'fleet_full';
+  if (effectsFor(world,playerId).some((e)=>e.hook==='no-production' && e.kind===kind)) return 'production_forbidden';
+  if (world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0 && !unit.isDecoy).length >= effectiveFleetCap(world, playerId)) return 'fleet_full';
   if (world.players[playerId].metal < statsFor(world, playerId, kind).cost) return 'insufficient_metal';
   return null;
 }
 function startProduction(world: World, playerId: PlayerId, kind: UnitKind): void {
   world.players[playerId].metal -= statsFor(world, playerId, kind).cost;
-  world.production[playerId] = { kind, readyTick: world.tick + statsFor(world, playerId, kind).buildTicks };
+  const state=world.augmentMatch?.players[playerId];
+  const factor=state && state.fastBuilds>0 ? state.fastFactor : 1;
+  if(state && state.fastBuilds>0) state.fastBuilds--;
+  world.production[playerId] = { kind, readyTick: world.tick + Math.max(1, Math.round(statsFor(world, playerId, kind).buildTicks * factor)) };
 }
 /** Base income, hangar launches and repairs: the base guarantees a way back into the fight. */
 function runBases(world: World): void {
   for (const playerId of ['p1', 'p2'] as const) {
     const player = world.players[playerId];
-    if (world.tick % BASE_INCOME_TICKS === 0) player.metal += 1;
+    if (world.tick % BASE_INCOME_TICKS === 0) player.metal += baseIncome(world, playerId);
     const order = world.production[playerId];
     if (order && world.tick >= order.readyTick) {
       const cell = launchCell(player.base, world.width, world.height,
@@ -711,9 +795,14 @@ function runBases(world: World): void {
       }
     }
     if (world.tick % world.rules.tickRate !== 0) continue;
+    const effects=effectsFor(world,playerId);
+    if(effects.some((e)=>e.hook==='no-base-repair')) continue;
+    const repair=effects.find((e)=>e.hook==='repair');
+    const repairRadius=repair?.hook==='repair' ? repair.radius : REPAIR_RADIUS;
+    const repairRate=repair?.hook==='repair' ? repair.rate : 1;
     for (const squad of world.squads) {
-      if (squad.ownerId === playerId && squad.hp > 0 && squad.hp < squad.maxHp && distance(squad, player.base) <= REPAIR_RADIUS) {
-        squad.hp = Math.min(squad.maxHp, squad.hp + 1);
+      if (squad.ownerId === playerId && squad.hp > 0 && squad.hp < squad.maxHp && distance(squad, player.base) <= repairRadius) {
+        squad.hp = Math.min(squad.maxHp, squad.hp + repairRate);
       }
     }
   }
@@ -722,7 +811,10 @@ function runBases(world: World): void {
 export function stepWorld(world: World): World {
   if (world.winner !== null) return world;
   const next = cloneWorld(world);
+  if (advanceAugmentClock(next)) return next;
   next.tick += 1;
+  if (next.duration && next.tick >= DURATION_MODES[next.duration].suddenDeathTick) next.suddenDeath = true;
+  scheduleAugments(next);
   next.core.open = next.tick >= next.rules.coreOpenTick;
   if (next.economy) runBases(next);
   moveSquads(next);
@@ -732,29 +824,49 @@ export function stepWorld(world: World): World {
   const capture = captureContext(next);
   for (const node of next.nodes) {
     const captor = advanceCapture(next, node, next.rules.nodeCaptureTicks, capture);
-    if (captor) node.ownerId = captor;
-    if (node.kind === 'metal' && node.ownerId && next.tick % next.rules.tickRate === 0) next.players[node.ownerId].metal += 1;
+    if (captor && node.ownerId !== captor) {
+      node.ownerId=captor;
+      const state=next.augmentMatch?.players[captor];
+      if(state && state.captureBounties>0) {
+        const bounty=effectsFor(next,captor).find((e)=>e.hook==='capture-bounty');
+        if(bounty?.hook==='capture-bounty') { next.players[captor].metal+=bounty.amount;state.captureBounties--; }
+      }
+    }
+    if (node.ownerId) {
+      const effects=effectsFor(next,node.ownerId);
+      let income=node.kind==='metal' && next.tick%next.rules.tickRate===0?1:0;
+      for(const e of effects)if(e.hook==='node-income'&&e.interval&&next.tick%e.interval===0)income+=e.amount??0;
+      next.players[node.ownerId].metal+=effects.reduce((value,e)=>e.hook==='node-income'&&e.factor?value*e.factor:value,income);
+    }
   }
   if (next.core.open) next.winner = advanceCapture(next, next.core, next.rules.coreCaptureTicks, capture);
+  runAugmentEffects(next);
+  observeKnowledge(next);
   return next;
 }
 
 /** Bases fire once per combat beat at the nearest hostile in their visible perimeter. */
 function resolveBaseDefense(world: World): void {
   if (world.tick % world.rules.attackEveryTicks !== 0) return;
-  const hits = new Map<string, number>();
+  const hits = new Map<string, { damage: number; owner: PlayerId }>();
   for (const player of Object.values(world.players)) {
-    const damage = baseDamage(player.baseUpgrades);
+    const damage = effectiveBaseDamage(world,player.id);
     if (damage <= 0) continue;
     const target = [...world.squads.filter((unit) => unit.ownerId !== player.id && unit.hp > 0),
       ...world.guardians.filter((unit) => guardianActive(world, unit))]
-      .filter((unit) => distance(unit, player.base) <= Math.min(BASE_DEFENSE_RANGE, world.rules.visionRadius))
+      .filter((unit) => distance(unit, player.base) <= BASE_DEFENSE_RANGE && canSee(world,player.id,unit))
       .sort((a, b) => distance(a, player.base) - distance(b, player.base) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
-    if (target) hits.set(target.id, (hits.get(target.id) ?? 0) + damage);
+    if (target) hits.set(target.id, { damage: (hits.get(target.id)?.damage ?? 0) + damage, owner: player.id });
   }
   for (const unit of [...world.squads, ...world.guardians]) {
-    const damage = hits.get(unit.id);
-    if (damage) unit.hp = Math.max(0, unit.hp - Math.max(1, damage - ('kind' in unit ? statsFor(world, unit.ownerId, unit.kind).armor : 0)));
+    const hit = hits.get(unit.id);
+    if (!hit) continue;
+    const alive=unit.hp>0;
+    unit.hp = Math.max(0, unit.hp - Math.max(1, hit.damage - ('kind' in unit ? statsForUnit(world,unit).armor : 0)));
+    if ('kind' in unit) {
+      unit.lastDamageTick=world.tick;
+      if (alive && unit.hp===0 && !unit.isDecoy) world.events?.push({type:'destroyed',tick:world.tick,attackerId:`${hit.owner}-base`,attackerOwner:hit.owner,victimId:unit.id,victimOwner:unit.ownerId,kind:unit.kind,cost:statsFor(world,unit.ownerId,unit.kind).cost,shot:`${hit.owner}-base:${world.tick}`});
+    }
   }
 }
 function releaseLostTarget(world: World, squad: Squad): void {
@@ -775,7 +887,7 @@ function acquireStanceTarget(world: World, squad: Squad): void {
 }
 function nearestFoe(world: World, squad: Squad, origin: Position, radius: number): Squad | Guardian | undefined {
   const foes: Array<Squad | Guardian> = [
-    ...world.squads.filter((unit) => unit.hp > 0 && unit.ownerId !== squad.ownerId),
+    ...world.squads.filter((unit) => unit.hp > 0 && unit.ownerId !== squad.ownerId && canSee(world,squad.ownerId,unit)),
     ...world.guardians.filter((unit) => guardianActive(world, unit)),
   ];
   let best: Squad | Guardian | undefined;
@@ -799,23 +911,27 @@ function movementDestination(world: World, squad: Squad): Position | null {
   return squad.target ?? guardDestination(squad);
 }
 function clearStuckRoute(squad: Squad): void {
+  squad.arrivalLocked=false;squad.arrivalSeat=null;
   squad.target = null;
   squad.gather = null;
   squad.route = [];
   squad.attackTargetId = null;
 }
-function toAi(world: World, unit: Squad): AiUnit {
+function toAi(world: World, unit: Squad, viewer:PlayerId=unit.ownerId): AiUnit {
+  const disguised=unit.isDecoy && viewer!==unit.ownerId;
+  const stats=statsForUnit(world,disguised?{...unit,isDecoy:false}:unit);
   return {
-    id: unit.id, position: { x: unit.x, y: unit.y }, health: unit.hp, maxHealth: unit.maxHp,
+    id: unit.id, position: { x: unit.x, y: unit.y }, health: disguised?unit.hp/unit.maxHp*stats.maxHp:unit.hp, maxHealth: disguised?stats.maxHp:unit.maxHp,
     // Diego's AI measures Manhattan distance; a diagonal neighbour is 2 on sector maps.
-    attackRange: statsFor(world, unit.ownerId, unit.kind).range, sightRange: statsFor(world, unit.ownerId, unit.kind).vision,
+    attackRange: stats.range, sightRange: stats.vision,
+    canRepair: !effectsFor(world,unit.ownerId).some(e=>e.hook==='no-base-repair') || effectsFor(world,unit.ownerId).some(e=>e.hook==='field-repair'),
   };
 }
-function enemyScene(world: World, difficulty: RivalDifficulty): EnemyScene {
-  const units = world.squads.filter((unit) => unit.ownerId === 'p2' && unit.hp > 0);
+function enemyScene(world: World, difficulty: RivalDifficulty, rival: PlayerId): EnemyScene {
+  const units = world.squads.filter((unit) => unit.ownerId === rival && unit.hp > 0);
   const patrolByUnit: Record<string, Position[]> = {};
   const retreatByUnit: Record<string, Position> = {};
-  const goals = world.economy ? rivalGoals(world, 'p2', (target) => canSee(world, 'p2', target), difficulty) : new Map<string, Position>();
+  const goals = world.economy ? rivalGoals(world, rival, (target) => canSee(world, rival, target), difficulty) : new Map<string, Position>();
   for (const unit of units) {
     const base = world.players[unit.ownerId].base;
     const goal = goals.get(unit.id);
@@ -827,41 +943,42 @@ function enemyScene(world: World, difficulty: RivalDifficulty): EnemyScene {
   }
   return {
     tick: world.tick,
+    thinkAll: !!world.duration,
     units: units.map((unit) => toAi(world, unit)),
-    enemies: world.squads.filter((unit) => unit.ownerId === 'p1' && unit.hp > 0).map((unit) => toAi(world, unit)),
+    enemies: world.squads.filter((unit) => unit.ownerId !== rival && unit.hp > 0 && canSee(world,rival,unit)).map((unit) => toAi(world, unit,rival)),
     patrolByUnit, retreatByUnit,
   };
 }
 /** Training rival only. A seated human on p2 must not call this. */
-export function planTrainingEnemy(world: World, memories: ReadonlyMap<string, AiMemory>, difficulty: RivalDifficulty = 'medium'): {
+export function planTrainingEnemy(world: World, memories: ReadonlyMap<string, AiMemory>, difficulty: RivalDifficulty = 'medium', rival: PlayerId = 'p2'): {
   memories: ReadonlyMap<string, AiMemory>;
   orders: readonly AiOrder[];
 } {
-  return planEnemyTurn(enemyScene(world, difficulty), memories);
+  return planEnemyTurn(enemyScene(world, difficulty, rival), memories);
 }
 /** One full rival turn for an empty p2 seat: hangar order, then fleet orders. */
-export function runTrainingRival(world: World, memories: ReadonlyMap<string, AiMemory>, difficulty: RivalDifficulty = 'medium'): {
+export function runTrainingRival(world: World, memories: ReadonlyMap<string, AiMemory>, difficulty: RivalDifficulty = 'medium', rival: PlayerId = 'p2'): {
   world: World; memories: ReadonlyMap<string, AiMemory>;
 } {
   let next = world;
-  const kind = world.economy ? rivalProduction(world, 'p2', difficulty) : null;
+  const kind = world.economy ? rivalProduction(world, rival, difficulty) : null;
   if (kind) {
     next = cloneWorld(world);
-    startProduction(next, 'p2', kind);
+    startProduction(next, rival, kind);
   }
-  const planned = planTrainingEnemy(next, memories, difficulty);
-  return { world: applyEnemyOrders(next, planned.orders), memories: planned.memories };
+  const planned = planTrainingEnemy(next, memories, difficulty, rival);
+  return { world: applyEnemyOrders(next, planned.orders, rival), memories: planned.memories };
 }
 /** Applies rival orders without touching player sequence numbers. */
-export function applyEnemyOrders(world: World, orders: readonly AiOrder[]): World {
+export function applyEnemyOrders(world: World, orders: readonly AiOrder[], rival: PlayerId = 'p2'): World {
   if (orders.length === 0) return world;
   const next = cloneWorld(world);
   for (const order of orders) {
-    const squad = next.squads.find((unit) => unit.id === order.unitId && unit.ownerId === 'p2' && unit.hp > 0);
+    const squad = next.squads.find((unit) => unit.id === order.unitId && unit.ownerId === rival && unit.hp > 0);
     if (!squad) continue;
     if (order.kind === 'attack') {
       const target = attackTarget(next, order.targetId);
-      if (!target || target.hp <= 0 || ('ownerId' in target && target.ownerId !== 'p1')) continue;
+      if (!target || target.hp <= 0 || ('ownerId' in target && target.ownerId === rival)) continue;
       squad.attackTargetId = order.targetId;
       squad.gather = null;
       squad.target = null;
