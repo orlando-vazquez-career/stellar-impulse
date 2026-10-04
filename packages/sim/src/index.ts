@@ -14,12 +14,15 @@ import { SECTOR_01 } from './mapas/sector-01.js';
 import {
   BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, launchCell, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS,
   type ProductionState,
+  baseUpgradeCost, fleetCapacity, baseDamage, BASE_DEFENSE_RANGE, type BaseUpgrades,
 } from './economia.js';
 import { rivalGoals, rivalProduction, type RivalDifficulty } from './inteligencia-enemiga/estrategia.js';
 export { RIVAL_PROFILES } from './inteligencia-enemiga/estrategia.js';
 export type { RivalDifficulty } from './inteligencia-enemiga/estrategia.js';
 export { BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS } from './economia.js';
 export type { ProductionOrder, ProductionState } from './economia.js';
+export { baseUpgradeCost, fleetCapacity, baseDamage, MAX_BASE_UPGRADE_LEVEL, BASE_DEFENSE_RANGE, CAPACITY_PER_LEVEL, BASE_DAMAGE_PER_LEVEL } from './economia.js';
+export type { BaseUpgrades, BaseUpgradeKind } from './economia.js';
 export { leerSuperficie } from './mapas/leer-tiled.js';
 export { findPath as findTiledPath } from './maps/pathfinding.js';
 import { ESPIRAL } from './mapas/espiral.js';
@@ -36,17 +39,13 @@ export type { BattlefieldWorld, BattlefieldSquad, BattlefieldCommandResult, Batt
 export type PlayerId = 'p1' | 'p2';
 export interface Position { x: number; y: number }
 export type UnitKind = 'explorer' | 'interceptor' | 'frigate' | 'bomber';
-/** Prototype values. The brief defines relative roles; numeric balance is pending playtests. */
-export const UNIT_STATS = Object.freeze({
-  explorer: Object.freeze({ maxHp: 70, damage: 0, moveIntervalFactor: 2 / 3, visionBonus: 2, canCapture: false }),
-  interceptor: Object.freeze({ maxHp: 120, damage: 12, moveIntervalFactor: 1, visionBonus: 0, canCapture: true }),
-  frigate: Object.freeze({ maxHp: 170, damage: 10, moveIntervalFactor: 4 / 3, visionBonus: 0, canCapture: true }),
-  bomber: Object.freeze({ maxHp: 220, damage: 16, moveIntervalFactor: 2, visionBonus: 0, canCapture: true }),
-});
-const ADVANTAGE: Partial<Record<UnitKind, UnitKind>> = { interceptor: 'bomber', frigate: 'interceptor', bomber: 'frigate' };
-export function damageAgainst(attacker: UnitKind, defender: UnitKind, baseDamage: number = UNIT_STATS[attacker].damage): number {
-  return ADVANTAGE[attacker] === defender ? Math.round(baseDamage * 1.25) : baseDamage;
-}
+import { BASE_STATS, statsFor, moveInterval, type ShipStats, type StatModifier } from './stats.js';
+export { BASE_STATS, statsFor, moveInterval, damageAgainst } from './stats.js';
+export type { ShipStats, StatModifier } from './stats.js';
+/** Compatibility metadata for the offline presentation sandbox. Authoritative rules use statsFor. */
+export const UNIT_STATS = Object.freeze(Object.fromEntries(Object.entries(BASE_STATS).map(([kind, stats]) =>
+  [kind, Object.freeze({ ...stats, moveIntervalFactor: 1.7 / stats.speed, visionBonus: stats.vision - 4 })])) as Record<UnitKind, ShipStats & { moveIntervalFactor: number; visionBonus: number }>);
+export type SimEvent = { type: 'destroyed'; tick: number; attackerId: string; attackerOwner: PlayerId; victimId: string; victimOwner: PlayerId; kind: UnitKind; cost: number; shot: string };
 export interface Rules {
   tickRate: number;
   moveEveryTicks: number;
@@ -89,6 +88,8 @@ export interface Player {
   base: Position;
   metal: number;
   lastSequence: number;
+  baseUpgrades?: BaseUpgrades;
+  statModifiers?: StatModifier[];
 }
 export interface Squad extends Position {
   id: string;
@@ -97,6 +98,10 @@ export interface Squad extends Position {
   hp: number;
   maxHp: number;
   damage: number;
+  lastAttackTick?: number;
+  lastDamageTick?: number;
+  lastMovedTick?: number;
+  kills?: number;
   stance: PlayerStance;
   anchor: Position | null;
   gather: Position | null;
@@ -108,8 +113,8 @@ export interface Squad extends Position {
   /** Brief right-of-way pause after taking an allied passing pocket. */
   trafficYieldUntil?: number;
 }
-export function createSquad(id: string, ownerId: PlayerId, kind: UnitKind, position: Position): Squad {
-  const stats = UNIT_STATS[kind];
+export function createSquad(id: string, ownerId: PlayerId, kind: UnitKind, position: Position, world?: World): Squad {
+  const stats = statsFor(world ?? { rules: TRAINING_RULES }, ownerId, kind);
   return { id, ownerId, kind, x: position.x, y: position.y,
     hp: stats.maxHp, maxHp: stats.maxHp, damage: stats.damage, stance: 'march',
     anchor: null, gather: null, target: null, route: [], attackTargetId: null };
@@ -153,13 +158,14 @@ export interface World {
   built: Record<PlayerId, number>;
   /** Base income, hangar and repairs. Off in the legacy 20×20 drill. */
   economy: boolean;
+  events?: SimEvent[];
 }
 export type CommandRejection =
   | 'invalid_command' | 'unknown_player' | 'stale_sequence'
   | 'unknown_squad' | 'not_owner' | 'squad_destroyed'
   | 'out_of_bounds' | 'blocked_destination' | 'unreachable_destination' | 'route_full' | 'match_finished'
   | 'unknown_target' | 'friendly_target' | 'target_destroyed' | 'target_not_visible' | 'cannot_attack' | 'target_unavailable'
-  | 'insufficient_metal' | 'fleet_full' | 'production_busy';
+  | 'insufficient_metal' | 'fleet_full' | 'production_busy' | 'upgrade_maxed';
 export type CommandResult =
   | { accepted: true; world: World }
   | { accepted: false; reason: CommandRejection; world: World };
@@ -262,7 +268,7 @@ export function distance(a: Position, b: Position): number {
 function canSee(world: World, playerId: PlayerId, target: Position): boolean {
   if (distance(world.players[playerId].base, target) <= world.rules.visionRadius) return true;
   return world.squads.some((unit) => unit.ownerId === playerId && unit.hp > 0
-    && distance(unit, target) <= world.rules.visionRadius + UNIT_STATS[unit.kind].visionBonus);
+    && distance(unit, target) <= statsFor(world, unit.ownerId, unit.kind).vision);
 }
 function attackTarget(world: World, id: string): Squad | Guardian | undefined {
   return world.squads.find((unit) => unit.id === id) ?? world.guardians.find((unit) => unit.id === id);
@@ -316,10 +322,10 @@ export function findPath(start: Position, target: Position, width: number, heigh
 }
 function cloneWorld(world: World): World {
   return {
-    ...world, rules: { ...world.rules }, obstacles: world.obstacles.map((point) => ({ ...point })),
+    ...world, events: [], rules: { ...world.rules }, obstacles: world.obstacles.map((point) => ({ ...point })),
     players: {
-      p1: { ...world.players.p1, base: { ...world.players.p1.base } },
-      p2: { ...world.players.p2, base: { ...world.players.p2.base } },
+      p1: { ...world.players.p1, base: { ...world.players.p1.base }, statModifiers: world.players.p1.statModifiers?.map((modifier) => ({ ...modifier })), baseUpgrades: world.players.p1.baseUpgrades && { ...world.players.p1.baseUpgrades } },
+      p2: { ...world.players.p2, base: { ...world.players.p2.base }, statModifiers: world.players.p2.statModifiers?.map((modifier) => ({ ...modifier })), baseUpgrades: world.players.p2.baseUpgrades && { ...world.players.p2.baseUpgrades } },
     },
     squads: world.squads.map((unit) => ({
       ...unit,
@@ -456,6 +462,35 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
   if (world.winner !== null) return reject('match_finished');
   const command = parsed.command;
   if (command.seq <= world.players[playerId].lastSequence) return reject('stale_sequence');
+  if (command.type === 'disband') {
+    const units = command.squadIds.map((id) => world.squads.find((unit) => unit.id === id));
+    if (units.some((unit) => !unit)) return reject('unknown_squad');
+    if (units.some((unit) => unit!.ownerId !== playerId)) return reject('not_owner');
+    if (units.some((unit) => unit!.hp <= 0)) return reject('squad_destroyed');
+    const next = cloneWorld(world);
+    const ids = new Set(command.squadIds);
+    next.players[playerId].lastSequence = command.seq;
+    for (const unit of next.squads) if (ids.has(unit.id)) {
+      holdGround(unit);
+      unit.hp = 0;
+      delete unit.transit;
+    }
+    refreshArrivals(next.squads.filter((unit) => unit.hp > 0), boardOf(next));
+    return { accepted: true, world: next };
+  }
+  if (command.type === 'upgrade_base') {
+    if (!world.economy) return reject('invalid_command');
+    const cost = baseUpgradeCost(command.upgrade, world.players[playerId].baseUpgrades);
+    if (cost === null) return reject('upgrade_maxed');
+    if (world.players[playerId].metal < cost) return reject('insufficient_metal');
+    const next = cloneWorld(world);
+    const player = next.players[playerId];
+    player.lastSequence = command.seq;
+    player.metal -= cost;
+    player.baseUpgrades ??= { damage: 0, capacity: 0 };
+    player.baseUpgrades[command.upgrade] += 1;
+    return { accepted: true, world: next };
+  }
   if (command.type === 'produce') {
     if (!world.economy) return reject('invalid_command');
     const refused = productionRefusal(world, playerId, command.kind);
@@ -470,7 +505,7 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
   if (squad.ownerId !== playerId) return reject('not_owner');
   if (squad.hp <= 0) return reject('squad_destroyed');
   if (command.type === 'attack') {
-    if (UNIT_STATS[squad.kind].damage <= 0) return reject('cannot_attack');
+    if (statsFor(world, squad.ownerId, squad.kind).damage <= 0) return reject('cannot_attack');
     const target = attackTarget(world, command.targetId);
     if (!target) return reject('unknown_target');
     if ('ownerId' in target && target.ownerId === playerId) return reject('friendly_target');
@@ -544,7 +579,7 @@ function swapBlockedAllies(world: World, squad: Squad, destination: Position, mo
     && unit.id !== squad.id && unit.x === step.x && unit.y === step.y);
   if (!other || moved.has(other.id) || (other.transit && other.transit.untilTick > world.tick)) return false;
   const otherDestination = movementDestination(world, other);
-  const interval = (unit: Squad) => Math.max(1, Math.round(world.rules.moveEveryTicks * UNIT_STATS[unit.kind].moveIntervalFactor));
+  const interval = (unit: Squad) => moveInterval(world, unit.ownerId, unit.kind);
   if (!otherDestination || world.tick % interval(other) !== 0) return false;
   const otherStep = nextStep(world, other, otherDestination);
   if (!otherStep || otherStep.x !== squad.x || otherStep.y !== squad.y
@@ -603,8 +638,8 @@ function yieldToBlockedAlly(world: World, squad: Squad, destination: Position): 
       || distance(a, destination) - distance(b, destination) || a.y - b.y || a.x - b.x);
   const pocket = pockets[0];
   if (!pocket) return false;
-  const interval = Math.max(1, Math.round(world.rules.moveEveryTicks * UNIT_STATS[squad.kind].moveIntervalFactor));
-  const otherInterval = Math.max(1, Math.round(world.rules.moveEveryTicks * UNIT_STATS[other.kind].moveIntervalFactor));
+  const interval = moveInterval(world, squad.ownerId, squad.kind);
+  const otherInterval = moveInterval(world, other.ownerId, other.kind);
   squad.transit = { from: { x: squad.x, y: squad.y }, untilTick: world.tick + interval };
   squad.trafficYieldUntil = world.tick + 3 * Math.max(interval, otherInterval);
   Object.assign(squad, pocket);
@@ -624,7 +659,7 @@ function moveSquads(world: World): void {
     if (squad.hp <= 0 || moved.has(squad.id) || (squad.trafficYieldUntil ?? 0) > world.tick) continue;
     const destination = movementDestination(world, squad);
     if (!destination) continue;
-    const interval = Math.max(1, Math.round(world.rules.moveEveryTicks * UNIT_STATS[squad.kind].moveIntervalFactor));
+    const interval = moveInterval(world, squad.ownerId, squad.kind);
     if (world.tick % interval !== 0) continue;
     if (routeBlockedByTraffic(world, squad, destination) && yieldToBlockedAlly(world, squad, destination)) continue;
     const next = trafficStep(world, squad, destination);
@@ -640,19 +675,20 @@ function moveSquads(world: World): void {
     squad.transit = { from: { x: squad.x, y: squad.y }, untilTick: world.tick + interval };
     squad.x = next.x;
     squad.y = next.y;
+    squad.lastMovedTick = world.tick;
     consumeWaypoint(squad);
   }
   refreshArrivals(world.squads.filter((unit) => unit.hp > 0), boardOf(world));
 }
 function productionRefusal(world: World, playerId: PlayerId, kind: UnitKind): CommandRejection | null {
   if (world.production[playerId]) return 'production_busy';
-  if (world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0).length >= FLEET_CAP) return 'fleet_full';
-  if (world.players[playerId].metal < UNIT_COSTS[kind]) return 'insufficient_metal';
+  if (world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0).length >= fleetCapacity(world.players[playerId].baseUpgrades)) return 'fleet_full';
+  if (world.players[playerId].metal < statsFor(world, playerId, kind).cost) return 'insufficient_metal';
   return null;
 }
 function startProduction(world: World, playerId: PlayerId, kind: UnitKind): void {
-  world.players[playerId].metal -= UNIT_COSTS[kind];
-  world.production[playerId] = { kind, readyTick: world.tick + BUILD_TICKS[kind] };
+  world.players[playerId].metal -= statsFor(world, playerId, kind).cost;
+  world.production[playerId] = { kind, readyTick: world.tick + statsFor(world, playerId, kind).buildTicks };
 }
 /** Base income, hangar launches and repairs: the base guarantees a way back into the fight. */
 function runBases(world: World): void {
@@ -666,14 +702,14 @@ function runBases(world: World): void {
       // A blocked hangar holds the finished ship until a launch cell frees up.
       if (cell) {
         world.built[playerId] += 1;
-        world.squads.push(createSquad(`${playerId}-${order.kind}-${world.built[playerId]}`, playerId, order.kind, cell));
+        world.squads.push(createSquad(`${playerId}-${order.kind}-${world.built[playerId]}`, playerId, order.kind, cell, world));
         world.production[playerId] = null;
       }
     }
     if (world.tick % world.rules.tickRate !== 0) continue;
     for (const squad of world.squads) {
       if (squad.ownerId === playerId && squad.hp > 0 && squad.hp < squad.maxHp && distance(squad, player.base) <= REPAIR_RADIUS) {
-        squad.hp = Math.min(squad.maxHp, squad.hp + 2);
+        squad.hp = Math.min(squad.maxHp, squad.hp + 1);
       }
     }
   }
@@ -688,6 +724,7 @@ export function stepWorld(world: World): World {
   moveSquads(next);
   if (next.economy) moveGuardians(next);
   resolveCombat(next.surface ? { ...next, level: next.surface.level, diagonalReach: true } : next);
+  if (next.economy) resolveBaseDefense(next);
   const capture = captureContext(next);
   for (const node of next.nodes) {
     const captor = advanceCapture(next, node, next.rules.nodeCaptureTicks, capture);
@@ -698,6 +735,24 @@ export function stepWorld(world: World): World {
   return next;
 }
 
+/** Bases fire once per combat beat at the nearest hostile in their visible perimeter. */
+function resolveBaseDefense(world: World): void {
+  if (world.tick % world.rules.attackEveryTicks !== 0) return;
+  const hits = new Map<string, number>();
+  for (const player of Object.values(world.players)) {
+    const damage = baseDamage(player.baseUpgrades);
+    if (damage <= 0) continue;
+    const target = [...world.squads.filter((unit) => unit.ownerId !== player.id && unit.hp > 0),
+      ...world.guardians.filter((unit) => guardianActive(world, unit))]
+      .filter((unit) => distance(unit, player.base) <= Math.min(BASE_DEFENSE_RANGE, world.rules.visionRadius))
+      .sort((a, b) => distance(a, player.base) - distance(b, player.base) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
+    if (target) hits.set(target.id, (hits.get(target.id) ?? 0) + damage);
+  }
+  for (const unit of [...world.squads, ...world.guardians]) {
+    const damage = hits.get(unit.id);
+    if (damage) unit.hp = Math.max(0, unit.hp - Math.max(1, damage - ('kind' in unit ? statsFor(world, unit.ownerId, unit.kind).armor : 0)));
+  }
+}
 function releaseLostTarget(world: World, squad: Squad): void {
   if (!squad.attackTargetId) return;
   const enemy = attackTarget(world, squad.attackTargetId);
@@ -707,11 +762,11 @@ function releaseLostTarget(world: World, squad: Squad): void {
   if (unseen || leftPost) squad.attackTargetId = null;
 }
 function acquireStanceTarget(world: World, squad: Squad): void {
-  if (squad.attackTargetId || UNIT_STATS[squad.kind].damage <= 0) return;
+  if (squad.attackTargetId || statsFor(world, squad.ownerId, squad.kind).damage <= 0) return;
   if (squad.stance !== 'guard' && squad.stance !== 'attack') return;
   const origin = squad.stance === 'guard' && squad.anchor ? squad.anchor : squad;
-  const bonus = squad.stance === 'attack' ? UNIT_STATS[squad.kind].visionBonus : 0;
-  const foe = nearestFoe(world, squad, origin, world.rules.visionRadius + bonus);
+  const vision = statsFor(world, squad.ownerId, squad.kind).vision;
+  const foe = nearestFoe(world, squad, origin, vision);
   if (foe) squad.attackTargetId = foe.id;
 }
 function nearestFoe(world: World, squad: Squad, origin: Position, radius: number): Squad | Guardian | undefined {
@@ -734,7 +789,7 @@ function nearestFoe(world: World, squad: Squad, origin: Position, radius: number
 function movementDestination(world: World, squad: Squad): Position | null {
   const enemy = squad.attackTargetId ? attackTarget(world, squad.attackTargetId) : undefined;
   if (enemy && enemy.hp > 0) {
-    if (withinReach({ diagonalReach: world.surface !== null }, squad, enemy)) return null;
+    if (Math.max(Math.abs(squad.x - enemy.x), Math.abs(squad.y - enemy.y)) <= statsFor(world, squad.ownerId, squad.kind).range) return null;
     return enemy;
   }
   return squad.target ?? guardDestination(squad);
@@ -749,7 +804,7 @@ function toAi(world: World, unit: Squad): AiUnit {
   return {
     id: unit.id, position: { x: unit.x, y: unit.y }, health: unit.hp, maxHealth: unit.maxHp,
     // Diego's AI measures Manhattan distance; a diagonal neighbour is 2 on sector maps.
-    attackRange: world.surface ? 2 : ATTACK_RANGE, sightRange: world.rules.visionRadius + UNIT_STATS[unit.kind].visionBonus,
+    attackRange: statsFor(world, unit.ownerId, unit.kind).range, sightRange: statsFor(world, unit.ownerId, unit.kind).vision,
   };
 }
 function enemyScene(world: World, difficulty: RivalDifficulty): EnemyScene {

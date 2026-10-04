@@ -527,6 +527,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   private configureInput() {
+    this.input.setTopOnly(false);
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
       this.movementKeys = this.input.keyboard.addKeys({ up: 'W', down: 'S', left: 'A', right: 'D' }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
@@ -539,9 +540,17 @@ export class MainScene extends Phaser.Scene {
         return;
       }
       if (pointer.leftButtonDown()) {
-        const clickedId = over.map((object) => object.getData('unitId'))
-          .find((id) => this.snapshot.squads.some((squad) => squad.id === id && squad.owner === 'blue' && squad.visible && squad.healthPercent > 0)) ?? null;
         const position = this.pointerPosition(pointer);
+        const world = this.cameras.main.getWorldPoint(position.x, position.y);
+        const gap = (id: string) => {
+          const visual = this.unitVisuals.get(id);
+          return visual ? Math.hypot(visual.container.x - world.x, visual.container.y - world.y) : Infinity;
+        };
+        // Hit areas may overlap in a crowded hangar. Pick the hull under the click,
+        // rather than whichever container Phaser happens to report first.
+        const clickedId = over.map((object) => object.getData('unitId'))
+          .filter((id): id is string => typeof id === 'string' && this.snapshot.squads.some((squad) => squad.id === id && squad.owner === 'blue' && squad.visible && squad.healthPercent > 0))
+          .sort((a, b) => gap(a) - gap(b) || a.localeCompare(b))[0] ?? null;
         this.selectionDrag = { start: position, current: position, clickedId };
         return;
       }

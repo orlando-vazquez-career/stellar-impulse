@@ -105,7 +105,7 @@ describe('deterministic integer simulation', () => {
     const replay = (): World => {
       let world = createWorld();
       world = applyCommand(world, 'p1', move()).world;
-      world = ticks(world, 120);
+      world = ticks(world, 240);
       world = applyCommand(world, 'p1', move(2, 'p1-interceptor', 10, 10)).world;
       return ticks(world, 240);
     };
@@ -116,7 +116,7 @@ describe('deterministic integer simulation', () => {
   it('moves on the configured tick using eight-way routing and keeps prior snapshots', () => {
     const world = applyCommand(createWorld(), 'p1', move()).world;
     expect(ticks(world, 2).squads[0]).toMatchObject({ x: 2, y: 17 });
-    expect(ticks(world, 3).squads[0]).toMatchObject(findPath({ x: 2, y: 17 }, { x: 4, y: 4 }, world.width, world.height, world.obstacles)[1]!);
+    expect(ticks(world, 6).squads[0]).toMatchObject(findPath({ x: 2, y: 17 }, { x: 4, y: 4 }, world.width, world.height, world.obstacles)[1]!);
     expect(world.tick).toBe(0);
     expect(world.squads[0]).toMatchObject({ x: 2, y: 17 });
   });
@@ -155,11 +155,11 @@ describe('deterministic integer simulation', () => {
     world.squads.push(frigate, bomber);
     // Independent lanes measure class speeds without an allied traffic jam.
     for (const unit of world.squads.filter((unit) => unit.ownerId === 'p1')) unit.target = { x: unit.x, y: 15 };
-    const moved = ticks(world, 3);
+    const moved = ticks(world, 6);
     expect(moved.squads[0]).toMatchObject({ x: 2, y: 16 });
     expect(moved.squads[2]).toMatchObject({ x: 5, y: 17 });
     expect(moved.squads[3]).toMatchObject({ x: 8, y: 17 });
-    const later = ticks(moved, 3);
+    const later = ticks(moved, 7);
     expect(later.squads[2]).toMatchObject({ x: 5, y: 16 });
     expect(later.squads[3]).toMatchObject({ x: 8, y: 16 });
   });
@@ -169,7 +169,7 @@ describe('deterministic integer simulation', () => {
     Object.assign(world.squads[0]!, { x: 1, y: 10 });
     world.squads[1] = createSquad('p2-bomber', 'p2', 'bomber', { x: 2, y: 10 });
     const fought = stepWorld(world);
-    expect(fought.squads[1]!.hp).toBe(UNIT_STATS.bomber.maxHp - 15);
+    expect(fought.squads[1]!.hp).toBe(UNIT_STATS.bomber.maxHp - 14);
     const explorerWorld = createWorld();
     explorerWorld.squads[0] = createSquad('scout', 'p1', 'explorer', { x: 4, y: 4 });
     explorerWorld.guardians[0]!.hp = 0;
@@ -188,8 +188,8 @@ describe('deterministic integer simulation', () => {
     });
     expect(ordered.accepted).toBe(true);
     const fought = stepWorld(ordered.world);
-    expect(fought.squads.find((unit) => unit.id === 'a-enemy')!.hp).toBe(120);
-    expect(fought.squads.find((unit) => unit.id === 'z-enemy')!.hp).toBe(108);
+    expect(fought.squads.find((unit) => unit.id === 'a-enemy')!.hp).toBe(100);
+    expect(fought.squads.find((unit) => unit.id === 'z-enemy')!.hp).toBe(95);
   });
   it('does not let an enemy explorer contest resource capture', () => {
     const world = createWorld();
@@ -202,8 +202,8 @@ describe('deterministic integer simulation', () => {
   it('applies lethal attacks simultaneously, independently of array order', () => {
     const world = createWorld();
     world.tick = 9;
-    Object.assign(world.squads[0]!, { x: 0, y: 0, hp: 12 });
-    Object.assign(world.squads[1]!, { x: 1, y: 0, hp: 12 });
+    Object.assign(world.squads[0]!, { x: 0, y: 0, hp: 5 });
+    Object.assign(world.squads[1]!, { x: 1, y: 0, hp: 5 });
     const result = stepWorld(world);
     expect(result.squads.map((unit) => unit.hp)).toEqual([0, 0]);
     world.squads.reverse();
@@ -221,7 +221,7 @@ describe('guarded capture', () => {
     let world = createWorld();
     Object.assign(world.squads[0]!, { x: 4, y: 4 });
     world = ticks(world, 29);
-    expect(world.guardians[0]!.hp).toBe(12);
+    expect(world.guardians[0]!.hp).toBe(6);
     expect(world.nodes[0]!.progress.p1).toBe(0);
     world = stepWorld(world);
     expect(world.guardians[0]!.hp).toBe(0);
@@ -239,7 +239,7 @@ describe('guarded capture', () => {
     expect(closed.guardians[1]!.hp).toBe(60);
     const opened = stepWorld(closed);
     expect(opened.core.open).toBe(true);
-    expect(opened.guardians[1]!.hp).toBe(48);
+    expect(opened.guardians[1]!.hp).toBe(54);
     expect(opened.core.progress.p1).toBe(0);
   });
   it('freezes disputed capture, decays absent progress and closes exactly once', () => {

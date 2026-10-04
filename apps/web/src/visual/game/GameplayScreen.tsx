@@ -82,6 +82,11 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
       const key = event.key === ' ' ? 'Space' : event.key === 'Escape' ? 'Esc' : event.key;
+      if (key === 'Delete' && !event.repeat) {
+        event.preventDefault();
+        adapter.dispatch({ type: 'disband-selected' });
+        return;
+      }
       if (/^[wasd]$/i.test(key)) return; // Camera navigation is never an action shortcut.
       if (view.canProduce !== false && PRODUCTION_KEYS[key] && !event.repeat) { adapter.dispatch({ type: 'produce', kind: PRODUCTION_KEYS[key] }); return; }
       if (key.toLowerCase() === preferences.controls.cancel.toLowerCase()) adapter.dispatch({ type: 'set-action', action: null });

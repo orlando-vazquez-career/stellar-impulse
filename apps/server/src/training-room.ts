@@ -1,6 +1,6 @@
 import { Room, type Client } from '@colyseus/core';
 import { parseCommand } from '@impulso/input';
-import { createSectorWorld, applyCommand, runTrainingRival, stepWorld, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId } from '@impulso/sim';
+import { createSectorWorld, applyCommand, runTrainingRival, stepWorld, fleetCapacity, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId } from '@impulso/sim';
 import { viewFor } from '@impulso/state';
 
 /** Diego's Espiral Estelar is the training map unless the creator asks for Sector 01. */
@@ -42,7 +42,7 @@ export class TrainingRoom extends Room {
       if (this.world.tick - bucket.tick >= 10) { bucket.tick = this.world.tick; bucket.count = 0; }
       bucket.count += 1;
       this.rates.set(client.sessionId, bucket);
-      if (bucket.count > 20) { this.reject(client, 'rate_limit'); return; }
+      if (bucket.count > fleetCapacity(this.world.players[player].baseUpgrades) + 8) { this.reject(client, 'rate_limit'); return; }
       const result = applyCommand(this.world, player, command);
       if (result.accepted) this.world = result.world;
       else { this.reject(client, result.reason); return; }

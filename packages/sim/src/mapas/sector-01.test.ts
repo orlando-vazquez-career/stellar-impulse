@@ -82,7 +82,7 @@ describe('sector 01', () => {
     expect(mining.players.p1.metal).toBe(holding.players.p1.metal + 1);
   });
 
-  it('deals more damage from the higher cell', () => {
+  it('uses counter-before-armor damage independently of elevation', () => {
     const rampIndex = SECTOR_01.ramp.findIndex((direction) => direction != null);
     const highIndex = neighborIndex(rampIndex, SECTOR_01.ramp[rampIndex]);
     let world = createSectorWorld();
@@ -97,8 +97,8 @@ describe('sector 01', () => {
     world.squads[1]!.y = low.y;
     world.squads[1]!.attackTargetId = 'p1-interceptor';
     for (let tick = 0; tick < world.rules.attackEveryTicks; tick += 1) world = stepWorld(world);
-    expect(world.squads[1]!.hp).toBe(105);
-    expect(world.squads[0]!.hp).toBe(108);
+    expect(world.squads[1]!.hp).toBe(90);
+    expect(world.squads[0]!.hp).toBe(90);
   });
 });
 

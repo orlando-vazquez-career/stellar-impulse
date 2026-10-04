@@ -1,8 +1,10 @@
-import { distance, UNIT_STATS, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
+import { distance, statsFor, moveInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
 export { UNIT_STATS, damageAgainst, findPath } from '@impulso/sim';
 export type { UnitKind } from '@impulso/sim';
 
 export interface VisibleSquad extends Omit<Squad, 'target' | 'attackTargetId' | 'stance' | 'anchor' | 'gather' | 'route'> {
+  stats?: ShipStats;
+  moveTicks?: number;
   /** Rival destinations remain private even while their units are visible. */
   target?: Position | null;
   attackTargetId?: string | null;
@@ -21,8 +23,9 @@ export interface PlayerView {
   walkable?: boolean[];
   level?: number[];
   rules: Rules;
+  unitStats?: Record<UnitKind, ShipStats>;
   /** Metal and the hangar queue are private to their owner. */
-  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; production?: { kind: UnitKind; remainingTicks: number } | null }>;
+  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; baseUpgrades?: { damage: number; capacity: number }; production?: { kind: UnitKind; remainingTicks: number } | null }>;
   squads: VisibleSquad[];
   guardians: Guardian[];
   nodes: ResourceNode[];
@@ -36,7 +39,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
   const sources: { position: Position; bonus: number }[] = [
     { position: world.players[playerId].base, bonus: 0 },
     ...world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0)
-      .map((unit) => ({ position: unit, bonus: UNIT_STATS[unit.kind as UnitKind].visionBonus })),
+      .map((unit) => ({ position: unit, bonus: statsFor(world, playerId, unit.kind).vision - world.rules.visionRadius })),
   ];
   const visible = (position: Position): boolean => sources.some((source) => distance(source.position, position) <= world.rules.visionRadius + source.bonus);
   const visibleCells: Position[] = [];
@@ -48,6 +51,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     p2: { id: 'p2', base: { ...world.players.p2.base } },
   };
   players[playerId].metal = world.players[playerId].metal;
+  players[playerId].baseUpgrades = { ...(world.players[playerId].baseUpgrades ?? { damage: 0, capacity: 0 }) };
   const order = world.production[playerId];
   players[playerId].production = order ? { kind: order.kind, remainingTicks: Math.max(0, order.readyTick - world.tick) } : null;
   return {
@@ -55,11 +59,13 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })),
     ...(world.surface ? { walkable: [...world.surface.walkable], level: [...world.surface.level] } : {}),
     rules: { ...world.rules }, players,
+    unitStats: Object.fromEntries(['explorer', 'interceptor', 'frigate', 'bomber'].map((kind) => [kind, statsFor(world, playerId, kind as UnitKind)])) as Record<UnitKind, ShipStats>,
     squads: world.squads.filter((unit) => unit.ownerId === playerId || (unit.hp > 0 && visible(unit))).map((unit) => {
       const { target, attackTargetId } = unit;
       const publicUnit = {
         id: unit.id, ownerId: unit.ownerId, kind: unit.kind,
-        x: unit.x, y: unit.y, hp: unit.hp, maxHp: unit.maxHp, damage: unit.damage,
+        x: unit.x, y: unit.y, hp: unit.hp, maxHp: unit.maxHp, damage: statsFor(world, unit.ownerId, unit.kind).damage,
+        stats: statsFor(world, unit.ownerId, unit.kind), moveTicks: moveInterval(world, unit.ownerId, unit.kind),
       };
       return unit.ownerId === playerId
         ? {

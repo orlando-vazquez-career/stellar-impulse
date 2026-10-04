@@ -33,7 +33,7 @@ describe('ship traffic', () => {
   it('routes around an allied ship and reaches its destination without sharing cells', () => {
     let world = applyCommand(field(), 'p1', { type: 'move', seq: 1, squadId: 'lead', x: 7, y: 3 }).world;
     let detoured = false;
-    for (let tick = 0; tick < 60; tick++) {
+    for (let tick = 0; tick < 120; tick++) {
       world = stepWorld(world);
       const [lead, parked] = world.squads;
       detoured ||= lead!.y !== 3;
@@ -51,16 +51,16 @@ describe('ship traffic', () => {
     world = applyCommand(world, 'p1', { seq: 1, type: 'move', squadId: 'lead', x: 4, y: 3 }).world;
     world = applyCommand(world, 'p1', { seq: 2, type: 'move', squadId: 'parked', x: 3, y: 3 }).world;
     const replay = world;
-    for (let tick = 0; tick < 6; tick++) {
+    for (let tick = 0; tick < 12; tick++) {
       world = stepWorld(world);
       const [a, b] = world.squads;
       expect(a!.x).not.toBe(b!.x);
-      if (tick < 5) expect(a!.x).toBe(3);
+      if (tick < 11) expect(a!.x).toBe(3);
     }
     expect(world.squads[0]).toMatchObject({ x: 4, y: 3, target: null });
     expect(world.squads[1]).toMatchObject({ x: 3, y: 3, target: null });
     let repeated = replay;
-    for (let tick = 0; tick < 6; tick++) repeated = stepWorld(repeated);
+    for (let tick = 0; tick < 12; tick++) repeated = stepWorld(repeated);
     expect(repeated).toEqual(world);
   });
 
@@ -74,7 +74,7 @@ describe('ship traffic', () => {
     }
     world.squads[0]!.damage = 0;
     world = applyCommand(world, 'p1', { seq: 1, type: 'move', squadId: 'lead', x: 5, y: 3 }).world;
-    for (let tick = 0; tick < 60; tick++) world = stepWorld(world);
+    for (let tick = 0; tick < 120; tick++) world = stepWorld(world);
     expect(world.squads[0]).toMatchObject({ x: 3, y: 3, target: { x: 5, y: 3 } });
   });
 
@@ -92,10 +92,10 @@ describe('ship traffic', () => {
     world.squads[1]!.x = 2;
     world = applyCommand(world, 'p1', { type: 'move', seq: 1, squadId: 'lead', x: 4, y: 3 }).world;
     world = applyCommand(world, 'p1', { type: 'move', seq: 2, squadId: 'parked', x: 3, y: 3 }).world;
-    for (let tick = 0; tick < 3; tick++) world = stepWorld(world);
+    for (let tick = 0; tick < 6; tick++) world = stepWorld(world);
     expect(world.squads[0]).toMatchObject({ x: 4, y: 3 });
     expect(world.squads[1]).toMatchObject({ x: 2, y: 3 });
-    for (let tick = 0; tick < 3; tick++) world = stepWorld(world);
+    for (let tick = 0; tick < 6; tick++) world = stepWorld(world);
     expect(world.squads[1]).toMatchObject({ x: 3, y: 3 });
   });
 
