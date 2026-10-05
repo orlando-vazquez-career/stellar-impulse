@@ -11,6 +11,8 @@ import type {
 const FRAME_MS = 16;
 /** Further than this, a ship snaps instead of sliding (respawn, reconnection, fog reveal). */
 const SNAP_CELLS = 3;
+/** Server steps a moving ship trails behind its authoritative position, to absorb update jitter. */
+const TRAIL_LAG = 0.9;
 const TICKS_PER_SECOND = 10;
 
 type Point = { x: number; y: number };
@@ -131,7 +133,9 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
   let seq = 0;
   let destroyed = false;
   const shown = new Map<string, Point>();
-  const transits = new Map<string, { from: Point; to: Point; startedAt: number; duration: number }>();
+  /** Cells each ship still has to cover on screen, its nominal speed and its current speed. */
+  const trails = new Map<string, { points: Point[]; cellsPerSecond: number; speed: number; pace: number; updatedAt: number }>();
+  let lastFrame = performance.now();
   const listeners = new Set<() => void>();
   const eventListeners = new Set<(event: GameplayEvent) => void>();
   const emit = () => listeners.forEach((listener) => listener());
@@ -241,17 +245,38 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     emit();
   };
 
-  /** Interpolate a complete server step over its cadence, including diagonal steps.
-   * Fixed-distance catch-up made diagonal movement burst and pause at each cell. */
+  /** Ships glide along the cells the server reported at a near-constant speed. Animating each
+   * cell over exactly one server step made them stop at every cell while the next update was in
+   * flight, and change speed on every diagonal. Instead they trail about half a cell behind the
+   * authoritative position: a little faster when behind, easing in only at the final cell. */
   const frame = setInterval(() => {
+    const now = performance.now();
+    const seconds = Math.min(0.1, Math.max(0, (now - lastFrame) / 1000));
+    lastFrame = now;
     if (!latest) return;
     let changed = false;
-    const now = performance.now();
-    for (const [id, transit] of transits) {
-      const ratio = Math.min(1, Math.max(0, (now - transit.startedAt) / transit.duration));
-      shown.set(id, { x: transit.from.x + (transit.to.x - transit.from.x) * ratio,
-        y: transit.from.y + (transit.to.y - transit.from.y) * ratio });
-      if (ratio === 1) transits.delete(id);
+    for (const [id, trail] of trails) {
+      let at = shown.get(id);
+      if (!at || !trail.points.length) { trails.delete(id); continue; }
+      const remaining = trail.points.reduce((sum, point, index) =>
+        sum + Math.hypot(point.x - (index ? trail.points[index - 1]! : at!).x, point.y - (index ? trail.points[index - 1]! : at!).y), 0);
+      // Cruise at the route's average step length per server step, nudged to stay about one
+      // step behind. Brake only once no new cell has arrived for a while: the route ended.
+      const stepMs = 1000 / trail.cellsPerSecond;
+      const ended = now - trail.updatedAt > stepMs * 1.3;
+      const target = ended ? trail.cellsPerSecond * Math.max(0.6, Math.min(2, remaining * 2.5))
+        : trail.cellsPerSecond * trail.pace * Math.min(1.6, Math.max(0.7, 1 + 0.3 * (remaining - trail.pace * TRAIL_LAG)));
+      trail.speed += (target - trail.speed) * (1 - Math.exp(-seconds / 0.25));
+      let budget = Math.min(remaining, trail.speed * seconds);
+      while (budget > 0 && trail.points.length) {
+        const next = trail.points[0]!;
+        const gap = Math.hypot(next.x - at.x, next.y - at.y);
+        if (gap <= budget) { at = { ...next }; budget -= gap; trail.points.shift(); continue; }
+        at = { x: at.x + (next.x - at.x) * budget / gap, y: at.y + (next.y - at.y) * budget / gap };
+        budget = 0;
+      }
+      shown.set(id, at);
+      if (!trail.points.length) trails.delete(id);
       changed = true;
     }
     if (changed) rebuild();
@@ -269,18 +294,26 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     latest = view;
     const units = [...view.squads, ...view.guardians].filter((unit) => unit.hp > 0);
     const present = new Set(units.map((unit) => unit.id));
-    for (const id of shown.keys()) if (!present.has(id)) { shown.delete(id); transits.delete(id); }
+    for (const id of shown.keys()) if (!present.has(id)) { shown.delete(id); trails.delete(id); }
     for (const unit of units) {
       const at = shown.get(unit.id);
       const old = [...(previous?.squads ?? []), ...(previous?.guardians ?? [])].find((candidate) => candidate.id === unit.id);
       if (!at || Math.hypot(unit.x - at.x, unit.y - at.y) > SNAP_CELLS) {
         shown.set(unit.id, { x: unit.x, y: unit.y });
-        transits.delete(unit.id);
+        trails.delete(unit.id);
       } else if (!old || old.x !== unit.x || old.y !== unit.y) {
         const ticks = 'kind' in unit
           ? 'moveTicks' in unit && typeof unit.moveTicks === 'number' ? unit.moveTicks : view.rules.moveEveryTicks : 9;
-        transits.set(unit.id, { from: { ...at }, to: { x: unit.x, y: unit.y },
-          startedAt: performance.now(), duration: ticks * 1000 / view.rules.tickRate });
+        const trail = trails.get(unit.id) ?? { points: [], cellsPerSecond: 0, speed: 0, pace: 1.15, updatedAt: 0 };
+        trail.cellsPerSecond = view.rules.tickRate / ticks;
+        // Diagonal steps cover 1.41 cells per server step; track the route's average.
+        const from = trail.points.at(-1) ?? old ?? at;
+        trail.pace += (Math.hypot(unit.x - from.x, unit.y - from.y) - trail.pace) * 0.35;
+        trail.updatedAt = performance.now();
+        trail.points.push({ x: unit.x, y: unit.y });
+        // Never fall more than a few cells behind the server.
+        while (trail.points.length > 3) { shown.set(unit.id, trail.points.shift()!); }
+        trails.set(unit.id, trail);
       }
     }
     if (snapshot.connection !== 'online') snapshot = { ...snapshot, connection: 'online', notice: null };
@@ -403,7 +436,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     destroy() {
       destroyed = true;
       clearInterval(frame);
-      transits.clear();
+      trails.clear();
       shown.clear();
       void room?.leave();
       room = null;
