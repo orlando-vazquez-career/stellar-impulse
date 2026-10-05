@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openApp } from './helpers';
+import { chooseOpening, openApp } from './helpers';
 
 test('builds the Refinery from the Base tab and surrenders once bases are exposed', async ({ page }) => {
   // x5 keeps the 2:30 shield to about 30 real seconds without racing a slow CI runner.
@@ -10,10 +10,7 @@ test('builds the Refinery from the Base tab and surrenders once bases are expose
   await page.getByRole('button', { name: /Preparar operación/ }).click();
   await page.getByLabel('Estoy listo para desplegar').check();
   await page.getByRole('button', { name: 'Iniciar operación' }).click();
-  // At x5 the 30 s opening pick lasts about 6 real seconds and may expire on a slow
-  // runner; either our pick or the server's automatic pick is fine for this test.
-  await page.locator('.augment-opening .augment-card').first().click({ timeout: 2000 }).catch(() => {});
-  await expect(page.locator('.augment-opening')).toHaveCount(0, { timeout: 15000 });
+  await chooseOpening(page);
 
   const production = page.locator('.vi-production');
   await production.getByRole('tab', { name: 'Base', exact: true }).click();
