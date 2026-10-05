@@ -461,11 +461,17 @@ function nextStep(world: World, from: Position, to: Position): Position | null {
   }
   return findPath(from, to, world.width, world.height, world.obstacles)[1] ?? null;
 }
-/** Every living ship holds its cell, including allies. */
+/** Every living ship holds its cell, including allies. A departing ship also keeps the cell it
+ * leaves until its step ends, except for an ally that is no faster: moving in behind it keeps a
+ * full cell between them on screen, so columns close up instead of leaving a gap. */
 function cellOccupied(world: World, cell: Position, selfId: string): boolean {
+  const self = world.squads.find((unit) => unit.id === selfId);
+  const selfInterval = self ? moveInterval(world, self.ownerId, self.kind) : 0;
+  const trails = (unit: Squad | Guardian) => !!self && 'ownerId' in unit && unit.ownerId === self.ownerId
+    && selfInterval >= moveInterval(world, unit.ownerId, unit.kind);
   const holds = (unit: Squad | Guardian) => (unit.x === cell.x && unit.y === cell.y)
     || (!!unit.transit && unit.transit.untilTick > world.tick
-      && unit.transit.from.x === cell.x && unit.transit.from.y === cell.y);
+      && unit.transit.from.x === cell.x && unit.transit.from.y === cell.y && !trails(unit));
   const ship = world.squads.some((unit) => unit.hp > 0 && unit.id !== selfId
     && holds(unit));
   const guardian = world.guardians.some((unit) => unit.hp > 0 && unit.id !== selfId && holds(unit));
