@@ -4,13 +4,15 @@
 2. [Instalación y desarrollo](development.md): arranque desde un clon limpio.
 3. [Arquitectura](architecture.md): límites, mensajes y decisiones iniciales.
 4. [Dirección visual](design.md): composición, estados y accesibilidad.
-5. [Estrategia](plans/strategy.md): hitos, capacidad, riesgos y recortes.
-6. [Táctica](plans/tactics.md): tareas pequeñas con dependencias y aceptación.
-7. [Stellar y contratos](blockchain.md): toolchain, alcance y modelo de amenazas.
-8. [Pruebas y demo](testing.md): aceptación del bootstrap y del MVP.
-9. [Estado](status.md): evidencia y pendientes, sin confundir plan con implementación.
-10. [Mapas del campo de batalla](map-backend.md): cuadrícula, importación Tiled y vistas por jugador.
-11. [Protocolo de la sala de campaña](protocol.md): conexión, mensajes, fases y reconexión.
+5. [Manual de marca](brand-manual.md): identidad, tokens, logo y aplicación por pantalla.
+6. [Design system demostrativo](DESIGN-stellar-impulse.pdf): exportación visual de `DESIGN.md`.
+7. [Estrategia](plans/strategy.md): hitos, capacidad, riesgos y recortes.
+8. [Táctica](plans/tactics.md): tareas pequeñas con dependencias y aceptación.
+9. [Stellar y contratos](blockchain.md): toolchain, alcance y modelo de amenazas.
+10. [Pruebas y demo](testing.md): aceptación del bootstrap y del MVP.
+11. [Estado](status.md): evidencia y pendientes, sin confundir plan con implementación.
+12. [Mapas del campo de batalla](map-backend.md): cuadrícula, importación Tiled y vistas por jugador.
+13. [Protocolo de la sala de campaña](protocol.md): conexión, mensajes, fases y reconexión.
 
 El repositorio contiene todas las instrucciones necesarias para colaborar. No requiere
 extensiones de editor, herramientas de agentes ni servicios privados de un integrante.

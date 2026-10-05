@@ -202,7 +202,7 @@ const es = {
   close: 'Cerrar',
   hud: 'HUD táctico',
   resolutionWarningTitle: 'Resolución no compatible',
-  resolutionWarningBody: 'Impulso Stellar está diseñado para pantallas de escritorio de al menos 1024 px.',
+  resolutionWarningBody: 'Stellar Impulse está diseñado para pantallas de escritorio de al menos 1024 px.',
 } as const;
 
 type MessageKey = keyof typeof es;
@@ -407,7 +407,7 @@ const en: Record<MessageKey, string> = {
   close: 'Close',
   hud: 'Tactical HUD',
   resolutionWarningTitle: 'Unsupported resolution',
-  resolutionWarningBody: 'Impulso Stellar is designed for desktop displays at least 1024 px wide.',
+  resolutionWarningBody: 'Stellar Impulse is designed for desktop displays at least 1024 px wide.',
 };
 
 type Translate = (key: MessageKey, values?: Record<string, string | number>) => string;

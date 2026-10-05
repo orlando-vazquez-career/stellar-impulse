@@ -133,7 +133,7 @@ function VisualPrototypeContent() {
 
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'Impulso Stellar · Interfaz visual';
+    document.title = 'Stellar Impulse · Interfaz visual';
     return () => { document.title = previousTitle; };
   }, []);
 

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-labelledby="title desc">
+  <title id="title">Stellar Impulse</title>
+  <desc id="desc">Diamante orbital con núcleo central y trazo de impulso.</desc>
+  <path d="M60 5 115 60 60 115 5 60Z" fill="none" stroke="#83D4FF" stroke-width="4"/>
+  <path d="M60 25 95 60 60 95 25 60Z" fill="none" stroke="#36A9FF" stroke-width="3"/>
+  <path d="m27 86 33-33 33 33" fill="none" stroke="#71E5DC" stroke-width="4" stroke-linecap="square"/>
+  <circle cx="60" cy="60" r="7" fill="#FFD84D"/>
+  <path d="m15 105 30-30" fill="none" stroke="#36A9FF" stroke-width="3" stroke-linecap="square"/>
+</svg>

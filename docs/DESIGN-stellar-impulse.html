@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Stellar Impulse — Design System</title>
+<style>
+  @page { size: A4; margin: 0; }
+  :root {
+    --space-deep: #03070c;
+    --space: #070b14;
+    --surface: #131d2d;
+    --surface-raised: #202e43;
+    --border: #3a4a62;
+    --text: #f2f6fa;
+    --muted: #93a4b8;
+    --cyan: #71e5dc;
+    --blue: #36a9ff;
+    --ice: #83d4ff;
+    --yellow: #ffd84d;
+    --core: #f7e77c;
+    --green: #4ad69a;
+    --orange: #ff9f43;
+    --red: #ff4f64;
+    --violet: #a978ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #070b14; color: var(--text); }
+  body { font-family: Inter, Arial, sans-serif; font-size: 10pt; line-height: 1.45; }
+  .page { position: relative; width: 210mm; min-height: 297mm; padding: 18mm 17mm 17mm; overflow: hidden; page-break-after: always; background: #070b14; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page:last-child { page-break-after: auto; }
+  .page::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .3; background: radial-gradient(circle at 78% 16%, rgba(54,169,255,.18), transparent 30%), radial-gradient(circle at 18% 84%, rgba(113,229,220,.11), transparent 28%), repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0, rgba(255,255,255,.018) 1px, transparent 1px, transparent 5px); }
+  .content { position: relative; z-index: 1; }
+  h1, h2, h3, .eyebrow, .label, .metric, .token-name { font-family: Rajdhani, 'Arial Narrow', sans-serif; }
+  h1 { font-size: 48pt; line-height: .95; letter-spacing: .02em; margin: 18mm 0 6mm; text-transform: uppercase; }
+  h2 { font-size: 24pt; line-height: 1; margin: 0 0 8mm; letter-spacing: .04em; text-transform: uppercase; }
+  h3 { font-size: 14pt; line-height: 1.1; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 3mm; }
+  p { margin: 0 0 4mm; color: var(--muted); }
+  strong { color: var(--text); }
+  .eyebrow { color: var(--cyan); letter-spacing: .2em; font-weight: 700; text-transform: uppercase; font-size: 9pt; }
+  .kicker { color: var(--ice); letter-spacing: .12em; text-transform: uppercase; font-size: 8pt; }
+  .rule { height: 1px; background: linear-gradient(90deg, var(--blue), transparent); margin: 5mm 0 8mm; }
+  .footer { position: absolute; bottom: 9mm; left: 17mm; right: 17mm; display: flex; justify-content: space-between; color: var(--muted); font: 8pt Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
+  .footer span:last-child { color: var(--cyan); }
+  .brand-lockup { display: flex; align-items: center; gap: 7mm; }
+  .brand-lockup svg { width: 33mm; height: 33mm; }
+  .brand-lockup .wordmark { color: var(--text); font: 700 30pt Rajdhani, 'Arial Narrow', sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+  .brand-lockup .submark { color: var(--ice); border-top: 1px solid var(--blue); padding-top: 2mm; margin-top: 2mm; font: 600 9pt Inter, sans-serif; letter-spacing: .42em; text-transform: uppercase; }
+  .cover-grid { display: grid; grid-template-columns: 1.2fr .8fr; gap: 12mm; align-items: end; min-height: 218mm; }
+  .cover-note { border-left: 2px solid var(--cyan); padding-left: 5mm; max-width: 90mm; }
+  .cover-note p { font-size: 12pt; color: var(--text); }
+  .metadata { margin-top: 12mm; display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .meta { border: 1px solid var(--border); background: rgba(19,29,45,.8); padding: 4mm; }
+  .meta small { display: block; color: var(--muted); font: 8pt Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
+  .meta b { display: block; margin-top: 1mm; color: var(--text); font: 600 12pt Rajdhani, sans-serif; }
+  .orb { width: 74mm; height: 74mm; border: 1px solid rgba(113,229,220,.35); transform: rotate(45deg); position: relative; box-shadow: 0 0 34px rgba(54,169,255,.2), inset 0 0 28px rgba(113,229,220,.08); }
+  .orb::before, .orb::after { content: ''; position: absolute; inset: 13mm; border: 1px solid rgba(54,169,255,.65); }
+  .orb::after { inset: 30mm; background: var(--yellow); border: 0; box-shadow: 0 0 20px rgba(255,216,77,.8); }
+  .orb-wrap { display: flex; justify-content: center; align-items: center; height: 100%; }
+  .principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; margin-top: 8mm; }
+  .card { border: 1px solid #41536f; background: #111a2a !important; color: #f2f6fa; padding: 5mm; position: relative; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .card::before { content: ''; position: absolute; top: -1px; left: -1px; width: 18mm; height: 2px; background: #71e5dc; }
+  .card h3 { color: #f2f6fa; }
+  .card p, .card li { color: #c6d1df; }
+  .card .eyebrow { color: #71e5dc; }
+  .card .number { color: #ffd84d; }
+  .card strong { color: #f2f6fa; }
+  .card p { font-size: 9pt; }
+  .number { color: var(--yellow); font: 700 20pt Rajdhani, sans-serif; margin-bottom: 3mm; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; }
+  .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+  .palette { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; }
+  .swatch { min-height: 29mm; padding: 4mm; display: flex; flex-direction: column; justify-content: flex-end; border: 1px solid rgba(255,255,255,.14); }
+  .swatch .token-name { font-weight: 700; font-size: 12pt; letter-spacing: .06em; }
+  .swatch .hex { font: 8pt Inter, sans-serif; opacity: .86; }
+  .dark { color: var(--text); }
+  .light { color: #06111d; }
+  .specimen { border: 1px solid var(--border); padding: 6mm; background: rgba(19,29,45,.8); margin-bottom: 5mm; }
+  .specimen .display { color: var(--text); font: 700 29pt Rajdhani, sans-serif; letter-spacing: .04em; line-height: 1; text-transform: uppercase; }
+  .specimen .body { max-width: 95%; color: var(--muted); font: 11pt Inter, sans-serif; }
+  .specimen .label-demo { color: var(--cyan); font: 600 9pt Rajdhani, sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+  .specimen .numeric { color: var(--yellow); font: 600 27pt Rajdhani, sans-serif; font-variant-numeric: tabular-nums; }
+  .measure { display: flex; gap: 4mm; align-items: flex-end; height: 38mm; }
+  .measure div { flex: 1; border-left: 2px solid var(--blue); padding-left: 2mm; color: var(--muted); font: 8pt Rajdhani, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+  .measure .bar-1 { height: 8mm; }.measure .bar-2 { height: 14mm; }.measure .bar-3 { height: 22mm; }.measure .bar-4 { height: 32mm; }
+  .panel-demo { min-height: 37mm; background: var(--surface); border: 1px solid var(--border); padding: 4mm; clip-path: polygon(0 0, 96% 0, 100% 18%, 100% 100%, 0 100%); }
+  .panel-demo .panel-top { color: var(--cyan); font: 600 8pt Rajdhani, sans-serif; letter-spacing: .16em; text-transform: uppercase; }
+  .panel-demo .panel-title { color: var(--text); font: 700 15pt Rajdhani, sans-serif; margin-top: 2mm; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 3mm; margin-top: 5mm; }
+  .button { padding: 3mm 5mm; font: 700 9pt Rajdhani, sans-serif; letter-spacing: .1em; text-transform: uppercase; clip-path: polygon(0 0, 94% 0, 100% 25%, 100% 100%, 0 100%); }
+  .button-blue { background: var(--blue); color: #06111d; }.button-cyan { background: var(--cyan); color: #06111d; }.button-secondary { background: var(--surface-raised); border: 1px solid var(--border); color: var(--text); }
+  .status { display: inline-block; padding: 1.5mm 3mm; border-radius: 999px; font: 700 8pt Rajdhani, sans-serif; letter-spacing: .1em; text-transform: uppercase; margin: 1mm 1mm 0 0; }
+  .status-green { background: var(--green); color: #06111d; }.status-red { background: var(--red); color: #06111d; }.status-yellow { background: var(--yellow); color: #06111d; }.status-violet { background: var(--violet); color: #06111d; }
+  ul { margin: 2mm 0 0 5mm; padding: 0; color: var(--muted); }
+  li { margin-bottom: 2mm; }
+  .do { border-left: 3px solid var(--green); }.dont { border-left: 3px solid var(--red); }
+  .do h3 { color: var(--green); }.dont h3 { color: var(--red); }
+  .implementation { display: grid; grid-template-columns: 1.1fr .9fr; gap: 8mm; }
+  .screen-wire { height: 95mm; border: 1px solid var(--border); background: var(--space-deep); display: grid; grid-template-rows: 16mm 1fr 19mm; padding: 3mm; gap: 3mm; }
+  .wire-header, .wire-bottom, .wire-side, .wire-map { border: 1px solid rgba(113,229,220,.35); background: rgba(19,29,45,.5); }
+  .wire-main { display: grid; grid-template-columns: 1fr 24mm; gap: 3mm; }.wire-map { position: relative; overflow: hidden; }.wire-map::after { content: ''; position: absolute; inset: 15%; border: 1px solid var(--blue); transform: rotate(45deg); box-shadow: 0 0 22px rgba(54,169,255,.45); }.wire-side { padding: 3mm; }.wire-bottom { width: 70%; justify-self: center; }
+  .code { background: #02050a; border: 1px solid var(--border); padding: 4mm; color: var(--ice); font: 9pt 'Courier New', monospace; line-height: 1.6; }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+  <section class="page">
+    <div class="content cover-grid">
+      <div>
+        <div class="brand-lockup">
+          <svg viewBox="0 0 120 120" aria-label="Stellar Impulse mark"><path d="M60 5 115 60 60 115 5 60Z" fill="none" stroke="#83D4FF" stroke-width="4"/><path d="M60 25 95 60 60 95 25 60Z" fill="none" stroke="#36A9FF" stroke-width="3"/><path d="m27 86 33-33 33 33" fill="none" stroke="#71E5DC" stroke-width="4"/><circle cx="60" cy="60" r="7" fill="#FFD84D"/><path d="m15 105 30-30" fill="none" stroke="#36A9FF" stroke-width="3"/></svg>
+          <div><div class="wordmark">STELLAR</div><div class="submark">IMPULSE</div></div>
+        </div>
+        <div class="eyebrow" style="margin-top: 22mm">DESIGN SYSTEM / ALPHA</div>
+        <h1>Stellar<br><span style="color:var(--cyan)">Impulse</span></h1>
+        <div class="cover-note"><p>Identidad táctica espacial para un RTS isométrico de navegador.</p><p class="kicker">Precisión de consola · Energía de propulsión · Lectura inmediata del campo</p></div>
+        <div class="metadata"><div class="meta"><small>Documento</small><b>DESIGN.md / PDF demostrativo</b></div><div class="meta"><small>Versión</small><b>Alpha · 04.10.2026</b></div><div class="meta"><small>Display</small><b>Rajdhani</b></div><div class="meta"><small>Body</small><b>Inter</b></div></div>
+      </div>
+      <div class="orb-wrap"><div class="orb"></div></div>
+    </div>
+    <div class="footer"><span>STELLAR IMPULSE</span><span>01 / 06</span></div>
+  </section>
+
+  <section class="page">
+    <div class="content">
+      <div class="eyebrow">01 / POSITIONING</div><div class="rule"></div>
+      <h2>Una consola de mando, no un panel genérico</h2>
+      <div class="two-col">
+        <div><p><strong>Stellar Impulse</strong> convierte el movimiento en decisión. La marca debe sentirse como una consola de navegación militar de alta tecnología: compacta, legible y precisa.</p><p>La interfaz prioriza el mapa, la acción táctica y el estado de la flota. El espacio, los glows y las scanlines construyen atmósfera, pero nunca compiten con el CTA ni con la lectura del combate.</p></div>
+        <div class="card"><div class="eyebrow">Descriptor</div><h3 style="margin-top:3mm">RTS táctico espacial para navegador.</h3><p>No usar “cyberpunk” como descriptor principal. No presentar el producto como una experiencia blockchain. La experiencia de juego va primero.</p></div>
+      </div>
+      <div class="principles">
+        <div class="card"><div class="number">01</div><h3>Impulse</h3><p>Vector de movimiento, rutas, órdenes y energía de propulsión.</p></div>
+        <div class="card"><div class="number">02</div><h3>Core</h3><p>Punto de decisión, objetivo de alto valor y núcleo de lectura.</p></div>
+        <div class="card"><div class="number">03</div><h3>Stellar</h3><p>Espacio profundo, escala, orientación y contexto de campaña.</p></div>
+      </div>
+      <div style="margin-top:12mm" class="two-col">
+        <div class="card"><h3>Personalidad</h3><ul><li>Táctica, no militarista extrema.</li><li>Tecnológica, no clínica.</li><li>Espacial, no fantasiosa.</li><li>Competitiva, no agresiva por defecto.</li><li>Premium de ingeniería, no lujosa.</li></ul></div>
+        <div class="card"><h3>Voz de sistema</h3><p style="color:var(--text);font-family:Rajdhani;font-size:15pt;line-height:1.15">“Señal estable.”<br>“Ruta aceptada.”<br>“Núcleo bloqueado.”</p><p>Mensajes breves, operativos y concretos. La consola ayuda a actuar.</p></div>
+      </div>
+    </div>
+    <div class="footer"><span>DESIGN PRINCIPLES</span><span>02 / 06</span></div>
+  </section>
+
+  <section class="page">
+    <div class="content">
+      <div class="eyebrow">02 / COLOR SYSTEM</div><div class="rule"></div>
+      <h2>Señales escasas sobre espacio profundo</h2>
+      <p>Los fondos azul-negro dominan la superficie. Los colores luminosos aparecen como señales escasas para navegación, energía, selección y facciones.</p>
+      <div class="palette" style="margin-top:6mm">
+        <div class="swatch dark" style="background:#03070C"><span class="token-name">Space deep</span><span class="hex">#03070C · fondo profundo</span></div>
+        <div class="swatch dark" style="background:#070B14"><span class="token-name">Space</span><span class="hex">#070B14 · fondo base</span></div>
+        <div class="swatch dark" style="background:#131D2D"><span class="token-name">Surface</span><span class="hex">#131D2D · panel</span></div>
+        <div class="swatch dark" style="background:#202E43"><span class="token-name">Surface raised</span><span class="hex">#202E43 · selección</span></div>
+        <div class="swatch dark" style="background:#3A4A62"><span class="token-name">Border</span><span class="hex">#3A4A62 · estructura</span></div>
+        <div class="swatch light" style="background:#F2F6FA"><span class="token-name">Text</span><span class="hex">#F2F6FA · lectura</span></div>
+        <div class="swatch light" style="background:#71E5DC"><span class="token-name">Signal Cyan</span><span class="hex">#71E5DC · firma</span></div>
+        <div class="swatch light" style="background:#36A9FF"><span class="token-name">Impulse Blue</span><span class="hex">#36A9FF · táctica</span></div>
+        <div class="swatch light" style="background:#83D4FF"><span class="token-name">Ice Blue</span><span class="hex">#83D4FF · resaltado</span></div>
+        <div class="swatch light" style="background:#FFD84D"><span class="token-name">Energy</span><span class="hex">#FFD84D · atención</span></div>
+        <div class="swatch light" style="background:#4AD69A"><span class="token-name">Success</span><span class="hex">#4AD69A · confirmado</span></div>
+        <div class="swatch light" style="background:#FF4F64"><span class="token-name">Red faction</span><span class="hex">#FF4F64 · rival</span></div>
+      </div>
+      <div class="two-col" style="margin-top:9mm">
+        <div class="card"><h3>Roles</h3><ul><li><strong style="color:var(--cyan)">Cyan:</strong> marca, navegación, consola.</li><li><strong style="color:var(--blue)">Blue:</strong> selección, rutas y flota aliada.</li><li><strong style="color:var(--yellow)">Energy:</strong> recursos y objetivos.</li><li><strong style="color:var(--red)">Red:</strong> rival, peligro o destrucción.</li></ul></div>
+        <div class="card"><h3>Accesibilidad</h3><p>El color nunca es el único indicador. Acompañar con texto, forma, posición, icono o patrón.</p><div class="status status-green">LISTO</div><div class="status status-red">RIVAL</div><div class="status status-yellow">NÚCLEO</div><div class="status status-violet">NEUTRAL</div></div>
+      </div>
+    </div>
+    <div class="footer"><span>COLOR TOKENS</span><span>03 / 06</span></div>
+  </section>
+
+  <section class="page">
+    <div class="content">
+      <div class="eyebrow">03 / TYPE &amp; SPACE</div><div class="rule"></div>
+      <h2>La voz del sistema tiene dos capas</h2>
+      <div class="two-col">
+        <div>
+          <div class="specimen"><div class="label-demo">Rajdhani / Display</div><div class="display">COMMAND THE ORBIT</div><p style="margin-top:4mm">Títulos de pantalla, marca, labels y códigos.</p></div>
+          <div class="specimen"><div class="label-demo">Inter / Body</div><div class="body">El texto explicativo debe ser claro, breve y cómodo de leer. La ambientación nunca justifica sacrificar comprensión.</div></div>
+          <div class="specimen"><div class="label-demo">Rajdhani / Numeric</div><div class="numeric">01:42&nbsp;&nbsp;&nbsp; 2,480&nbsp;&nbsp;&nbsp; 74%</div></div>
+        </div>
+        <div>
+          <div class="card"><h3>Escala</h3><div class="measure"><div class="bar-1">XS<br>4</div><div class="bar-2">SM<br>8</div><div class="bar-3">MD<br>16</div><div class="bar-4">LG<br>24</div></div><p>La unidad base es 4 px. Las separaciones recurrentes son 8, 16, 24 y 32 px.</p></div>
+          <div class="card" style="margin-top:5mm"><h3>Reglas tipográficas</h3><ul><li>Mayúsculas para labels y estados cortos.</li><li>Rajdhani no se usa en bloques largos.</li><li>Los números usan cifras tabulares.</li><li>Tracking de labels: 0.14em.</li></ul></div>
+          <div class="code" style="margin-top:5mm">display: Rajdhani 700<br>body: Inter 400<br>label: Rajdhani 600<br>numeric: tabular-nums</div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>TYPOGRAPHY &amp; SPACING</span><span>04 / 06</span></div>
+  </section>
+
+  <section class="page">
+    <div class="content">
+      <div class="eyebrow">04 / COMPONENT LANGUAGE</div><div class="rule"></div>
+      <h2>Geometría angular, estados legibles</h2>
+      <div class="two-col">
+        <div>
+          <div class="panel-demo"><div class="panel-top">SECTOR 01 // UMBRAL HELIOS</div><div class="panel-title">Briefing de despliegue</div><p style="margin-top:3mm">Panel oscuro, borde de un píxel, acento superior y esquina recortada.</p></div>
+          <div class="buttons"><div class="button button-blue">Preparar operación →</div><div class="button button-cyan">Confirmar</div><div class="button button-secondary">Cancelar</div></div>
+        </div>
+        <div>
+          <div class="card"><h3>Paneles</h3><p>Surface o Surface raised, borde neutral, sombra corta y glow solo cuando indica proximidad, selección o disponibilidad.</p></div>
+          <div class="card" style="margin-top:4mm"><h3>Iconografía</h3><p>Geometría monolineal de 1–2 px, ángulos de 45° o 90°. El triángulo, el diamante, el núcleo y la línea de ruta son formas propias.</p></div>
+        </div>
+      </div>
+      <div class="three-col" style="margin-top:9mm">
+        <div class="card do"><h3>Sí</h3><ul><li>Reservar silencio visual alrededor del mapa.</li><li>Usar cyan como firma.</li><li>Acompañar color con forma o texto.</li></ul></div>
+        <div class="card dont"><h3>No</h3><ul><li>No añadir colores sin rol.</li><li>No usar glow para compensar jerarquía.</li><li>No deformar el logo.</li></ul></div>
+        <div class="card"><h3>Motion</h3><ul><li>120–180 ms en UI.</li><li>Órbitas lentas de fondo.</li><li>Respetar reduced motion.</li></ul></div>
+      </div>
+    </div>
+    <div class="footer"><span>COMPONENTS &amp; MOTION</span><span>05 / 06</span></div>
+  </section>
+
+  <section class="page">
+    <div class="content">
+      <div class="eyebrow">05 / APPLICATION</div><div class="rule"></div>
+      <h2>El mapa es el protagonista</h2>
+      <div class="implementation">
+        <div>
+          <div class="screen-wire"><div class="wire-header"></div><div class="wire-main"><div class="wire-map"></div><div class="wire-side"></div></div><div class="wire-bottom"></div></div>
+          <p style="margin-top:4mm">Retícula de gameplay: recursos arriba, estado de sector al centro, controles arriba a la derecha, minimapa abajo a la izquierda, escuadrón abajo y acciones en el lateral.</p>
+        </div>
+        <div>
+          <div class="card"><h3>Por pantalla</h3><ul><li><strong>Acceso:</strong> Signal Cyan + Energy.</li><li><strong>Centro:</strong> Signal Cyan.</li><li><strong>Preparación:</strong> Cyan + facciones.</li><li><strong>Hangar:</strong> Cyan + Success.</li><li><strong>Mapa:</strong> Impulse Blue.</li><li><strong>Gameplay:</strong> Blue + facciones.</li></ul></div>
+          <div class="card" style="margin-top:5mm"><h3>Logo</h3><p>Diamante orbital, núcleo central y trazo diagonal de impulso. No representa una nave concreta: representa la red de mando.</p><p class="kicker">Mínimo digital: 132 px horizontal / 28 px mark</p></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:10mm"><h3>Checklist de entrega</h3><div class="two-col"><ul><li>La pantalla se reconoce como Stellar Impulse.</li><li>La acción principal domina la decoración.</li><li>Todos los colores tienen rol documentado.</li><li>Marca, facción y estado no se confunden.</li></ul><ul><li>El foco de teclado es visible.</li><li>La pantalla funciona con movimiento reducido.</li><li>El logo conserva proporción y área segura.</li><li>El copy es breve y operativo.</li></ul></div></div>
+    </div>
+    <div class="footer"><span>APPLICATION CHECKLIST</span><span>06 / 06</span></div>
+  </section>
+</body>
+</html>
