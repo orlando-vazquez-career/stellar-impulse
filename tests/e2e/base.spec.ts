@@ -8,6 +8,8 @@ test('builds the Refinery from the Base tab and surrenders once bases are expose
   await page.getByLabel('Identificador de comandante').fill('Vega');
   await page.getByRole('button', { name: 'Continuar como invitado' }).click();
   await page.getByRole('button', { name: /Preparar operación/ }).click();
+  // The easy rival never assaults bases, so nothing but the surrender can end this match.
+  await page.getByRole('button', { name: /Fácil/ }).click();
   await page.getByLabel('Estoy listo para desplegar').check();
   await page.getByRole('button', { name: 'Iniciar operación' }).click();
   await chooseOpening(page);
@@ -35,7 +37,6 @@ test('builds the Refinery from the Base tab and surrenders once bases are expose
   await production.getByRole('tab', { name: 'Base', exact: true }).click();
   await expect(production).toContainText('Sin escudo', { timeout: 60000 });
   await expect(surrender).toBeEnabled();
-  // Surrender right away: an idle commander is an easy target once the shield is down.
   await surrender.click();
   await expect(surrender).toHaveText('Confirmar rendición');
   // This command only updates room state; verify its result without a navigation wait.
