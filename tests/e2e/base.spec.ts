@@ -38,6 +38,8 @@ test('builds the Refinery from the Base tab and surrenders once bases are expose
   // Surrender right away: an idle commander is an easy target once the shield is down.
   await surrender.click();
   await expect(surrender).toHaveText('Confirmar rendición');
-  await surrender.click({ timeout: 5000 });
+  // This command only updates room state; verify its result without a navigation wait.
+  await surrender.click({ timeout: 5000, noWaitAfter: true });
   await expect(page.getByRole('dialog', { name: 'Derrota' })).toBeVisible({ timeout: 5000 });
+  await expect(surrender).toHaveCount(0);
 });
