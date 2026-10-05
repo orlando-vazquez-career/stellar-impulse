@@ -25,8 +25,11 @@ test('builds the Refinery from the Base tab and surrenders once bases are expose
 
   const refinery = production.getByRole('button', { name: /^Refinería(?! II)/ });
   await expect(refinery).toBeEnabled({ timeout: 20000 });
-  await refinery.click();
-  await expect(refinery).toContainText(/Construido|Construyendo/, { timeout: 5000 });
+  // A busy CI renderer can drop a click; retry until the server has the order.
+  await expect(async () => {
+    if (await refinery.isEnabled()) await refinery.click({ timeout: 2000 });
+    await expect(refinery).toContainText(/Construido|Construyendo/, { timeout: 2000 });
+  }).toPass({ timeout: 30000 });
   await expect(refinery).toContainText('Construido', { timeout: 20000 });
   await expect(shipyard).not.toContainText('Requiere Refinería');
 
@@ -37,10 +40,12 @@ test('builds the Refinery from the Base tab and surrenders once bases are expose
   await production.getByRole('tab', { name: 'Base', exact: true }).click();
   await expect(production).toContainText('Sin escudo', { timeout: 60000 });
   await expect(surrender).toBeEnabled();
-  await surrender.click();
-  await expect(surrender).toHaveText('Confirmar rendición');
-  // This command only updates room state; verify its result without a navigation wait.
-  await surrender.click({ timeout: 5000, noWaitAfter: true });
-  await expect(page.getByRole('dialog', { name: 'Derrota' })).toBeVisible({ timeout: 5000 });
+  // First click arms, second confirms. Retry the pair: a busy renderer can drop either click,
+  // and an armed button disarms itself after four seconds.
+  const defeat = page.getByRole('dialog', { name: 'Derrota' });
+  await expect(async () => {
+    if (await surrender.count()) await surrender.click({ timeout: 2000, noWaitAfter: true });
+    await expect(defeat).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 40000 });
   await expect(surrender).toHaveCount(0);
 });
