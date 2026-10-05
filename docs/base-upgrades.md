@@ -15,8 +15,10 @@ Metal. Cada una tiene tres niveles y dura hasta el final de la partida.
 
 La defensa ataca automáticamente al enemigo o guardián activo más cercano a
 cuatro casillas de distancia Manhattan, dentro de la visión de la base. Usa el
-ritmo de combate de la partida. El primer nivel arma la defensa: la base inicial
-no dispara. La mejora no altera el daño de las naves ni las reglas de captura.
+ritmo de combate de la partida. En el modo de práctica el primer nivel arma la
+defensa; en Partida completa y Escaramuza la base ya dispara sola (12 de daño) y
+cada nivel suma encima. Ver `docs/base-system.md`. La mejora no altera el daño de
+las naves ni las reglas de captura.
 
 Estas mejoras son economía de la partida. La progresión y los modificadores
 roguelite quedan para una etapa posterior.

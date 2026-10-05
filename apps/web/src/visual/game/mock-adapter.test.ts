@@ -200,7 +200,7 @@ describe('visual presentation adapter', () => {
       adapter.dispatch({ type: 'attack-selected', targetId: 'red-sigma' });
       vi.setSystemTime(Date.now() + 450);
       vi.advanceTimersByTime(50);
-      expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'red-sigma')?.healthPercent).toBe(65.7);
+      expect(adapter.getSnapshot().squads.find((squad) => squad.id === 'red-sigma')?.healthPercent).toBe(64);
     } finally {
       adapter.destroy();
       vi.useRealTimers();

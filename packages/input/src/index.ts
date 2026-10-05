@@ -38,7 +38,11 @@ export interface ProduceCommand {
 }
 export interface DisbandCommand { seq: number; type: 'disband'; squadIds: string[] }
 export interface UpgradeBaseCommand { seq: number; type: 'upgrade_base'; upgrade: 'damage' | 'capacity' }
-export type Command = MoveCommand | AttackCommand | StopCommand | EnqueueCommand | StanceCommand | ProduceCommand | DisbandCommand | UpgradeBaseCommand;
+/** Build one base module. Slot rules and costs are checked by the server. */
+export interface BuildModuleCommand { seq: number; type: 'build_module'; module: 'refinery' | 'refinery2' | 'shipyard' | 'bastion' | 'radar' }
+export interface SurrenderCommand { seq: number; type: 'surrender' }
+export type Command = MoveCommand | AttackCommand | StopCommand | EnqueueCommand | StanceCommand | ProduceCommand | DisbandCommand
+  | UpgradeBaseCommand | BuildModuleCommand | SurrenderCommand;
 export type ParseResult = { ok: true; command: Command } | { ok: false; reason: 'invalid_command' };
 
 /** Strict validation at the JSON boundary. No coercion or extra properties. */
@@ -55,7 +59,9 @@ export function parseCommand(value: unknown): ParseResult {
     : type === 'disband' ? ['seq', 'type', 'squadIds']
     : type === 'stance' ? ['seq', 'type', 'squadId', 'stance']
     : type === 'produce' ? ['seq', 'type', 'kind']
-    : type === 'upgrade_base' ? ['seq', 'type', 'upgrade'] : [];
+    : type === 'upgrade_base' ? ['seq', 'type', 'upgrade']
+    : type === 'build_module' ? ['seq', 'type', 'module']
+    : type === 'surrender' ? ['seq', 'type'] : [];
   if (!expected.length || Reflect.ownKeys(value).length !== expected.length) return invalid;
   if (expected.some((key) => !fields[key] || !('value' in fields[key]))) return invalid;
   const seq: unknown = fields.seq!.value;
@@ -73,6 +79,12 @@ export function parseCommand(value: unknown): ParseResult {
       squadIds.push(field.value);
     }
     return { ok: true, command: { seq, type, squadIds } };
+  }
+  if (type === 'surrender') return { ok: true, command: { seq, type } };
+  if (type === 'build_module') {
+    const module = fields.module!.value;
+    if (module !== 'refinery' && module !== 'refinery2' && module !== 'shipyard' && module !== 'bastion' && module !== 'radar') return invalid;
+    return { ok: true, command: { seq, type, module } };
   }
   if (type === 'upgrade_base') {
     const upgrade = fields.upgrade!.value;

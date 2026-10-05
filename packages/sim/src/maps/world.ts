@@ -108,6 +108,8 @@ export function cloneBattlefieldWorld(world: BattlefieldWorld): BattlefieldWorld
     },
     squads: world.squads.map((unit) => ({ ...unit,
       target: unit.target ? { ...unit.target } : null,
+      attackMemory: unit.attackMemory ? { ...unit.attackMemory } : undefined,
+      lastShot: unit.lastShot ? { ...unit.lastShot, from: { ...unit.lastShot.from }, to: { ...unit.lastShot.to } } : undefined,
       route: unit.route.map((cell) => ({ ...cell })) })),
     guardians: world.guardians.map((unit) => ({ ...unit })),
     nodes: world.nodes.map((node) => ({ ...node, progress: { ...node.progress } })),
@@ -254,6 +256,8 @@ export function stepBattlefieldWorld(world: BattlefieldWorld): BattlefieldWorld 
   next.tick += 1;
   next.core.open = next.tick >= next.rules.coreOpenTick;
   if (next.tick % next.rules.moveEveryTicks === 0) advanceOccupancy(next);
+  updateFog(next);
+  const living = next.squads.filter((unit) => unit.hp > 0).length;
   resolveCombat(next);
   const capture = captureContext(next);
   for (const node of next.nodes) {
@@ -262,6 +266,6 @@ export function stepBattlefieldWorld(world: BattlefieldWorld): BattlefieldWorld 
     if (node.ownerId && next.tick % next.rules.tickRate === 0) next.players[node.ownerId].metal += 1;
   }
   if (next.core.open) next.winner = advanceCapture(next, next.core, next.rules.coreCaptureTicks, capture);
-  updateFog(next);
+  if (next.squads.filter((unit) => unit.hp > 0).length !== living) updateFog(next);
   return next;
 }

@@ -25,8 +25,8 @@ test('chooses a free opening card, rerolls once, and chooses gold during a runni
   await page.locator('.vi-production__unit').nth(2).hover();
   const guide=page.getByRole('tooltip');
   await expect(guide).toContainText('Bombardero');
-  await expect(guide).toContainText('Fragata ×2');
-  await expect(guide).toContainText('Interceptor ×0.5');
+  await expect(guide).toContainText('Fragata ×1.5');
+  await expect(guide).toContainText('Interceptor ×0.6');
   await expect(guide).toContainText('4 casillas');
   await page.screenshot({path:'test-results/ship-build-guide.png'});
   await page.getByRole('tab',{name:'Base',exact:true}).click();

@@ -4,6 +4,7 @@ import type { PlayerId, Position, UnitKind, World } from '../index.js';
 import { effectiveFleetCap, effectsFor } from '../augments/effects.js';
 import { statsFor } from '../stats.js';
 import { knownObjectives, explorationGoal } from './knowledge.js';
+import { baseVulnerable, moduleRefusal, rivalOf, type ModuleKind } from '../base.js';
 
 export type RivalDifficulty = 'easy' | 'medium' | 'hard';
 
@@ -16,7 +17,7 @@ interface RivalProfile {
   threatRadius: number;
   /** The fleet waits at home until it has this many combat ships, then pushes as a group. */
   attackGroup: number;
-  /** Ships the rival keeps alive at most (never above the shared FLEET_CAP). */
+  /** Ships the rival keeps alive at most; the hangar capacity still applies. */
   fleetLimit: number;
   /** Minimum ticks between launches: a slow hangar for the easy rival. */
   buildSpacingTicks: number;
@@ -27,20 +28,27 @@ interface RivalProfile {
   /** With this many combat ships it expands to two nodes at once (0 = never). */
   expandSplitAt: number;
   buildOrder: readonly UnitKind[];
+  /** Base modules in order. The Refinery always comes first. */
+  moduleOrder: readonly ModuleKind[];
+  /** Once bases are exposed, a fleet this big assaults the player's base (0 = never). */
+  siegeGroup: number;
 }
 
 export const RIVAL_PROFILES: Readonly<Record<RivalDifficulty, RivalProfile>> = Object.freeze({
   easy: {
     threatRadius: 4, attackGroup: 5, fleetLimit: 6, buildSpacingTicks: 150, raidsPlayer: false, raidSplitAt: 0, expandSplitAt: 0,
     buildOrder: ['interceptor', 'frigate', 'interceptor', 'explorer'],
+    moduleOrder: ['refinery'], siegeGroup: 0,
   },
   medium: {
-    threatRadius: 6, attackGroup: 3, fleetLimit: FLEET_CAP, buildSpacingTicks: 0, raidsPlayer: true, raidSplitAt: 0, expandSplitAt: 0,
+    threatRadius: 6, attackGroup: 3, fleetLimit: 24, buildSpacingTicks: 0, raidsPlayer: true, raidSplitAt: 0, expandSplitAt: 0,
     buildOrder: ['interceptor', 'frigate', 'interceptor', 'bomber', 'frigate', 'explorer'],
+    moduleOrder: ['refinery', 'shipyard', 'bastion'], siegeGroup: 6,
   },
   hard: {
-    threatRadius: 8, attackGroup: 2, fleetLimit: FLEET_CAP, buildSpacingTicks: 0, raidsPlayer: true, raidSplitAt: 6, expandSplitAt: 4,
+    threatRadius: 8, attackGroup: 2, fleetLimit: 24, buildSpacingTicks: 0, raidsPlayer: true, raidSplitAt: 6, expandSplitAt: 4,
     buildOrder: ['interceptor', 'bomber', 'frigate', 'interceptor', 'bomber', 'frigate'],
+    moduleOrder: ['refinery', 'refinery2', 'shipyard', 'bastion'], siegeGroup: 5,
   },
 });
 
@@ -73,6 +81,7 @@ export function rivalGoals(world: World, rival: PlayerId, canSee: (target: Posit
   if (world.suddenDeath) front = world.core;
   else if (threatened) front = base;
   else if (contestCore) front = world.core;
+  else if (baseVulnerable(world) && profile.siegeGroup > 0 && combat.length >= profile.siegeGroup) front = world.players[rivalOf(rival)].base;
   else if (world.core.open && targets[0]) front = targets[0];
   else if (combat.length < profile.attackGroup) front = targets[0] && manhattan(targets[0], base) <= 8 ? targets[0] : base;
   else front = targets[0] ?? explorationGoal(world,rival,combat[0] ?? base);
@@ -98,10 +107,28 @@ export function rivalGoals(world: World, rival: PlayerId, canSee: (target: Posit
   return goals;
 }
 
+/** The next module in the rival's order once it can use it: a node for the Refinery, an escort for the rest. */
+function dueModule(world: World, rival: PlayerId, difficulty: RivalDifficulty): ModuleKind | null {
+  const modules = world.players[rival].modules;
+  if (!world.baseRules || !modules || modules.building) return null;
+  const next = RIVAL_PROFILES[difficulty].moduleOrder.find((kind) => kind === 'refinery' ? modules.refinery < 1
+    : kind === 'refinery2' ? modules.refinery < 2 : !modules.extras.includes(kind));
+  if (!next) return null;
+  const owned = world.nodes.some((node) => node.kind === 'metal' && node.ownerId === rival);
+  const escort = world.squads.filter((unit) => unit.ownerId === rival && unit.hp > 0 && unit.kind !== 'explorer' && !unit.isDecoy).length;
+  return (next === 'refinery' ? owned : escort >= 3) ? next : null;
+}
+/** Module the rival starts now, or null. It saves Metal for a due module (see rivalProduction). */
+export function rivalModule(world: World, rival: PlayerId, difficulty: RivalDifficulty = 'medium'): ModuleKind | null {
+  const kind = dueModule(world, rival, difficulty);
+  return kind && !moduleRefusal(world, rival, kind) ? kind : null;
+}
+
 /** Next ship the rival orders, or null to keep saving. Cycles a fixed build order. */
 export function rivalProduction(world: World, rival: PlayerId, difficulty: RivalDifficulty = 'medium'): UnitKind | null {
   const profile = RIVAL_PROFILES[difficulty];
   if (world.production[rival]) return null;
+  if (dueModule(world, rival, difficulty)) return null;
   const alive = world.squads.filter((unit) => unit.ownerId === rival && unit.hp > 0 && !unit.isDecoy).length;
   if (alive >= Math.min(effectiveFleetCap(world,rival), profile.fleetLimit)) return null;
   if (world.tick < (world.built[rival] + 1) * profile.buildSpacingTicks) return null;

@@ -26,6 +26,11 @@ export const REJECTION_TEXT: Record<string, string> = {
   fleet_full: 'Flota completa.',
   production_busy: 'El hangar ya está construyendo.',
   upgrade_maxed: 'Esta mejora ya está al máximo.',
+  module_busy: 'La base ya está construyendo un módulo.',
+  module_built: 'Ese módulo ya está construido.',
+  module_locked: 'Primero construye la Refinería.',
+  module_slots_full: 'No quedan espacios para módulos.',
+  surrender_locked: 'Todavía no puedes rendirte.',
   blocked_destination: 'No se puede volar a ese punto.',
   unreachable_destination: 'No hay ruta hasta ese punto.',
   target_not_visible: 'El objetivo no está a la vista.',
@@ -99,7 +104,8 @@ export function diffViews(previous: PlayerView | null, next: PlayerView): Gamepl
   if (previous.core.progress[me] === 0 && next.core.progress[me] > 0) events.push({ kind: 'core-own-capturing' });
   if (previous.core.progress[rival] === 0 && next.core.progress[rival] > 0) events.push({ kind: 'core-rival-capturing' });
   if (previous.winner === null && next.winner !== null) events.push({ kind: next.winner === me ? 'victory' : 'defeat' });
-  const hurt = [...after.values()].some((squad) => squad.ownerId === me && squad.hp < (before.get(squad.id)?.hp ?? squad.hp));
+  const baseHit = (next.base?.hp ?? 0) < (previous.base?.hp ?? 0);
+  const hurt = baseHit || [...after.values()].some((squad) => squad.ownerId === me && squad.hp < (before.get(squad.id)?.hp ?? squad.hp));
   if (hurt) events.push({ kind: 'under-attack' });
   return events;
 }
@@ -161,6 +167,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         isDecoy:squad.isDecoy, unitType: squad.kind, gridX: at.x, gridY: at.y,
         speedCellsPerSecond: squad.stats?.speed, hp: squad.hp, maxHp: squad.maxHp, stats: squad.stats,
         healthPercent: Math.round(squad.hp / squad.maxHp * 100),
+        attackCooldown: squad.attackCooldown, lastShot: squad.lastShot,
         attackTargetId: own ? squad.attackTargetId ?? null : null,
         selected: selectedIds.includes(squad.id), visible: true,
         composition: {
@@ -188,6 +195,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     snapshot = {
       ...snapshot,
       tick: view.tick,
+      tickRate: view.rules.tickRate,
       elapsedSeconds: Math.floor(view.tick / TICKS_PER_SECOND),
       suddenDeath: view.suddenDeath,
       selectedSquadIds: selectedIds,
@@ -203,6 +211,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       nodes: view.nodes.map((node) => ({
         id: node.id, kind: node.kind, x: node.x, y: node.y,
         owner: node.ownerId === null ? null : ownerOf(node.ownerId),
+        ...(node.activeAt !== undefined ? { stabilizingSeconds: Math.ceil((node.activeAt - view.tick) / TICKS_PER_SECOND) } : {}),
       })),
       core: {
         state: coreState(view),
@@ -213,7 +222,14 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         ? { kind: own.production.kind, remainingSeconds: Math.ceil(own.production.remainingTicks / TICKS_PER_SECOND) }
         : null,
       base: { upgrades: { ...(own.baseUpgrades ?? { damage: 0, capacity: 0 }) }, damage: view.base?.damage ?? 0,
-        range: BASE_DEFENSE_RANGE, position:{...own.base}, upgradeCosts: view.base?.upgradeCosts ?? {damage:null,capacity:null} },
+        range: view.base?.range ?? BASE_DEFENSE_RANGE, position:{...own.base}, upgradeCosts: view.base?.upgradeCosts ?? {damage:null,capacity:null},
+        ...(view.base?.hp !== undefined ? {
+          hp: view.base.hp, maxHp: view.base.maxHp, armor: view.base.armor, moduleCosts: view.base.moduleCosts,
+          vulnerableInSeconds: Math.max(0, Math.ceil(((view.base.vulnerableTick ?? 0) - view.tick) / TICKS_PER_SECOND)),
+          modules: view.base.modules && { ...view.base.modules, extras: [...view.base.modules.extras],
+            building: view.base.modules.building && { kind: view.base.modules.building.kind, remainingSeconds: Math.ceil(view.base.modules.building.remainingTicks / TICKS_PER_SECOND) } },
+        } : {}) },
+      enemyBase: view.enemyBase && { id: `${me === 'p1' ? 'p2' : 'p1'}-base`, ...view.enemyBase },
       result: view.winner === null ? null : view.winner === me ? 'victory' : 'defeat',
       reward: view.reward,
       visibleCells: (() => {
@@ -318,6 +334,16 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         send({ type: 'disband', squadIds });
         snapshot = { ...snapshot, activeAction: null, notice: null };
         emit();
+        return;
+      }
+      if (intent.type === 'build-module') {
+        send({ type: 'build_module', module: intent.module });
+        snapshot = { ...snapshot, notice: null };
+        emit();
+        return;
+      }
+      if (intent.type === 'surrender') {
+        send({ type: 'surrender' });
         return;
       }
       if (intent.type === 'upgrade-base') {
