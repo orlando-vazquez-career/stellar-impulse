@@ -149,6 +149,10 @@ export interface Squad extends Position {
   transit?: { from: Position; untilTick: number };
   /** Brief right-of-way pause after taking an allied passing pocket. */
   trafficYieldUntil?: number;
+  /** A fresh order may take its first step on the next tick instead of waiting for the beat. */
+  quickStep?: boolean;
+  /** After an off-beat first step, no further step before this tick (then the shared beat resumes). */
+  moveHoldUntil?: number;
 }
 export function createSquad(id: string, ownerId: PlayerId, kind: UnitKind, position: Position, world?: World): Squad {
   const stats = statsFor(world ?? { rules: TRAINING_RULES }, ownerId, kind);
@@ -636,6 +640,7 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
       nextSquad.route = [];
       nextSquad.attackTargetId = command.targetId;
       nextSquad.attackMemory = { x: target.x, y: target.y, seenAt: world.tick };
+      nextSquad.quickStep = true;
     });
   }
   if (command.type === 'stop') {
@@ -656,6 +661,7 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
   return commitOrder(world, playerId, command.seq, squad.id, (nextSquad) => {
     if (command.type === 'enqueue') appendDestination(nextSquad, command);
     else replaceDestination(nextSquad, command);
+    nextSquad.quickStep = true;
   });
 }
 /** A guardian's post is its objective's cell. */
@@ -798,7 +804,14 @@ function moveSquads(world: World): void {
     const destination = movementDestination(world, squad);
     if (!destination) continue;
     const interval = moveInterval(world, squad.ownerId, squad.kind);
-    if (world.tick % interval !== 0) continue;
+    // Orders feel instant: the first step of a fresh order goes on the next tick. Later steps
+    // keep the shared beat, which allied swaps rely on.
+    const onBeat = world.tick % interval === 0;
+    const inTransit = !!squad.transit && squad.transit.untilTick > world.tick;
+    const quick = !!squad.quickStep && !inTransit && !onBeat;
+    if ((squad.moveHoldUntil ?? 0) > world.tick || (!onBeat && !quick)) continue;
+    squad.quickStep = false;
+    if (quick) squad.moveHoldUntil = world.tick + Math.ceil(interval / 2);
     if(routeBlockedByTraffic(world,squad,destination)){
       if(yieldToBlockedAlly(world,squad,destination))continue;
     }

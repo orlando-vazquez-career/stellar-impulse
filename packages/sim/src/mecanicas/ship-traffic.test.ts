@@ -103,7 +103,8 @@ describe('ship traffic', () => {
     if(blocker==='enemy')world.squads[1]!.ownerId='p2';
     if(blocker==='guardian'){world.squads.pop();world.guardians=[{id:'corner',objectiveId:'core',x:4,y:3,hp:1000,maxHp:1000,damage:0}];}
     world=applyCommand(world,'p1',{seq:1,type:'move',squadId:'lead',x:4,y:4}).world;
-    for(let i=0;i<6;i++)world=stepWorld(world);
+    // The first step is immediate; only an allied corner lets it cut the diagonal.
+    world=stepWorld(world);
     if(blocker==='ally')expect(world.squads[0]).toMatchObject({x:4,y:4,target:null});
     else expect(world.squads[0]!.x===4&&world.squads[0]!.y===4).toBe(false);
     expect(world.squads[0]!.x===4&&world.squads[0]!.y===3).toBe(false);
