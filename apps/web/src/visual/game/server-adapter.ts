@@ -1,6 +1,6 @@
 import type { DurationMode } from '@impulso/sim';
 import { Client, type Room } from '@colyseus/sdk';
-import { FLEET_CAP, BASE_DEFENSE_RANGE } from '@impulso/sim';
+import { FLEET_CAP, BASE_DEFENSE_RANGE, findTiledPath } from '@impulso/sim';
 import { type PlayerView, type UnitKind } from '@impulso/state';
 import { sectorSurface, type TrainingMapId } from '../map/sector-map';
 import type {
@@ -11,6 +11,8 @@ import type {
 const FRAME_MS = 16;
 /** Further than this, a ship snaps instead of sliding (respawn, reconnection, fog reveal). */
 const SNAP_CELLS = 3;
+/** Server steps a rival ship trails behind its reported position, to absorb update jitter. Own ships lead with their predicted next cell instead. */
+const TRAIL_LAG = 1;
 const TICKS_PER_SECOND = 10;
 
 type Point = { x: number; y: number };
@@ -131,11 +133,26 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
   let seq = 0;
   let destroyed = false;
   const shown = new Map<string, Point>();
-  const transits = new Map<string, { from: Point; to: Point; startedAt: number; duration: number }>();
+  /** Cells each ship still has to cover on screen, its nominal speed and its current speed. */
+  type Trail = { points: Point[]; cellsPerSecond: number; speed: number; pace: number; updatedAt: number;
+    /** Own ships only: the next cell on their route, which the server has not stepped into yet. */
+    predicted: Point | null; authoritative: Point; steppedAt: number };
+  const trails = new Map<string, Trail>();
+  const newTrail = (at: Point, cellsPerSecond: number): Trail => ({ points: [], cellsPerSecond, speed: cellsPerSecond * 1.15 * 0.8,
+    pace: 1.15, updatedAt: performance.now(), predicted: null, authoritative: { ...at }, steppedAt: performance.now() });
+  /** The cell after `from` on the same terrain route the server plans, or null at the goal. */
+  const nextCell = (from: Point, goal: Point): Point | null => {
+    if (from.x === goal.x && from.y === goal.y) return null;
+    const result = findTiledPath(sectorSurface, from, goal);
+    return result.status === 'found' && result.path[0] ? { ...result.path[0] } : null;
+  };
+  let lastFrame = performance.now();
   const listeners = new Set<() => void>();
   const eventListeners = new Set<(event: GameplayEvent) => void>();
   const emit = () => listeners.forEach((listener) => listener());
   let lastAttackAlert = -Infinity;
+  /** Destination shown the moment the player clicks, until the server view carries the order. */
+  let pendingOrder: { squadId: string; destination: Point; at: number } | null = null;
 
   const send = (command: Record<string, unknown>) => {
     if (!room || snapshot.result) return;
@@ -190,6 +207,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     const leader = alive.find((squad) => squad.id === selectedIds[0] && squad.ownerId === me);
     const waypoints = leader ? [...(leader.target ? [leader.target] : []), ...(leader.route ?? [])] : [];
     const leaderAt = leader ? shown.get(leader.id) ?? leader : null;
+    if (pendingOrder && (waypoints.length || performance.now() - pendingOrder.at > 1500 || pendingOrder.squadId !== leader?.id)) pendingOrder = null;
     const ownedMetal = view.nodes.filter((node) => node.kind === 'metal' && node.ownerId === me).length;
     const own = view.players[me];
     snapshot = {
@@ -202,7 +220,9 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       selectedSquadId: selectedIds[0] ?? null,
       moveOrder: leader && leaderAt && waypoints.length
         ? { squadId: leader.id, destination: { ...waypoints.at(-1)! }, route: [{ x: leaderAt.x, y: leaderAt.y }, ...waypoints] }
-        : null,
+        : leaderAt && pendingOrder
+          ? { squadId: pendingOrder.squadId, destination: { ...pendingOrder.destination }, route: [{ x: leaderAt.x, y: leaderAt.y }, { ...pendingOrder.destination }] }
+          : null,
       resources: {
         metal: own.metal ?? 0, metalRate: view.metalRate ?? ownedMetal + 0.5, energy: 0, energyRate: 0,
         fleet: alive.filter((u)=>u.ownerId===me && !u.isDecoy).length, fleetCap: view.base?.fleetCap ?? FLEET_CAP,
@@ -241,17 +261,56 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     emit();
   };
 
-  /** Interpolate a complete server step over its cadence, including diagonal steps.
-   * Fixed-distance catch-up made diagonal movement burst and pause at each cell. */
+  /** Ships glide along the cells the server reported at a near-constant speed. Animating each
+   * cell over exactly one server step made them stop at every cell while the next update was in
+   * flight, and change speed on every diagonal. Instead they trail about half a cell behind the
+   * authoritative position: a little faster when behind, easing in only at the final cell. */
   const frame = setInterval(() => {
+    const now = performance.now();
+    const seconds = Math.min(0.1, Math.max(0, (now - lastFrame) / 1000));
+    lastFrame = now;
     if (!latest) return;
     let changed = false;
-    const now = performance.now();
-    for (const [id, transit] of transits) {
-      const ratio = Math.min(1, Math.max(0, (now - transit.startedAt) / transit.duration));
-      shown.set(id, { x: transit.from.x + (transit.to.x - transit.from.x) * ratio,
-        y: transit.from.y + (transit.to.y - transit.from.y) * ratio });
-      if (ratio === 1) transits.delete(id);
+    for (const [id, trail] of trails) {
+      let at = shown.get(id);
+      const stepMs = 1000 / trail.cellsPerSecond;
+      const ended = !trail.predicted && now - trail.updatedAt > stepMs * 1.3;
+      const path = trail.predicted ? [...trail.points, trail.predicted] : [...trail.points];
+      if (!at || (!path.length && ended)) { trails.delete(id); continue; }
+      // Caught up while the next cell is still in flight: keep the trail (and its speed).
+      if (!path.length) continue;
+      const remaining = path.reduce((sum, point, index) =>
+        sum + Math.hypot(point.x - (index ? path[index - 1]! : at!).x, point.y - (index ? path[index - 1]! : at!).y), 0);
+      // Cruise at the route's average step length per server step, nudged to stay about one
+      // step behind. Brake only once no new cell has arrived for a while: the route ended.
+      const target = ended ? trail.cellsPerSecond * Math.max(0.6, Math.min(2, remaining * 2.5))
+        : trail.cellsPerSecond * trail.pace * Math.min(1.6, Math.max(0.7, 1 + 0.3 * (remaining - trail.pace * TRAIL_LAG)))
+          // Ease off rather than stop when almost caught up with the server.
+          * Math.min(1, remaining / 0.4);
+      trail.speed += (target - trail.speed) * (1 - Math.exp(-seconds / 0.25));
+      // Until the route ends, never quite reach the last known cell: approach it ever slower
+      // so a late update reads as a soft slowdown instead of a stop.
+      let budget = Math.min(ended ? remaining : remaining * 0.6, trail.speed * seconds);
+      if (trail.predicted) {
+        // Lead toward the predicted cell only as far as one server step has had time to go;
+        // past 80 % approach it ever more slowly, so a late confirmation never parks the ship.
+        const elapsed = (now - trail.steppedAt) / stepMs;
+        const lead = elapsed < 0.8 ? elapsed : 0.8 + 0.2 * (1 - Math.exp(-(elapsed - 0.8) / 0.15));
+        const span = Math.hypot(trail.predicted.x - trail.authoritative.x, trail.predicted.y - trail.authoritative.y);
+        budget = Math.max(0, Math.min(budget, remaining - span * (1 - lead)));
+      }
+      while (budget > 0 && path.length) {
+        const next = path[0]!;
+        const gap = Math.hypot(next.x - at.x, next.y - at.y);
+        if (gap <= budget) {
+          at = { ...next }; budget -= gap; path.shift();
+          if (trail.points.length) trail.points.shift();
+          continue;
+        }
+        at = { x: at.x + (next.x - at.x) * budget / gap, y: at.y + (next.y - at.y) * budget / gap };
+        budget = 0;
+      }
+      shown.set(id, at);
       changed = true;
     }
     if (changed) rebuild();
@@ -269,19 +328,42 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     latest = view;
     const units = [...view.squads, ...view.guardians].filter((unit) => unit.hp > 0);
     const present = new Set(units.map((unit) => unit.id));
-    for (const id of shown.keys()) if (!present.has(id)) { shown.delete(id); transits.delete(id); }
+    for (const id of shown.keys()) if (!present.has(id)) { shown.delete(id); trails.delete(id); }
     for (const unit of units) {
       const at = shown.get(unit.id);
       const old = [...(previous?.squads ?? []), ...(previous?.guardians ?? [])].find((candidate) => candidate.id === unit.id);
       if (!at || Math.hypot(unit.x - at.x, unit.y - at.y) > SNAP_CELLS) {
         shown.set(unit.id, { x: unit.x, y: unit.y });
-        transits.delete(unit.id);
+        trails.delete(unit.id);
       } else if (!old || old.x !== unit.x || old.y !== unit.y) {
         const ticks = 'kind' in unit
           ? 'moveTicks' in unit && typeof unit.moveTicks === 'number' ? unit.moveTicks : view.rules.moveEveryTicks : 9;
-        transits.set(unit.id, { from: { ...at }, to: { x: unit.x, y: unit.y },
-          startedAt: performance.now(), duration: ticks * 1000 / view.rules.tickRate });
+        // A ship that was standing still answers the order at cruise speed, without a slow ramp.
+        const trail = trails.get(unit.id) ?? newTrail(at, view.rules.tickRate / ticks);
+        trail.cellsPerSecond = view.rules.tickRate / ticks;
+        // Diagonal steps cover 1.41 cells per server step; track the route's average.
+        const from = trail.points.at(-1) ?? old ?? at;
+        trail.pace += (Math.hypot(unit.x - from.x, unit.y - from.y) - trail.pace) * 0.35;
+        trail.updatedAt = trail.steppedAt = performance.now();
+        trail.authoritative = { x: unit.x, y: unit.y };
+        // The predicted cell is now confirmed (or replaced) by the server's own step.
+        trail.predicted = null;
+        trail.points.push({ x: unit.x, y: unit.y });
+        // Never fall more than a few cells behind the server.
+        while (trail.points.length > 3) { shown.set(unit.id, trail.points.shift()!); }
+        trails.set(unit.id, trail);
       }
+    }
+    for (const squad of view.squads) {
+      if (squad.ownerId !== view.playerId || squad.hp <= 0) continue;
+      const goal = squad.target ?? squad.route?.[0] ?? null;
+      const trail = trails.get(squad.id);
+      const next = goal ? nextCell({ x: squad.x, y: squad.y }, goal) : null;
+      if (!next) { if (trail) trail.predicted = null; continue; }
+      const at = shown.get(squad.id) ?? { x: squad.x, y: squad.y };
+      const moving = trail ?? newTrail(at, view.rules.tickRate / (squad.moveTicks ?? view.rules.moveEveryTicks));
+      if (!trail) { moving.authoritative = { x: squad.x, y: squad.y }; trails.set(squad.id, moving); }
+      moving.predicted = next;
     }
     if (snapshot.connection !== 'online') snapshot = { ...snapshot, connection: 'online', notice: null };
     rebuild();
@@ -381,7 +463,20 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
           ? selectedOwn().filter((squad) => squad.id === intent.squadId) : selectedOwn();
         // The server spreads ships that share a destination around it.
         for (const squad of movers) send({ type: 'move', squadId: squad.id, x, y });
+        if (movers.length && snapshot.selectedSquadId) pendingOrder = { squadId: snapshot.selectedSquadId, destination: { x, y }, at: performance.now() };
+        for (const squad of movers) {
+          const server = latest?.squads.find((candidate) => candidate.id === squad.id);
+          if (!server) continue;
+          const next = nextCell({ x: server.x, y: server.y }, { x, y });
+          if (!next) continue;
+          const at = shown.get(squad.id) ?? { x: server.x, y: server.y };
+          const trail = trails.get(squad.id) ?? newTrail(at, (latest?.rules.tickRate ?? 10) / (server.moveTicks ?? latest?.rules.moveEveryTicks ?? 6));
+          if (!trails.has(squad.id)) { trail.authoritative = { x: server.x, y: server.y }; trails.set(squad.id, trail); }
+          trail.predicted = next;
+          trail.steppedAt = performance.now();
+        }
         snapshot = { ...snapshot, activeAction: null, notice: null };
+        rebuild();
         emit();
         return;
       }
@@ -403,7 +498,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     destroy() {
       destroyed = true;
       clearInterval(frame);
-      transits.clear();
+      trails.clear();
       shown.clear();
       void room?.leave();
       room = null;
