@@ -60,6 +60,8 @@ export interface PlayerView {
   metalRate?:number;
   coreFraction?:number;
   reward?: import('@impulso/sim').MatchReward;
+  /** Announced satellite falls. Public: the warning crosses the whole sky. */
+  satellites?: import('@impulso/sim').SatelliteFall[];
 }
 /** Fresh whitelist snapshot. Never send the authoritative world to a player. */
 export function viewFor(world: World, playerId: PlayerId): PlayerView {
@@ -137,6 +139,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
       open: world.core.open, progress: { p1: world.core.progress.p1, p2: world.core.progress.p2 },
     },
     visibleCells, winner: world.winner,
+    ...(world.satellites ? { satellites: world.satellites.falls.map((fall) => ({ ...fall })) } : {}),
   };
 }
 

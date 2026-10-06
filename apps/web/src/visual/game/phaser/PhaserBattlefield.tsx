@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 import { useI18n } from '../../i18n';
 import type { CameraView, GameplayViewModel } from '../model';
 import { MainScene } from './MainScene';
-import { activeMapId } from '../../map/sector-map';
+import { activeMapId, activeMapSourceFile } from '../../map/sector-map';
 
 export interface PhaserBattlefieldHandle {
   resetCamera(): void;
@@ -59,7 +59,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
         if (disposed) return;
         setLoadError(null);
         host.parentElement?.setAttribute('data-ready', 'true');
-        host.parentElement?.setAttribute('data-map-source', 'sector-01.tmj');
+        host.parentElement?.setAttribute('data-map-source', activeMapSourceFile());
         host.parentElement?.setAttribute('data-atlas-ready', 'true');
       },
       (message) => { if (!disposed) setLoadError(message); },

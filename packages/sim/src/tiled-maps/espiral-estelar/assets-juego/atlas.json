@@ -20,6 +20,19 @@
     "x": 0.5,
     "y": 0.6964285714285714
   },
+  "onda_portal": {
+    "image": "onda_portal.png",
+    "frameWidth": 192,
+    "frameHeight": 96,
+    "frames": 10,
+    "frameRate": 14,
+    "repeat": 0
+  },
+  "dron": {
+    "image": "dron.png",
+    "shadow": "dron_sombra.png",
+    "liftPx": 14
+  },
   "pincel_vision": {
     "image": "pincel_vision.png",
     "originX": 0.5,

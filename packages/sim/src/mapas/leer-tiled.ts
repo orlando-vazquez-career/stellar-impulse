@@ -1,4 +1,6 @@
 import { isRampDirection, type RampDirection } from './alturas.js';
+import type { DropZoneSpec } from '../mecanicas/satellites.js';
+import type { MapObstacle } from './obstaculos.js';
 
 const MAX_SIDE = 128;
 const FLIP_MASK = 0xe0000000;
@@ -17,6 +19,10 @@ export interface SectorLeido extends Superficie {
   core: { x: number; y: number };
   metals: { x: number; y: number }[];
   captures: { x: number; y: number }[];
+  /** `zona_caida` rectangles of the `eventos` layer, when the map has them. */
+  dropZones?: DropZoneSpec[];
+  /** `OBSTACLE_RING` points: their cells are already closed in `walkable`. */
+  obstaculos?: MapObstacle[];
 }
 
 interface TileFace {

@@ -33,8 +33,13 @@ export type { ProductionOrder, ProductionState } from './economia.js';
 export { baseUpgradeCost, fleetCapacity, baseDamage, MAX_BASE_UPGRADE_LEVEL, BASE_DEFENSE_RANGE, CAPACITY_PER_LEVEL, BASE_DAMAGE_PER_LEVEL } from './economia.js';
 export type { BaseUpgrades, BaseUpgradeKind } from './economia.js';
 export { leerSuperficie } from './mapas/leer-tiled.js';
+export { OBSTACLE_MODELS } from './mapas/obstaculos.js';
+export type { MapObstacle, ObstacleModel } from './mapas/obstaculos.js';
 export { findPath as findTiledPath } from './maps/pathfinding.js';
 import { ESPIRAL } from './mapas/espiral.js';
+import { cloneSatellites, createSatellites, runSatellites, type SatelliteState } from './mecanicas/satellites.js';
+export { SATELLITE_AFTERMATH_TICKS } from './mecanicas/satellites.js';
+export type { DropZone, DropZoneSpec, SatelliteFall, SatelliteState } from './mecanicas/satellites.js';
 import type { SectorLeido, Superficie } from './mapas/leer-tiled.js';
 
 export { defineMapSpec, MAX_MAP_SIDE, MAX_MAP_CELLS } from './maps/types.js';
@@ -209,6 +214,8 @@ export interface World {
   knowledge?: Record<PlayerId,AiKnowledge>;
   /** Destructible bases, modules and the slower node economy. Set by createMatchWorld. */
   baseRules?: Readonly<BaseRules>;
+  /** Falling satellites over the map's `zona_caida` areas. Absent on maps without them. */
+  satellites?: SatelliteState;
 }
 export type CommandRejection =
   | 'invalid_command' | 'unknown_player' | 'stale_sequence'
@@ -256,7 +263,7 @@ const STARTING_FLEET: readonly { kind: UnitKind; dx: number; dy: number }[] = [
 export const GUARDIAN_AGGRO_RADIUS = 3;
 /** Guardians move one cell every this many ticks (slower than an Interceptor). */
 const GUARDIAN_MOVE_TICKS = 9;
-/** Training maps by id: Diego's Espiral Estelar (58×58) and the original Sector 01 (29×29). */
+/** Training maps by id: Diego's Espiral Estelar (96×96) and the original Sector 01 (29×29). */
 export const TRAINING_MAPS = Object.freeze({ espiral: ESPIRAL, 'sector-01': SECTOR_01 });
 export type TrainingMapId = keyof typeof TRAINING_MAPS;
 export function createSectorWorld(map: TrainingMapId = 'sector-01'): World {
@@ -311,6 +318,7 @@ export function createWorldOn(sector: SectorLeido): World {
     production: { p1: null, p2: null },
     built: { p1: 0, p2: 0 },
     economy: true,
+    satellites: createSatellites(sector.dropZones, SECTOR_RULES.tickRate),
   };
 }
 export function distance(a: Position, b: Position): number {
@@ -398,6 +406,7 @@ export function cloneWorld(world: World): World {
       p2: world.production.p2 ? { ...world.production.p2 } : null,
     },
     built: { ...world.built },
+    satellites: cloneSatellites(world.satellites),
   };
 }
 function clonePlayer(player: Player): Player {
@@ -879,6 +888,7 @@ export function stepWorld(world: World): World {
   runBaseStructures(next);
   moveSquads(next);
   if (next.economy) moveGuardians(next);
+  runSatellites(next);
   resolveCombat(next.surface ? { ...next, level: next.surface.level, diagonalReach: true } : next);
   if (next.baseRules) resolveSiege(next);
   if (next.economy) resolveBaseDefense(next);

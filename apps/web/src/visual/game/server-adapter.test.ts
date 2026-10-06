@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import type { PlayerView } from '@impulso/state';
 import { diffViews, nearestOpenCell } from './server-adapter';
+import { selectMap } from '../map/sector-map';
 
 const ship = (id: string, ownerId: 'p1' | 'p2', x: number, y: number, hp = 100) =>
   ({ id, ownerId, kind: 'interceptor' as const, x, y, hp, maxHp: 120, damage: 12 });
@@ -46,6 +47,13 @@ describe('match events from server views', () => {
 });
 
 describe('click snapping', () => {
+  beforeEach(() => {
+    selectMap('sector-01');
+  });
+  afterEach(() => {
+    selectMap('espiral');
+  });
+
   it('moves an edge click onto the nearest open cell and ignores the void', () => {
     expect(nearestOpenCell(2.4, 11)).toEqual({ x: 3, y: 11 });
     expect(nearestOpenCell(9, 0.2)).toBeNull();

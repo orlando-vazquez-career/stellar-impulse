@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { SHIP_COUNTERS, UNIT_COSTS, EXTRA_MODULES, type ModuleKind } from '@impulso/sim';
 import { useI18n } from '../i18n';
 import { LanguageToggle } from '../shared/LanguageToggle';
@@ -7,7 +7,7 @@ import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
 import type { CameraView, CoreState, GameplayAction, GameplayPresentationAdapter, GameplayViewModel } from './model';
 import { activeMapId, sectorMap, sectorSurface } from '../map/sector-map';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH } from './phaser/isometric';
+import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, VIEW_ROTATION_DEGREES, VIEW_ROTATION_RADIANS, rotateAround } from './phaser/isometric';
 
 function formatTime(seconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -117,20 +117,26 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
   const { scale: MINIMAP_SCALE, offset: MINIMAP_OFFSET, floor, terrainPath } = minimapLayout();
   const core = sectorSurface.core;
   const bases = { blue: sectorSurface.bases.p1, red: sectorSurface.bases.p2 };
-  const seen = (cell: { x: number; y: number }) => !view.visibleCells || view.visibleCells[cell.y * sectorMap.width + cell.x] === true;
+  // Thousands of cells in one path: rebuild it only when vision changes, not on every camera or ship frame.
+  const visibleCells = view.visibleCells;
+  const seenPath = useMemo(() => visibleCells
+    ? floor.filter((cell) => visibleCells[cell.y * sectorMap.width + cell.x] === true).map((cell) => cell.path).join(' ')
+    : terrainPath, [visibleCells, floor, terrainPath]);
   return <Panel className={`vi-minimap ${collapsed ? 'is-collapsed' : ''}`}>
     <header><strong>{t('minimap')}</strong><button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></header>
     {!collapsed && <button className="vi-minimap__pan" aria-label={t('minimapPan')} onClick={(event) => {
       const bounds = event.currentTarget.getBoundingClientRect();
       const svgX = (event.clientX - bounds.left) / bounds.width * 180;
       const svgY = (event.clientY - bounds.top) / bounds.height * 180;
-      const cell = isoToPoint((svgX - MINIMAP_OFFSET.x) / MINIMAP_SCALE, (svgY - MINIMAP_OFFSET.y) / MINIMAP_SCALE);
+      const untilted = rotateAround({ point: { x: svgX, y: svgY }, origin: { x: 90, y: 90 }, radians: -VIEW_ROTATION_RADIANS });
+      const cell = isoToPoint((untilted.x - MINIMAP_OFFSET.x) / MINIMAP_SCALE, (untilted.y - MINIMAP_OFFSET.y) / MINIMAP_SCALE);
       if (cell) onPanMap(Math.round(cell.x), Math.round(cell.y));
     }}><svg viewBox="0 0 180 180" role="img" aria-label={t('minimap')}>
       <rect className="map-boundary" x="4" y="4" width="172" height="172" />
+      <g transform={`rotate(${VIEW_ROTATION_DEGREES} 90 90)`}>
       {/* Batch terrain into two paths so every server view does not reconcile thousands of SVG elements. */}
       <path d={terrainPath} fill="#34587a" />
-      <path d={view.visibleCells ? floor.filter(seen).map((cell) => cell.path).join(' ') : terrainPath} fill="#5b95c4" />
+      <path d={seenPath} fill="#5b95c4" />
       {[...(view.chart?.nodes??[]),...(view.chart?.guardians??[])].map((cell,index)=>{
         const point=miniPoint(cell.x,cell.y);return <circle key={`chart-${index}`} className="map-chart-marker" cx={point.x} cy={point.y} r="2.4" fill="none" stroke="#b5c4d1" opacity=".65"/>;
       })}
@@ -149,6 +155,7 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
       {cameraView && <rect className="map-camera" data-iso-width={ISO_WORLD_WIDTH} data-iso-height={ISO_WORLD_HEIGHT} data-world-x={cameraView.worldX} data-world-y={cameraView.worldY} data-zoom={cameraView.zoom}
         x={MINIMAP_OFFSET.x + cameraView.worldX * MINIMAP_SCALE} y={MINIMAP_OFFSET.y + cameraView.worldY * MINIMAP_SCALE}
         width={cameraView.width * ISO_WORLD_WIDTH * MINIMAP_SCALE} height={cameraView.height * ISO_WORLD_HEIGHT * MINIMAP_SCALE} />}
+      </g>
     </svg></button>}
   </Panel>;
 }

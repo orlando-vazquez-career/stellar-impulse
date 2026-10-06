@@ -11,7 +11,7 @@ import { LanguageProvider, useI18n } from './i18n';
 import { PreparationLobby, type LobbyMode, type RivalDifficulty } from './lobby/PreparationLobby';
 import { MultiplayerLobby } from './lobby/MultiplayerLobby';
 import { SectorMapScreen } from './map/SectorMapScreen';
-import { selectMap, type TrainingMapId } from './map/sector-map';
+import { DEFAULT_PLAYABLE_MAP, selectMap, type TrainingMapId } from './map/sector-map';
 import { CommandCenter } from './menu/CommandCenter';
 import { loadVisualPreferences, saveVisualPreferences } from './settings/preferences';
 import { SettingsScreen } from './settings/SettingsScreen';
@@ -42,7 +42,7 @@ function VisualPrototypeContent() {
   const [preferences, setPreferences] = useState(loadVisualPreferences);
   const [duration, setDuration] = useState<DurationMode>('skirmish');
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
-  const [map, setMap] = useState<TrainingMapId>('espiral');
+  const [map, setMap] = useState<TrainingMapId>(DEFAULT_PLAYABLE_MAP);
   const music = useRef<MusicPlayer | null>(null);
 
   useEffect(() => {

@@ -5,6 +5,17 @@ import type { GridCell, GridPoint } from './grid';
 
 export const TILE_HALF_WIDTH = TILE_WIDTH / 2;
 export const TILE_HALF_HEIGHT = TILE_HEIGHT / 2;
+/** Battlefield camera tilt so the isometric diamond sits with bases toward the screen corners. */
+export const VIEW_ROTATION_DEGREES = -30;
+export const VIEW_ROTATION_RADIANS = VIEW_ROTATION_DEGREES * Math.PI / 180;
+
+export function rotateAround(input: { point: { x: number; y: number }; origin: { x: number; y: number }; radians: number }) {
+  const dx = input.point.x - input.origin.x;
+  const dy = input.point.y - input.origin.y;
+  const cos = Math.cos(input.radians);
+  const sin = Math.sin(input.radians);
+  return { x: input.origin.x + dx * cos - dy * sin, y: input.origin.y + dx * sin + dy * cos };
+}
 
 export function cellToIso(x: number, y: number) {
   return { x: MAP_ORIGIN_X + (x - y) * TILE_HALF_WIDTH, y: MAP_ORIGIN_Y + (x + y) * TILE_HALF_HEIGHT };
