@@ -27,14 +27,14 @@ it('new camouflaged ships must wait three seconds and decoys are not identified 
   grantAugment(w,'p2','g-senuelos');const decoy=w.squads.find(s=>s.isDecoy)!;Object.assign(decoy,position);decoy.lastMovedTick=w.tick;
   const visible=viewFor(w,'p1').squads.find(s=>s.id===decoy.id)!;
   expect(visible.kind).toBe('bomber');expect(visible.isDecoy).toBeUndefined();
-  expect(visible.damage).toBe(36);expect(visible.stats!.range).toBe(4);expect(visible.maxHp).toBe(120);
+  expect(visible.damage).toBe(30);expect(visible.stats!.range).toBe(3);expect(visible.maxHp).toBe(120);
   expect(viewFor(w,'p2').squads.find(s=>s.id===decoy.id)!.maxHp).toBe(30);
 });
 it('reports authoritative passive income and the modified core capture progress',()=>{
   const w=createMatchWorld('sector-01');w.nodes.forEach(n=>n.ownerId='p1');
   grantAugment(w,'p1','p-guerra');grantAugment(w,'p1','g-mineria');
-  const expected=2*(w.nodes.filter(n=>n.kind==='metal').length+w.nodes.length/4);
-  expect(viewFor(w,'p1').metalRate).toBe(expected);
+  const expected=2*(0.4*w.nodes.filter(n=>n.kind==='metal').length+w.nodes.length/4);
+  expect(viewFor(w,'p1').metalRate).toBeCloseTo(expected);
   expect(viewFor(w,'p2').metalRate).toBe(.5);
   const sprint=createMatchWorld('sector-01');grantAugment(sprint,'p1','p-relampago');sprint.core.progress.p1=135;
   expect(viewFor(sprint,'p1').coreFraction).toBe(.5);

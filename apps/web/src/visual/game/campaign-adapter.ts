@@ -115,6 +115,7 @@ export function createCampaignGameplayAdapter(session: MultiplayerSession): Game
       return {
         id: squad.id, callSign: `INT-${count}`, owner: ownerOf(squad.ownerId), unitType: squad.kind,
         gridX: squad.x, gridY: squad.y, healthPercent: Math.round(squad.hp / squad.maxHp * 100),
+        attackCooldown: squad.attackCooldown, lastShot: squad.lastShot,
         attackTargetId: privateSquad?.attackTargetId ?? null, selected: selectedIds.includes(squad.id), visible: true,
         composition: { interceptors: 1, frigates: 0 },
         status: privateSquad?.attackTargetId ? 'attacking' : privateSquad?.target || privateSquad?.route?.length ? 'moving' : 'idle',
@@ -135,6 +136,7 @@ export function createCampaignGameplayAdapter(session: MultiplayerSession): Game
     const previousResult = snapshot.result;
     snapshot = {
       ...snapshot, tick: view.tick, sector: source.phase?.sector ?? 1,
+      tickRate: view.rules.tickRate,
       elapsedSeconds: Math.floor(view.tick / view.rules.tickRate),
       selectedSquadIds: selectedIds, selectedSquadId: selectedIds[0] ?? null,
       activeAction: canCommand(source) && !changedSector ? snapshot.activeAction : null,

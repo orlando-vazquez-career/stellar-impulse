@@ -3,6 +3,7 @@ import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '.
 import type { GridPoint } from './grid';
 import { activeMapId, HIDDEN_LAYERS, mapImageUrl, planSectorMove, sectorMap, sectorSurface, TILE_WIDTH, type Tileset } from '../../map/sector-map';
 import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT } from './isometric';
+import { WeaponEffects } from './weapon-effects';
 
 /** Tiled stores flip flags in the top bits of every gid. */
 const GID_MASK = 0x1fffffff;
@@ -41,6 +42,10 @@ interface UnitVisual {
   label: Phaser.GameObjects.Text;
   hitFlash: Phaser.GameObjects.Graphics;
   health: Phaser.GameObjects.Rectangle;
+  reloadBack: Phaser.GameObjects.Rectangle;
+  reload: Phaser.GameObjects.Rectangle;
+  cooldown?: SquadViewModel['attackCooldown'];
+  lastShotTick: number;
   healthPercent: number;
   gridX: number;
   gridY: number;
@@ -75,10 +80,13 @@ export class MainScene extends Phaser.Scene {
   private selectionBox?: Phaser.GameObjects.Graphics;
   private core?: Phaser.GameObjects.Graphics;
   private nodeMarks?: Phaser.GameObjects.Graphics;
+  private baseMarks?: Phaser.GameObjects.Graphics;
   /** Terrain images per cell, so fog can tint the real tile art instead of painting over it. */
   private tileImages: Phaser.GameObjects.Image[][] = [];
   private fogShown: boolean[] | null = null;
   private created = false;
+  private weapons?: WeaponEffects;
+  private serverTickAt = 0;
   private readonly unitVisuals = new Map<string, UnitVisual>();
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private movementKeys?: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
@@ -135,6 +143,9 @@ export class MainScene extends Phaser.Scene {
     this.selectionBox = this.add.graphics().setScrollFactor(0).setDepth(DEPTH.selection);
     this.core = this.add.graphics().setDepth(DEPTH.core);
     this.nodeMarks = this.add.graphics().setDepth(DEPTH.nodes);
+    this.baseMarks = this.add.graphics().setDepth(DEPTH.core);
+    this.weapons = new WeaponEffects(this);
+    this.serverTickAt = this.time.now;
 
     this.drawTerrain();
     this.drawCore();
@@ -152,20 +163,27 @@ export class MainScene extends Phaser.Scene {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.refreshCameraView, this);
       window.removeEventListener('pointermove', onPointerMove);
       this.unitVisuals.clear();
+      this.weapons?.destroy();
     });
   }
 
   update(_time: number, delta: number) {
     // Frame-rate independent follow and shortest-angle turns; no tween is restarted per snapshot.
     const seconds = Math.min(delta, 100) / 1000;
-    const follow = 1 - Math.exp(-seconds / 0.035);
-    const turn = 1 - Math.exp(-seconds / 0.14);
+    const follow = 1 - Math.exp(-seconds / 0.065);
+    const turn = 1 - Math.exp(-seconds / 0.18);
     for (const visual of this.unitVisuals.values()) {
       visual.container.x += (visual.targetX - visual.container.x) * follow;
       visual.container.y += (visual.targetY - visual.container.y) * follow;
       const angle = Math.atan2(Math.sin(visual.heading - visual.hull.rotation), Math.cos(visual.heading - visual.hull.rotation));
       visual.hull.rotation += angle * turn;
       visual.container.setDepth(DEPTH.units + visual.container.y);
+      if (visual.cooldown) {
+        // Interpolate at most one server tick; a paused/disconnected game cannot recharge locally.
+        const elapsed = this.snapshot.clockRunning ? Math.min(1, (this.time.now - this.serverTickAt) / 1000 * (this.snapshot.tickRate ?? 10)) : 0;
+        const remaining = Math.max(0, visual.cooldown.remainingTicks - elapsed);
+        visual.reload.width = 38 * (1 - remaining / Math.max(1, visual.cooldown.durationTicks));
+      }
     }
     const camera = this.cameras.main;
     const distance = (Math.min(delta, 100) / 1000) * 650 / camera.zoom;
@@ -183,6 +201,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   sync(snapshot: GameplayViewModel) {
+    if (snapshot.tick !== this.snapshot.tick && this.sys.isActive()) this.serverTickAt = this.time.now;
     this.snapshot = snapshot;
     if (snapshot.activeAction !== null && snapshot.activeAction !== 'move') this.hoverPoint = null;
     if (this.sys.isActive()) this.renderSnapshot();
@@ -301,12 +320,49 @@ export class MainScene extends Phaser.Scene {
     for (const node of this.snapshot.nodes) {
       const center = cellToIso(node.x, node.y);
       const hue = node.owner === 'blue' ? color.blue : node.owner === 'red' ? color.red : 0x8aa0b8;
-      graphics.lineStyle(2, hue, 0.9);
+      // A freshly captured node is faint until it starts producing.
+      graphics.lineStyle(2, hue, node.stabilizingSeconds ? 0.35 : 0.9);
       graphics.strokeEllipse(center.x, center.y + 9, 54, 27);
       if (node.kind === 'metal') {
         graphics.fillStyle(hue, 0.95);
         graphics.fillPoints(polygon([{ x: center.x, y: center.y - 2 }, { x: center.x + 7, y: center.y + 9 },
           { x: center.x, y: center.y + 20 }, { x: center.x - 7, y: center.y + 9 }]), true);
+      }
+    }
+  }
+
+  /** Base hull bars, the shield before bases are exposed and one pip per finished module. */
+  private drawBases() {
+    const graphics = this.baseMarks;
+    if (!graphics) return;
+    graphics.clear();
+    const own = this.snapshot.base;
+    const enemy = this.snapshot.enemyBase;
+    const shielded = (own?.vulnerableInSeconds ?? 0) > 0;
+    const bases = [
+      own?.position && own.hp !== undefined && own.maxHp ? { at: own.position, hp: own.hp, maxHp: own.maxHp, hue: 0x5fd49a,
+        modules: (own.modules?.refinery ?? 0) + (own.modules?.extras.length ?? 0) } : null,
+      enemy?.visible && enemy.hp !== undefined && enemy.maxHp ? { at: enemy, hp: enemy.hp, maxHp: enemy.maxHp, hue: color.red, modules: 0 } : null,
+    ];
+    for (const base of bases) {
+      if (!base) continue;
+      const center = cellToIso(base.at.x, base.at.y);
+      if (shielded) {
+        graphics.lineStyle(2, 0x83d4ff, 0.45);
+        graphics.strokeEllipse(center.x, center.y + 4, 150, 75);
+      }
+      // Above the station art, framed so it never blends with the sprite's own lights.
+      const width = 112;
+      const top = center.y - 150;
+      graphics.fillStyle(0x071420, 0.9);
+      graphics.fillRect(center.x - width / 2 - 2, top - 2, width + 4, 12);
+      graphics.lineStyle(1, 0xd8e6f3, 0.7);
+      graphics.strokeRect(center.x - width / 2 - 2, top - 2, width + 4, 12);
+      graphics.fillStyle(base.hue, 0.95);
+      graphics.fillRect(center.x - width / 2, top, width * Math.max(0, base.hp) / base.maxHp, 8);
+      for (let pip = 0; pip < base.modules; pip++) {
+        graphics.fillStyle(0x7fe0b0, 0.95);
+        graphics.fillRect(center.x - width / 2 + pip * 10, top + 13, 7, 4);
       }
     }
   }
@@ -354,6 +410,7 @@ export class MainScene extends Phaser.Scene {
   private renderSnapshot() {
     this.drawCore();
     this.drawNodes();
+    this.drawBases();
     this.drawFog();
     this.drawRoute();
     this.drawAttackRanges();
@@ -375,6 +432,19 @@ export class MainScene extends Phaser.Scene {
       }
       visual.healthPercent = squad.healthPercent;
       visual.health.width = 38 * squad.healthPercent / 100;
+      visual.cooldown = squad.attackCooldown;
+      visual.reloadBack.setVisible(!!squad.attackCooldown);
+      visual.reload.setVisible(!!squad.attackCooldown);
+      if (squad.lastShot && squad.lastShot.tick > visual.lastShotTick) {
+        visual.lastShotTick = squad.lastShot.tick;
+        if (this.snapshot.tick - squad.lastShot.tick <= 2 && this.snapshot.clockRunning) {
+          this.weapons?.fire(squad, { x: visual.container.x, y: visual.container.y });
+          if (visual.gridX === squad.gridX && visual.gridY === squad.gridY) {
+            const aim = cellToIso(squad.lastShot.to.x, squad.lastShot.to.y);
+            visual.heading = Math.atan2(aim.y - visual.container.y, aim.x - visual.container.x) + Math.PI / 2;
+          }
+        }
+      }
       if (visual.gridX === squad.gridX && visual.gridY === squad.gridY) continue;
       const previous = cellToIso(visual.gridX, visual.gridY);
       visual.gridX = squad.gridX;
@@ -434,15 +504,17 @@ export class MainScene extends Phaser.Scene {
     hitFlash.fillCircle(0, -8, 28);
     hitFlash.setAlpha(0);
     marker.setScale(squad.unitType==='bomber'?0.65:0.58);
-    const label = this.add.text(0, 27, squad.callSign.toUpperCase(), {
+    const label = this.add.text(0, 32, squad.callSign.toUpperCase(), {
       color: allied ? '#83d4ff' : neutral ? '#f7d774' : '#ff9ba7', fontFamily: 'Rajdhani, sans-serif', fontSize: '11px', fontStyle: '600', letterSpacing: 1,
     }).setOrigin(0.5, 0);
     const healthBack = this.add.rectangle(0, 23, 38, 3, color.grid).setOrigin(0.5);
     const health = this.add.rectangle(-19, 23, 38 * squad.healthPercent / 100, 3, squad.healthPercent > 35 ? 0x4ad69a : color.red).setOrigin(0, 0.5);
-    container.add([selection, shadow, marker, hitFlash, label, healthBack, health]);
+    const reloadBack = this.add.rectangle(0, 28, 38, 2, 0x303b48).setOrigin(0.5);
+    const reload = this.add.rectangle(-19, 28, 38, 2, 0xa0aab6).setOrigin(0, 0.5);
+    container.add([selection, shadow, marker, hitFlash, label, healthBack, health, reloadBack, reload]);
     container.setInteractive(new Phaser.Geom.Ellipse(0, 0, 62, 55), Phaser.Geom.Ellipse.Contains);
     container.setData('unitId', squad.id);
-    const visual = { container, selection, hull: marker, label, hitFlash, health,
+    const visual = { container, selection, hull: marker, label, hitFlash, health, reloadBack, reload, lastShotTick: -1,
       healthPercent: squad.healthPercent, gridX: squad.gridX, gridY: squad.gridY,
       targetX: point.x, targetY: point.y, heading: 0 };
     this.unitVisuals.set(squad.id, visual);
@@ -596,6 +668,13 @@ export class MainScene extends Phaser.Scene {
       }
       const cell = this.pointerPoint(pointer);
       if (!cell) return;
+      // A right click on the visible rival base orders an assault on it.
+      const rivalBase = this.snapshot.enemyBase;
+      if (rivalBase?.visible && this.snapshot.selectedSquadIds.length && (this.snapshot.activeAction === null || this.snapshot.activeAction === 'attack')
+        && Math.max(Math.abs(cell.x - rivalBase.x), Math.abs(cell.y - rivalBase.y)) <= 1.5) {
+        this.onAttackSelected(rivalBase.id);
+        return;
+      }
       if ((this.snapshot.activeAction === null || this.snapshot.activeAction === 'move') && this.snapshot.selectedSquadIds.length) {
         this.onMoveSelected(cell.x, cell.y);
       }

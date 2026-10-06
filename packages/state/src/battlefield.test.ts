@@ -37,7 +37,7 @@ describe('battlefield private view', () => {
     const rival = world.squads.find((unit) => unit.ownerId === 'p2')!;
     rival.route = [{ x: 50, y: 50 }];
     rival.target = { x: 50, y: 50 };
-    Object.assign(rival, { secret: 'rival-secret' });
+    Object.assign(rival, { secret: 'rival-secret', attackMemory: { x: 50, y: 50, seenAt: 0 } });
     expect(battlefieldViewFor(world, 'p1').squads.map((unit) => unit.id)).toEqual(['p1-interceptor']);
     world.visible.p1[at(rival.x, rival.y)] = true;
     const view = battlefieldViewFor(world, 'p1');
@@ -45,6 +45,7 @@ describe('battlefield private view', () => {
     expect(view.squads[1]).toEqual({
       id: 'p2-interceptor', ownerId: 'p2', kind: 'interceptor', x: 63, y: 8,
       hp: 120, maxHp: 120, damage: 12,
+      attackCooldown: { remainingTicks: 5, durationTicks: 5 },
     });
     expect(JSON.stringify(view)).not.toContain('rival-secret');
     rival.hp = 0;

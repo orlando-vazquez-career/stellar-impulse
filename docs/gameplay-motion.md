@@ -32,3 +32,24 @@ redirección hacia un ataque con tráfico cercano.
 ## Flotas grandes
 
 Los puestos de llegada se mantienen mientras la orden está en curso y se eligen entre casillas alcanzables. Una aliada ya estacionada puede intercambiar posiciones para dejar pasar a otra sin perder su orden. Las aliadas también pueden pasar junto a las esquinas en diagonal; las casillas de destino y las reservas de salida siguen siendo exclusivas. Enemigos y guardianes mantienen su bloqueo. Las regresiones cubren flotas mixtas de 24 naves en ambos mapas, los cruces de frente y el determinismo.
+
+## Persecución y armas
+
+En las partidas de Sector 01 y Espiral, una orden de ataque conserva durante cinco
+segundos la última posición observada del enemigo. Si pierde visión, busca esa
+casilla; si el enemigo reaparece, retoma la persecución. Nunca sigue coordenadas
+ocultas. Una nave destruida libera el objetivo inmediatamente. Mover, añadir una
+ruta o mantener posición cancela la persecución. Una nave en espera que ya disparó
+a un rival también lo persigue; los disparos de defensa durante una marcha no
+reemplazan el destino elegido por el jugador.
+
+Cada disparo confirmado guarda origen, impacto y tick en el servidor. El cliente
+dibuja proyectiles para Interceptores, rayos para Fragatas y bombas con arco e
+impacto de área para Bombarderos. Los efectos no calculan daño y no revelan puntos
+fuera de visión. La pequeña barra gris bajo la vida se vacía al disparar y se llena
+durante la recarga. Cambiar de objetivo o moverse no reinicia esa recarga; una vez
+lista, el arma dispara al entrar un enemigo en alcance, sin esperar otro pulso
+global. El cliente interpola como máximo un tick de recarga entre vistas.
+
+Los valores del HUD y del hangar muestran hasta dos decimales, conservando valores
+como 1,25 y evitando residuos de coma flotante en las velocidades modificadas.

@@ -2,7 +2,7 @@ import type { AugmentView } from '@impulso/state';
 export type SquadOwner = 'blue' | 'red' | 'neutral';
 import type { ShipStats } from '@impulso/sim';
 import type { UnitKind } from '@impulso/state';
-import type { BaseUpgradeKind, BaseUpgrades } from '@impulso/sim';
+import type { BaseUpgradeKind, BaseUpgrades, ExtraModule, ModuleKind, ModuleSpec } from '@impulso/sim';
 export type SquadType = UnitKind;
 
 export interface SquadViewModel {
@@ -13,6 +13,8 @@ export interface SquadViewModel {
   speedCellsPerSecond?: number;
   isDecoy?: boolean;
   hp?: number; maxHp?: number; stats?: ShipStats;
+  attackCooldown?: { remainingTicks: number; durationTicks: number };
+  lastShot?: { tick: number; from: {x:number;y:number}; to: {x:number;y:number}; splashRadius: number };
   // Continuous map coordinates; integer values are tile centers.
   gridX: number;
   gridY: number;
@@ -64,6 +66,8 @@ export interface NodeViewModel {
   x: number;
   y: number;
   owner: SquadOwner | null;
+  /** Seconds until a freshly captured node starts producing. */
+  stabilizingSeconds?: number;
 }
 
 export interface ProductionViewModel {
@@ -76,6 +80,7 @@ export type ConnectionState = 'local' | 'connecting' | 'online' | 'offline';
 
 export interface GameplayViewModel {
   tick: number;
+  tickRate?: number;
   sector: number;
   elapsedSeconds: number;
   suddenDeath?: boolean;
@@ -103,7 +108,13 @@ export interface GameplayViewModel {
   augments?: AugmentView;
   chart?: {nodes:{x:number;y:number}[];guardians:{x:number;y:number}[]};
   productionForbidden?: SquadType[];
-  base?: { upgrades: BaseUpgrades; damage: number; range: number; position?:{x:number;y:number}; upgradeCosts: Record<BaseUpgradeKind, number | null> };
+  base?: { upgrades: BaseUpgrades; damage: number; range: number; position?:{x:number;y:number}; upgradeCosts: Record<BaseUpgradeKind, number | null>;
+    /** Destructible base (match worlds). */
+    hp?: number; maxHp?: number; armor?: number; vulnerableInSeconds?: number;
+    modules?: { refinery: 0 | 1 | 2; extras: ExtraModule[]; building: { kind: ModuleKind; remainingSeconds: number } | null };
+    moduleCosts?: Record<ModuleKind, ModuleSpec> };
+  /** The rival base: always located, hull known only while in sight. */
+  enemyBase?: { id: string; x: number; y: number; visible: boolean; hp?: number; maxHp?: number };
   result: 'victory' | 'defeat' | null;
   reward?: import('@impulso/sim').MatchReward;
   /** Last server rejection or connection message, already localized by key. */
@@ -136,6 +147,8 @@ export type PresentationIntent =
   | { type: 'produce'; kind: SquadType }
   | { type: 'disband-selected' }
   | { type: 'upgrade-base'; upgrade: BaseUpgradeKind }
+  | { type: 'build-module'; module: ModuleKind }
+  | { type: 'surrender' }
   | {type:'augment-pick';choice:number;id:string}
   | {type:'augment-reroll';choice:number};
 

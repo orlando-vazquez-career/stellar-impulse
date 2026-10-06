@@ -23,6 +23,7 @@ export interface RouteUnit {
   target: Cell | null;
   route: Cell[];
   attackTargetId: string | null;
+  attackMemory?: Cell & { seenAt: number };
 }
 
 export interface WalkBoard {
@@ -119,6 +120,7 @@ export function replaceDestination(unit: RouteUnit, point: Cell): void {
   unit.stance = 'march';
   unit.anchor = null;
   unit.attackTargetId = null;
+  unit.attackMemory = undefined;
   unit.gather = copy(point);
   unit.route = [];
 }
@@ -130,6 +132,7 @@ export function appendDestination(unit: RouteUnit, point: Cell): OrderWrite {
   if (unit.stance !== 'attack') unit.stance = 'march';
   unit.anchor = null;
   unit.attackTargetId = null;
+  unit.attackMemory = undefined;
   if (!unit.gather) { unit.arrivalLocked=false;unit.arrivalSeat=null;unit.target=null;unit.gather = copy(point); }
   else unit.route = [...unit.route, copy(point)];
   return 'ok';
@@ -143,6 +146,7 @@ export function holdGround(unit: RouteUnit): void {
   unit.target = null;
   unit.route = [];
   unit.attackTargetId = null;
+  unit.attackMemory = undefined;
 }
 
 export function armAttack(unit: RouteUnit): void {
@@ -160,6 +164,7 @@ export function loopRoute(unit: RouteUnit, board: WalkBoard): void {
   unit.stance = 'patrol';
   unit.anchor = null;
   unit.attackTargetId = null;
+  unit.attackMemory = undefined;
   const start = paced[0];
   const next = paced[1];
   if (!start || !next) {

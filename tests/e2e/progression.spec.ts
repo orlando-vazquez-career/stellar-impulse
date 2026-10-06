@@ -1,4 +1,5 @@
 import {expect,test} from '@playwright/test';
+import {chooseOpening} from './helpers';
 test('shows an authenticated official match reward and the saved account profile',async({page,request})=>{
   const response=await request.post('http://127.0.0.1:2567/auth/register',{data:{email:`progress-${Date.now()}@example.com`,password:'test-password-123'}});
   expect(response.status()).toBe(201);
@@ -8,8 +9,7 @@ test('shows an authenticated official match reward and the saved account profile
   await page.getByRole('button',{name:/Preparar operación/}).click();
   await page.getByLabel('Estoy listo para desplegar').check();
   await page.getByRole('button',{name:'Iniciar operación'}).click();
-  const opening=page.locator('.augment-opening .augment-card');
-  await expect(opening).toHaveCount(3);await opening.first().click();
+  await chooseOpening(page);
   await expect(page.locator('.match-progress')).toBeVisible({timeout:50000});
   await expect(page.locator('.match-progress')).toContainText(/\+\d+ XP/);
   await page.screenshot({path:'test-results/match-progression.png'});
