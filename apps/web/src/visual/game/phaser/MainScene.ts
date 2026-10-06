@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '../model';
 import type { GridPoint } from './grid';
 import { activeMapId, HIDDEN_LAYERS, mapImageUrl, planSectorMove, sectorMap, sectorSurface, TILE_WIDTH, type Tileset } from '../../map/sector-map';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, VIEW_ROTATION_RADIANS } from './isometric';
+import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, playerViewCenter, playerViewZoom, projectedWorldBounds, VIEW_CLOSE_MULTIPLIER } from './isometric';
 import { WeaponEffects } from './weapon-effects';
 import { SatelliteEffects } from './satellite-effects';
 import { RobotEffects, ROBOT_LAYER } from './robot-effects';
@@ -13,10 +13,10 @@ const GID_MASK = 0x1fffffff;
 const DEPTH = { layer: 10000, nodes: 90000, units: 100000, route: 200000, core: 200001, selection: 300000 } as const;
 /** Multiplicative tint for tiles outside vision: dark, but the terrain stays readable. */
 const FOG_TINT = 0x4a5566;
-/** Camera zoom limits: the farthest view still frames a fight; a little closer for detail. */
-export const ZOOM_DEFAULT = 1.5;
-export const ZOOM_MIN = 1.2;
-export const ZOOM_MAX = 2.2;
+/** Layer written by scripts/obstaculos-tmx.ts so the editor shows the obstacles; never drawn in game. */
+const OBSTACLE_PREVIEW_LAYER = 'obstaculos-vista';
+/** Fallback zoom before the canvas size is known; the opening view is computed from the bases. */
+export const ZOOM_DEFAULT = 1;
 /** Terrain is built and drawn in square blocks of this many cells, only while they are on screen. */
 const CHUNK_CELLS = 8;
 /** Pointer distance from a screen edge, in pixels, at which the camera starts to drift. */
@@ -166,9 +166,8 @@ export class MainScene extends Phaser.Scene {
     }
     this.scale.refresh();
     this.cameras.main.setBackgroundColor(color.background);
-    const pad = Math.max(ISO_WORLD_WIDTH, ISO_WORLD_HEIGHT) * 0.4;
-    this.cameras.main.setBounds(-pad, -pad, ISO_WORLD_WIDTH + pad * 2, ISO_WORLD_HEIGHT + pad * 2);
-    this.cameras.main.setRotation(VIEW_ROTATION_RADIANS);
+    const bounds = projectedWorldBounds();
+    this.cameras.main.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
     this.terrain = this.add.graphics().setDepth(0);
     this.route = this.add.graphics().setDepth(DEPTH.route);
     this.attackRanges=this.add.graphics().setDepth(DEPTH.nodes+1);
@@ -252,12 +251,8 @@ export class MainScene extends Phaser.Scene {
     this.panVelocity.y += (wanted.y * PAN_SPEED - this.panVelocity.y) * ease;
     if (Math.abs(this.panVelocity.x) < 2 && wanted.x === 0) this.panVelocity.x = 0;
     if (Math.abs(this.panVelocity.y) < 2 && wanted.y === 0) this.panVelocity.y = 0;
-    const panX = this.panVelocity.x * seconds / camera.zoom;
-    const panY = this.panVelocity.y * seconds / camera.zoom;
-    const cos = Math.cos(VIEW_ROTATION_RADIANS);
-    const sin = Math.sin(VIEW_ROTATION_RADIANS);
-    camera.scrollX += panX * cos - panY * sin;
-    camera.scrollY += panX * sin + panY * cos;
+    camera.scrollX += this.panVelocity.x * seconds / camera.zoom;
+    camera.scrollY += this.panVelocity.y * seconds / camera.zoom;
     if (Math.abs(this.zoomTarget - camera.zoom) > 0.0005) {
       const next = Math.abs(this.zoomTarget - camera.zoom) < 0.004 ? this.zoomTarget
         : camera.zoom + (this.zoomTarget - camera.zoom) * (1 - Math.exp(-seconds / ZOOM_EASE));
@@ -275,11 +270,17 @@ export class MainScene extends Phaser.Scene {
   }
 
   resetCamera() {
-    this.cameras.main.setZoom(ZOOM_DEFAULT);
-    this.zoomTarget = ZOOM_DEFAULT;
-    const cell = cellToIso(sectorSurface.core.x, sectorSurface.core.y);
-    this.cameras.main.centerOn(cell.x, cell.y);
+    const zoom = playerViewZoom(this.scale.width, this.scale.height);
+    this.cameras.main.setZoom(zoom);
+    this.zoomTarget = zoom;
+    const center = playerViewCenter();
+    this.cameras.main.centerOn(center.x, center.y);
     this.refreshCameraView();
+  }
+
+  private zoomLimits() {
+    const farthest = playerViewZoom(this.scale.width, this.scale.height);
+    return { min: farthest, max: farthest * VIEW_CLOSE_MULTIPLIER };
   }
 
   /** False until Phaser has created the camera; callers may retry. */
@@ -294,7 +295,7 @@ export class MainScene extends Phaser.Scene {
 
   private refreshCameraView() {
     const camera = this.cameras.main;
-    const cameraKey = `${Math.round(camera.scrollX)},${Math.round(camera.scrollY)},${camera.zoom},${camera.width},${camera.height},${VIEW_ROTATION_RADIANS}`;
+    const cameraKey = `${Math.round(camera.scrollX)},${Math.round(camera.scrollY)},${camera.zoom},${camera.width},${camera.height}`;
     if (cameraKey === this.lastCameraView) return;
     this.lastCameraView = cameraKey;
     this.cullTerrain();
@@ -313,10 +314,7 @@ export class MainScene extends Phaser.Scene {
   /** Zoom keeping the world point under a screen position where it is. The camera zooms around its centre. */
   private zoomAround(zoom: number, anchor: { x: number; y: number }) {
     const camera = this.cameras.main;
-    // Screen offset from the centre, turned into world axes by the camera tilt.
-    const cos = Math.cos(VIEW_ROTATION_RADIANS), sin = Math.sin(VIEW_ROTATION_RADIANS);
-    const screenX = anchor.x - camera.width / 2, screenY = anchor.y - camera.height / 2;
-    const offsetX = screenX * cos - screenY * sin, offsetY = screenX * sin + screenY * cos;
+    const offsetX = anchor.x - camera.width / 2, offsetY = anchor.y - camera.height / 2;
     camera.scrollX += offsetX / camera.zoom - offsetX / zoom;
     camera.scrollY += offsetY / camera.zoom - offsetY / zoom;
     camera.setZoom(zoom);
@@ -347,9 +345,12 @@ export class MainScene extends Phaser.Scene {
     for (let y0 = 0; y0 < sectorMap.height; y0 += CHUNK_CELLS) for (let x0 = 0; x0 < sectorMap.width; x0 += CHUNK_CELLS) {
       const x1 = Math.min(sectorMap.width, x0 + CHUNK_CELLS), y1 = Math.min(sectorMap.height, y0 + CHUNK_CELLS);
       // Screen box of the block, with room above for tall tiles such as asteroids.
+      const corners = [cellToIso(x0, y0), cellToIso(x1 - 1, y0), cellToIso(x0, y1 - 1), cellToIso(x1 - 1, y1 - 1)];
       this.chunks.push({ x0, y0, x1, y1, images: null, shown: false,
-        left: cellToIso(x0, y1 - 1).x - TILE_WIDTH, right: cellToIso(x1 - 1, y0).x + TILE_WIDTH,
-        top: cellToIso(x0, y0).y - 220, bottom: cellToIso(x1 - 1, y1 - 1).y + 64 });
+        left: Math.min(...corners.map((corner) => corner.x)) - TILE_WIDTH,
+        right: Math.max(...corners.map((corner) => corner.x)) + TILE_WIDTH,
+        top: Math.min(...corners.map((corner) => corner.y)) - 220,
+        bottom: Math.max(...corners.map((corner) => corner.y)) + 64 });
     }
     this.drawMapObjects();
     this.cullTerrain();
@@ -357,14 +358,12 @@ export class MainScene extends Phaser.Scene {
 
   /** Keep only the blocks inside the camera in the display list: what is off screen costs nothing per frame. */
   private visibleWorldBox() {
-    // Worked out from scroll, zoom and tilt: the camera matrix is only refreshed when it renders,
-    // so right after a jump or a zoom it would still describe the previous view.
     const camera = this.cameras.main;
-    const halfWidth = camera.width / camera.zoom / 2, halfHeight = camera.height / camera.zoom / 2;
-    const cos = Math.abs(Math.cos(VIEW_ROTATION_RADIANS)), sin = Math.abs(Math.sin(VIEW_ROTATION_RADIANS));
-    const reachX = halfWidth * cos + halfHeight * sin, reachY = halfWidth * sin + halfHeight * cos;
-    const centerX = camera.scrollX + camera.width / 2, centerY = camera.scrollY + camera.height / 2;
-    return { left: centerX - reachX, right: centerX + reachX, top: centerY - reachY, bottom: centerY + reachY };
+    const halfWidth = camera.width / camera.zoom / 2;
+    const halfHeight = camera.height / camera.zoom / 2;
+    const centerX = camera.scrollX + camera.width / 2;
+    const centerY = camera.scrollY + camera.height / 2;
+    return { left: centerX - halfWidth, right: centerX + halfWidth, top: centerY - halfHeight, bottom: centerY + halfHeight };
   }
 
   private cullTerrain() {
@@ -426,7 +425,8 @@ export class MainScene extends Phaser.Scene {
   private drawMapObjects() {
     for (const layer of sectorMap.layers) {
       // Robots are animated by RobotEffects, not drawn as static art.
-      if (!layer.visible || !layer.objects || layer.name === ROBOT_LAYER) continue;
+      // The obstacle preview is for Tiled: the game draws obstacles from the simulation, below.
+      if (!layer.visible || !layer.objects || layer.name === ROBOT_LAYER || layer.name === OBSTACLE_PREVIEW_LAYER) continue;
       for (const object of layer.objects) {
         if (!object.gid || object.visible === false) continue;
         const gid = object.gid & GID_MASK;
@@ -872,12 +872,8 @@ export class MainScene extends Phaser.Scene {
       if (!this.dragOrigin || !pointer.middleButtonDown()) return;
       const position = this.pointerPosition(pointer);
       const camera = this.cameras.main;
-      const dx = (position.x - this.dragOrigin.x) / camera.zoom;
-      const dy = (position.y - this.dragOrigin.y) / camera.zoom;
-      const cos = Math.cos(VIEW_ROTATION_RADIANS);
-      const sin = Math.sin(VIEW_ROTATION_RADIANS);
-      camera.scrollX = this.dragOrigin.scrollX - (dx * cos - dy * sin);
-      camera.scrollY = this.dragOrigin.scrollY - (dx * sin + dy * cos);
+      camera.scrollX = this.dragOrigin.scrollX - (position.x - this.dragOrigin.x) / camera.zoom;
+      camera.scrollY = this.dragOrigin.scrollY - (position.y - this.dragOrigin.y) / camera.zoom;
       this.refreshCameraView();
     });
     this.input.on(Phaser.Input.Events.POINTER_UP, (pointer: Phaser.Input.Pointer) => {
@@ -907,7 +903,8 @@ export class MainScene extends Phaser.Scene {
     });
     this.input.on(Phaser.Input.Events.POINTER_WHEEL, (pointer: Phaser.Input.Pointer, _objects: Phaser.GameObjects.GameObject[], _deltaX: number, deltaY: number) => {
       // The wheel sets a goal; update() glides there keeping the point under the cursor still.
-      this.zoomTarget = Phaser.Math.Clamp(this.zoomTarget - deltaY * 0.001, ZOOM_MIN, ZOOM_MAX);
+      const limits = this.zoomLimits();
+      this.zoomTarget = Phaser.Math.Clamp(this.zoomTarget - deltaY * 0.001, limits.min, limits.max);
       this.zoomAnchor = this.pointerPosition(pointer);
     });
   }

@@ -7,7 +7,7 @@ import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
 import type { CameraView, CoreState, GameplayAction, GameplayPresentationAdapter, GameplayViewModel } from './model';
 import { activeMapId, sectorMap, sectorSurface } from '../map/sector-map';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, VIEW_ROTATION_DEGREES, VIEW_ROTATION_RADIANS, rotateAround } from './phaser/isometric';
+import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, projectedWorldBounds, TILE_HALF_HEIGHT, TILE_HALF_WIDTH } from './phaser/isometric';
 
 function formatTime(seconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -82,8 +82,9 @@ const OWNER_FILL = { blue: '#36a9ff', red: '#ff4f64', neutral: '#f2b84b' } as co
 let layout: { mapId: string; scale: number; offset: { x: number; y: number }; floor: { x: number; y: number; path: string }[]; terrainPath: string } | null = null;
 function minimapLayout() {
   if (layout?.mapId === activeMapId) return layout;
-  const scale = MINIMAP_SIZE / ISO_WORLD_WIDTH;
-  const offset = { x: 4, y: 4 + (MINIMAP_SIZE - ISO_WORLD_HEIGHT * scale) / 2 };
+  const world = projectedWorldBounds();
+  const scale = MINIMAP_SIZE / world.width;
+  const offset = { x: 4 - world.x * scale, y: 4 + (MINIMAP_SIZE - world.height * scale) / 2 - world.y * scale };
   layout = { mapId: activeMapId, scale, offset, floor: [], terrainPath: '' };
   layout.floor = sectorSurface.walkable.flatMap((walkable, index) => {
     if (!walkable) return [];
@@ -128,12 +129,10 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
       const bounds = event.currentTarget.getBoundingClientRect();
       const svgX = (event.clientX - bounds.left) / bounds.width * 180;
       const svgY = (event.clientY - bounds.top) / bounds.height * 180;
-      const untilted = rotateAround({ point: { x: svgX, y: svgY }, origin: { x: 90, y: 90 }, radians: -VIEW_ROTATION_RADIANS });
-      const cell = isoToPoint((untilted.x - MINIMAP_OFFSET.x) / MINIMAP_SCALE, (untilted.y - MINIMAP_OFFSET.y) / MINIMAP_SCALE);
+      const cell = isoToPoint((svgX - MINIMAP_OFFSET.x) / MINIMAP_SCALE, (svgY - MINIMAP_OFFSET.y) / MINIMAP_SCALE);
       if (cell) onPanMap(Math.round(cell.x), Math.round(cell.y));
     }}><svg viewBox="0 0 180 180" role="img" aria-label={t('minimap')}>
       <rect className="map-boundary" x="4" y="4" width="172" height="172" />
-      <g transform={`rotate(${VIEW_ROTATION_DEGREES} 90 90)`}>
       {/* Batch terrain into two paths so every server view does not reconcile thousands of SVG elements. */}
       <path d={terrainPath} fill="#34587a" />
       <path d={seenPath} fill="#5b95c4" />
@@ -152,10 +151,9 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
           fill={squad.owner === 'neutral' ? OWNER_FILL.neutral : undefined} />;
       })}
       {route && <circle className="map-destination" cx={miniPoint(route.destination.x, route.destination.y).x} cy={miniPoint(route.destination.x, route.destination.y).y} r="3" />}
-      {cameraView && <rect className="map-camera" data-iso-width={ISO_WORLD_WIDTH} data-iso-height={ISO_WORLD_HEIGHT} data-world-x={cameraView.worldX} data-world-y={cameraView.worldY} data-zoom={cameraView.zoom}
+      {cameraView && <rect className="map-camera" data-world-x={cameraView.worldX} data-world-y={cameraView.worldY} data-zoom={cameraView.zoom}
         x={MINIMAP_OFFSET.x + cameraView.worldX * MINIMAP_SCALE} y={MINIMAP_OFFSET.y + cameraView.worldY * MINIMAP_SCALE}
         width={cameraView.width * ISO_WORLD_WIDTH * MINIMAP_SCALE} height={cameraView.height * ISO_WORLD_HEIGHT * MINIMAP_SCALE} />}
-      </g>
     </svg></button>}
   </Panel>;
 }

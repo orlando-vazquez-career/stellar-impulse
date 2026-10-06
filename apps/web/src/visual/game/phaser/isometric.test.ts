@@ -1,18 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { rotateAround, VIEW_ROTATION_DEGREES, VIEW_ROTATION_RADIANS } from './isometric';
+import { cellToIso, isoToPoint, playerViewZoom, projectedWorldBounds, VIEW_YAW_RADIANS } from './isometric';
+import { sectorMap, sectorSurface } from '../../map/sector-map';
 
-describe('battlefield view rotation', () => {
-  it('tilts the whole map 30 degrees clockwise of screen-up so bases sit toward the corners', () => {
-    expect(VIEW_ROTATION_DEGREES).toBe(-30);
-    expect(VIEW_ROTATION_RADIANS).toBeCloseTo(-Math.PI / 6);
+describe('player battlefield view', () => {
+  it('yaws the projection without cropping the map', () => {
+    expect(VIEW_YAW_RADIANS).toBeCloseTo(-Math.PI / 6);
+    const lastX = sectorMap.width - 1;
+    const lastY = sectorMap.height - 1;
+    const corners = [cellToIso(0, 0), cellToIso(lastX, 0), cellToIso(lastX, lastY), cellToIso(0, lastY)];
+    const bounds = projectedWorldBounds();
+    for (const corner of corners) {
+      expect(corner.x).toBeGreaterThanOrEqual(bounds.x - 0.01);
+      expect(corner.x).toBeLessThanOrEqual(bounds.x + bounds.width + 0.01);
+      expect(corner.y).toBeGreaterThanOrEqual(bounds.y - 0.01);
+      expect(corner.y).toBeLessThanOrEqual(bounds.y + bounds.height + 0.01);
+    }
   });
 
-  it('round-trips a point through the view tilt', () => {
-    const origin = { x: 90, y: 90 };
-    const point = { x: 120, y: 70 };
-    const tilted = rotateAround({ point, origin, radians: VIEW_ROTATION_RADIANS });
-    const restored = rotateAround({ point: tilted, origin, radians: -VIEW_ROTATION_RADIANS });
-    expect(restored.x).toBeCloseTo(point.x);
-    expect(restored.y).toBeCloseTo(point.y);
+  it('places the player base toward the top-left of the view and the rival toward the bottom-right', () => {
+    const blue = cellToIso(sectorSurface.bases.p1.x, sectorSurface.bases.p1.y);
+    const red = cellToIso(sectorSurface.bases.p2.x, sectorSurface.bases.p2.y);
+    expect(blue.x).toBeLessThan(red.x);
+    expect(blue.y).toBeLessThan(red.y);
+  });
+
+  it('opens close enough that a 16:9 window cannot show the full diamond height', () => {
+    const bounds = projectedWorldBounds();
+    const zoom = playerViewZoom(1920, 1080);
+    expect(1080 / zoom).toBeLessThan(bounds.height);
+  });
+});
+
+describe('isometric round-trip', () => {
+  it('restores grid points after the view yaw', () => {
+    const screen = cellToIso(14.25, 17.6);
+    const restored = isoToPoint(screen.x, screen.y);
+    expect(restored?.x).toBeCloseTo(14.25);
+    expect(restored?.y).toBeCloseTo(17.6);
   });
 });
