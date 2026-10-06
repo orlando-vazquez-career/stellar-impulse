@@ -87,23 +87,34 @@ describe('ship traffic', () => {
     expect(world.squads[0]).toMatchObject({ x: 4, y: 3, target: null });
   });
 
-  it('reserves the cell a ship leaves until its interpolated step finishes', () => {
+  it('lets an equally fast ally follow into the cell being vacated, closing the column', () => {
     let world = field();
     world.squads[1]!.x = 2;
     world = applyCommand(world, 'p1', { type: 'move', seq: 1, squadId: 'lead', x: 4, y: 3 }).world;
     world = applyCommand(world, 'p1', { type: 'move', seq: 2, squadId: 'parked', x: 3, y: 3 }).world;
-    for (let tick = 0; tick < 6; tick++) world = stepWorld(world);
+    world = stepWorld(world);
     expect(world.squads[0]).toMatchObject({ x: 4, y: 3 });
-    expect(world.squads[1]).toMatchObject({ x: 2, y: 3 });
-    for (let tick = 0; tick < 6; tick++) world = stepWorld(world);
     expect(world.squads[1]).toMatchObject({ x: 3, y: 3 });
+  });
+  it('keeps the vacated cell reserved from a faster ally and from rivals until the step ends', () => {
+    for (const follower of ['fast-ally', 'rival'] as const) {
+      let world = field();
+      world.squads[0] = createSquad('lead', 'p1', 'bomber', { x: 3, y: 3 });
+      world.squads[1] = createSquad('parked', follower === 'rival' ? 'p2' : 'p1', 'interceptor', { x: 2, y: 3 });
+      world = applyCommand(world, 'p1', { type: 'move', seq: 1, squadId: 'lead', x: 4, y: 3 }).world;
+      world = applyCommand(world, world.squads[1]!.ownerId, { type: 'move', seq: 1, squadId: 'parked', x: 3, y: 3 }).world;
+      for (let tick = 0; tick < 6; tick++) world = stepWorld(world);
+      expect(world.squads[0]).toMatchObject({ x: 4, y: 3 });
+      expect(world.squads[1]).toMatchObject({ x: 2, y: 3 });
+    }
   });
   it.each(['ally','enemy','guardian'] as const)('diagonal passing keeps a %s corner rule without sharing destination cells',blocker=>{
     let world=field();world.economy=false;
     if(blocker==='enemy')world.squads[1]!.ownerId='p2';
     if(blocker==='guardian'){world.squads.pop();world.guardians=[{id:'corner',objectiveId:'core',x:4,y:3,hp:1000,maxHp:1000,damage:0}];}
     world=applyCommand(world,'p1',{seq:1,type:'move',squadId:'lead',x:4,y:4}).world;
-    for(let i=0;i<6;i++)world=stepWorld(world);
+    // The first step is immediate; only an allied corner lets it cut the diagonal.
+    world=stepWorld(world);
     if(blocker==='ally')expect(world.squads[0]).toMatchObject({x:4,y:4,target:null});
     else expect(world.squads[0]!.x===4&&world.squads[0]!.y===4).toBe(false);
     expect(world.squads[0]!.x===4&&world.squads[0]!.y===3).toBe(false);
