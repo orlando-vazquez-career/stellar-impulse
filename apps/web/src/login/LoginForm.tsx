@@ -64,6 +64,8 @@ export function LoginForm(props: LoginFormProps) {
       </div>
 
       <h1 className="li-title" data-text="IMPULSO STELLAR">IMPULSO STELLAR</h1>
+      <h2 className="li-heading-call">{t('accessTitle')}</h2>
+      <p className="li-subtitle">{t('accessBody')}</p>
 
       {onLogin && (
         <form
@@ -144,4 +146,3 @@ export function LoginForm(props: LoginFormProps) {
     </div>
   );
 }
-
