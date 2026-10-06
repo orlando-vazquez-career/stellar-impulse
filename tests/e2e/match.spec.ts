@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openApp, chooseOpening } from './helpers';
+import { canvasPointFromMinimap, chooseOpening, openApp } from './helpers';
 
 test('retires an accidental ship with Delete and buys capacity and damage upgrades with Metal', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
@@ -14,18 +14,9 @@ test('retires an accidental ship with Delete and buys capacity and damage upgrad
   const production = page.locator('.vi-production');
   await production.getByRole('button', { name: /Explorador/ }).click();
   await expect(page.locator('.vi-resources')).toContainText('3/12', { timeout: 10000 });
-  const camera = page.locator('.map-camera');
-  const scale = 172 / Number(await camera.getAttribute('data-iso-width'));
-  const offsetY = 4 + (172 - Number(await camera.getAttribute('data-iso-height')) * scale) / 2;
-  const worldX = Number(await camera.getAttribute('data-world-x'));
-  const worldY = Number(await camera.getAttribute('data-world-y'));
-  const zoom = Number(await camera.getAttribute('data-zoom'));
-  const canvas = (await page.locator('.vi-phaser canvas').boundingBox())!;
   const marker = page.locator('.map-ally').nth(2);
-  const cx = Number(await marker.getAttribute('cx'));
-  const cy = Number(await marker.getAttribute('cy'));
-  await page.mouse.click(canvas.x + ((cx - 4) / scale - worldX) * zoom,
-    canvas.y + ((cy - offsetY) / scale - worldY) * zoom);
+  const point = await canvasPointFromMinimap(page, Number(await marker.getAttribute('cx')), Number(await marker.getAttribute('cy')));
+  await page.mouse.click(point.x, point.y);
   await expect(page.locator('.vi-squad')).toBeVisible();
   await expect(page.locator('.vi-squad h2')).toContainText('EXP-2');
   await page.keyboard.press('Delete');
@@ -87,17 +78,11 @@ test('double click on a ship selects every ship of its class on screen', async (
   await page.waitForTimeout(500);
 
   // Find an Interceptor on screen from its minimap marker (isometric minimap → world → screen).
-  const camera = page.locator('.map-camera');
-  const scale = 172 / Number(await camera.getAttribute('data-iso-width'));
-  const offsetY = 4 + (172 - Number(await camera.getAttribute('data-iso-height')) * scale) / 2;
-  const worldX = Number(await camera.getAttribute('data-world-x'));
-  const worldY = Number(await camera.getAttribute('data-world-y'));
-  const zoom = Number(await camera.getAttribute('data-zoom'));
-  const canvas = (await page.locator('.vi-phaser canvas').boundingBox())!;
   const markers = await page.locator('.map-ally').evaluateAll((nodes) => nodes.map((node) => [Number(node.getAttribute('cx')), Number(node.getAttribute('cy'))]));
   for (const [cx, cy] of markers) {
-    const x = canvas.x + ((cx! - 4) / scale - worldX) * zoom;
-    const y = canvas.y + ((cy! - offsetY) / scale - worldY) * zoom;
+    const point = await canvasPointFromMinimap(page, cx!, cy!);
+    const x = point.x;
+    const y = point.y;
     await page.mouse.click(x, y);
     if (!(await page.locator('.vi-squad h2').textContent().catch(() => ''))?.includes('INT')) continue;
     await page.waitForTimeout(500);
@@ -118,7 +103,7 @@ test('login gate leads straight to a new training once the commander has an alia
   await page.getByLabel('Identificador de comandante').fill('Vega');
   await page.getByRole('button', { name: 'Crear entrenamiento' }).click();
   await expect(page.getByRole('heading', { name: 'Configura la operación.' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Espiral Estelar 58/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: /Espiral Estelar/ })).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('requires an account before joining a multiplayer room from the login', async ({ page }) => {

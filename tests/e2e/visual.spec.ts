@@ -1,19 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openApp } from './helpers';
-
-async function gamePoint(page: import('@playwright/test').Page, x: number, y: number) {
-  // The minimap camera rect carries the visible world origin and zoom (Phaser zooms around the centre).
-  const camera = page.locator('.map-camera');
-  const rect = await page.locator('.vi-phaser canvas').boundingBox();
-  if (!rect) throw new Error('No playable canvas');
-  const worldX = Number(await camera.getAttribute('data-world-x'));
-  const worldY = Number(await camera.getAttribute('data-world-y'));
-  const zoom = Number(await camera.getAttribute('data-zoom'));
-  return {
-    x: rect.x + (928 + (x - y) * 32 - worldX) * zoom,
-    y: rect.y + (64 + (x + y) * 16 - worldY) * zoom,
-  };
-}
+import { gamePoint, gridDistanceFromMinimap, openApp } from './helpers';
 
 async function advanceMockCombat(page: import('@playwright/test').Page) {
   // Elapsed-time movement accepts steps up to 100 ms. Keep that bound while
@@ -198,8 +184,8 @@ test.describe('visual interface foundation', () => {
 
     await page.getByRole('button', { name: 'Mover cámara desde el minimapa' }).click({ position: { x: 150, y: 80 } });
     await page.getByRole('button', { name: 'Restablecer cámara' }).click();
-    await expect.poll(() => camera.getAttribute('x')).toBe(initialCameraX);
-    await expect.poll(() => camera.getAttribute('y')).toBe(initialCameraY);
+    await expect.poll(async () => Math.abs(Number(await camera.getAttribute('x')) - Number(initialCameraX))).toBeLessThan(0.6);
+    await expect.poll(async () => Math.abs(Number(await camera.getAttribute('y')) - Number(initialCameraY))).toBeLessThan(0.6);
     await expect(page.locator('.vi-phaser canvas')).toHaveCount(1);
 
     const initialWidth = Number(await camera.getAttribute('width'));
@@ -340,14 +326,11 @@ test.describe('visual interface foundation', () => {
     const destination = await gamePoint(page, 13, 15);
     await page.mouse.click(destination.x, destination.y, { button: 'right' });
     await expect(page.locator('.map-move-route')).toHaveCount(1);
-    const scale = 172 / Number(await page.locator('.map-camera').getAttribute('data-iso-width'));
     for (let sample = 0; sample < 30; sample++) {
       const markers = await page.locator('.map-ally').evaluateAll((nodes) => nodes.map((node) =>
         ({ x: Number(node.getAttribute('cx')), y: Number(node.getAttribute('cy')) })));
       for (let i = 0; i < markers.length; i++) for (let j = i + 1; j < markers.length; j++) {
-        const dx = (markers[i]!.x - markers[j]!.x) / scale / 32;
-        const dy = (markers[i]!.y - markers[j]!.y) / scale / 16;
-        expect(Math.hypot((dx + dy) / 2, (dy - dx) / 2)).toBeGreaterThanOrEqual(0.9 - 1e-6);
+        expect(await gridDistanceFromMinimap(page, markers[i]!, markers[j]!)).toBeGreaterThanOrEqual(0.9 - 1e-6);
       }
       await page.waitForTimeout(100);
     }

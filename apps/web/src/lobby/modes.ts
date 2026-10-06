@@ -1,7 +1,21 @@
-import type { LobbyMode, ModeOption } from '@impulso/ui';
+export interface ModeOption {
+  name: string;
+  meta: string;
+}
 
-export interface GameMode extends LobbyMode {
+export interface GameMode {
+  id: string;
+  num: string;
+  name: string;
+  code: string;
+  meta: string;
+  accent: string;
   pitch: number;
+  x: number;
+  y: number;
+  blurb: string;
+  options: ModeOption[];
+  sprite: string;
 }
 
 const TRAINING_MODE_ID = 'training';

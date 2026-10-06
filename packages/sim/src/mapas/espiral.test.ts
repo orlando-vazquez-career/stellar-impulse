@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { findPath } from '../maps/pathfinding.js';
 import { createSectorWorld } from '../index.js';
+import { launchCell } from '../economia.js';
 import mapa from '../tiled-maps/espiral-estelar/espiral-estelar.json';
 import { ESPIRAL, leerEspiral } from './espiral.js';
 
@@ -23,6 +24,10 @@ describe('espiral estelar', () => {
     expect(world.core).toMatchObject({ x: 48, y: 48 });
     expect(world.nodes.filter((node) => node.kind === 'capture')).toHaveLength(4);
     expect(world.nodes.filter((node) => node.kind === 'metal')).toHaveLength(10);
+    const taken = new Set([`${ESPIRAL.bases.p1.x},${ESPIRAL.bases.p1.y}`, `${ESPIRAL.bases.p1.x + 1},${ESPIRAL.bases.p1.y + 1}`]);
+    expect(launchCell(ESPIRAL.bases.p1, ESPIRAL.width, ESPIRAL.height,
+      (cell) => ESPIRAL.walkable[cell.y * ESPIRAL.width + cell.x] === true,
+      (cell) => taken.has(`${cell.x},${cell.y}`))).not.toBeNull();
   });
 
   it('rejects a map without its logic layer', () => {
