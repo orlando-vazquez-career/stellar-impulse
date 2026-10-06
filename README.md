@@ -89,6 +89,7 @@ arte e interfaz. Las asignaciones y horas son propuestas que el equipo debe conf
 
 Lee [la documentación](docs/README.md), [cómo contribuir](CONTRIBUTING.md) y
 [el plan de trabajo](docs/plans/strategy.md). Código y documentación bajo [MIT](LICENSE).
+La banda sonora y temas musicales son propiedad de @llamakachera - Llama Kachera (todos los derechos reservados, ver [LICENSE](LICENSE)).
 Los recursos gráficos incluidos son formas procedurales creadas para este repositorio.
 No se distribuyen los documentos privados de referencia ni la imagen de inspiración.
 

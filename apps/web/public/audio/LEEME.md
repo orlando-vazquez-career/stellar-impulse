@@ -57,3 +57,4 @@ Hay un juego por idioma (`es` y `en`); se usa el del idioma elegido en la interf
 | `defeat` | «Derrota.» |
 
 Usa solo audios propios o con licencia que permita uso comercial, y anota su origen en los créditos.
+La banda sonora y temas musicales originales pertenecen a @llamakachera - Llama Kachera (todos los derechos reservados, ver [LICENSE](../../../../LICENSE)).
