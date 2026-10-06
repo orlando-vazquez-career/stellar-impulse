@@ -18,7 +18,7 @@ export interface VisualPreferences {
 }
 
 export const defaultVisualPreferences: VisualPreferences = {
-  audio: { master: 80, effects: 85, music: 55, muted: false },
+  audio: { master: 80, effects: 85, music: 75, muted: false },
   controls: { move: 'M', attack: 'Q', hold: 'H', capture: 'C', cancel: 'Esc', camera: 'Space' },
   accessibility: { highContrast: false, reducedMotion: false, largeText: false, colorProfile: 'default' },
 };
