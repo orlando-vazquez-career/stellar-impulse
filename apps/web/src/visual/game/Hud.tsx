@@ -5,6 +5,7 @@ import { LanguageToggle } from '../shared/LanguageToggle';
 import { formatStat } from './format-stat';
 import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
+import { AudioControls } from '../settings/AudioControls';
 import type { CameraView, CoreState, GameplayAction, GameplayPresentationAdapter, GameplayViewModel } from './model';
 import { activeMapId, sectorMap, sectorSurface } from '../map/sector-map';
 import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH } from './phaser/isometric';
@@ -64,10 +65,39 @@ function SurrenderButton({ view, adapter }: { view: GameplayViewModel; adapter: 
   </button>;
 }
 
-function TopControls({ view, adapter, onResetCamera, onDevelopment, onLeave, multiplayer }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; onResetCamera(): void; onDevelopment(): void; onLeave(): void; multiplayer?: boolean }) {
+function SpeakerIcon({ muted }: { muted: boolean }) {
+  return <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none" />
+    {muted ? <path d="M16 9l5 6M21 9l-5 6" /> : <><path d="M16.5 8.5a5 5 0 0 1 0 7" /><path d="M19 6a8.5 8.5 0 0 1 0 12" /></>}
+  </svg>;
+}
+
+/** Volume without leaving the match: every slider is heard at once and saved on this device. */
+function SoundButton({ audio, onAudioChange }: { audio: VisualPreferences['audio']; onAudioChange(audio: VisualPreferences['audio']): void }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [open]);
+  const silent = audio.muted || audio.master === 0;
+  return <>
+    <button className="vi-sound-button" title={t('soundPanel')} aria-label={t('soundPanel')} aria-expanded={open} onClick={() => setOpen(!open)}><SpeakerIcon muted={silent} /></button>
+    {open && <Panel className="vi-sound-panel">
+      <header><strong>{t('soundPanel')}</strong><button onClick={() => setOpen(false)} aria-label={t('collapse')}>×</button></header>
+      <p>{t('soundPanelHelp')}</p>
+      <AudioControls value={audio} onChange={onAudioChange} />
+    </Panel>}
+  </>;
+}
+
+function TopControls({ view, adapter, onResetCamera, onDevelopment, onLeave, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; onResetCamera(): void; onDevelopment(): void; onLeave(): void; multiplayer?: boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const { t } = useI18n();
   return <div className="vi-top-controls">
     {!multiplayer && <SurrenderButton view={view} adapter={adapter} />}
+    {audio && onAudioChange && <SoundButton audio={audio} onAudioChange={onAudioChange} />}
     <button title={t('cameraReset')} onClick={onResetCamera}><span aria-hidden="true">◎</span></button>
     {!multiplayer && <button title={t('preferences')} onClick={onDevelopment}><span aria-hidden="true">⚙</span></button>}
     <LanguageToggle />
@@ -341,12 +371,12 @@ function NoticeHud({ view }: { view: GameplayViewModel }) {
   return <div className={`vi-notice vi-notice--${view.connection}`} role="status">{view.notice}</div>;
 }
 
-export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave,onBaseRange, multiplayer }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void;onBaseRange?:(show:boolean)=>void; multiplayer?:boolean }) {
+export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave,onBaseRange, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void;onBaseRange?:(show:boolean)=>void; multiplayer?:boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const { t } = useI18n();
   return <div className="vi-hud" aria-label={t('hud')}>
     <ResourceHud view={view} />
     <SectorHud view={view} />
-    <TopControls view={view} adapter={adapter} onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} multiplayer={multiplayer} />
+    <TopControls view={view} adapter={adapter} onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} multiplayer={multiplayer} audio={audio} onAudioChange={onAudioChange} />
     <Minimap view={view} cameraView={cameraView} onPanMap={onPanMap} />
     <SquadHud view={view} adapter={adapter} />
     <ActionHud view={view} adapter={adapter} controls={controls} />

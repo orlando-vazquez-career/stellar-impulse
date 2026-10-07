@@ -1,5 +1,6 @@
 // Interface sounds from Diego's original command atlas (PR #10), shared by the visual client.
 import { useState } from 'react';
+import { channelVolume, getAudioMix } from '../visual/audio-mix';
 
 const SILENCE = 0.0001;
 const FILTER_CUTOFF_HZ = 2400;
@@ -54,7 +55,10 @@ export class SpaceSound {
     return this.#context;
   }
 
-  #sweep({ from, to, duration, wave, volume }: Tone) {
+  #sweep({ from, to, duration, wave, volume: base }: Tone) {
+    // Menu sounds follow the Interface channel of the player's mix.
+    const volume = base * channelVolume(getAudioMix(), 'interface');
+    if (volume <= SILENCE) return;
     const context = this.#enabled ? this.#audioContext() : null;
     if (!context) return;
 

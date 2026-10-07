@@ -1,4 +1,4 @@
-import type { VisualPreferences } from './settings/preferences';
+import { channelVolume, getAudioMix, subscribeAudioMix, type AudioMix } from './audio-mix';
 
 export type MusicTrack = 'menu' | 'match';
 
@@ -36,22 +36,28 @@ export class MusicPlayer {
   private activeGain: GainNode | null = null;
   private synthGain: GainNode | null = null;
   private seed = 1;
+  /** Set once disposed: late async work (decoding the recorded tracks) must never start sound again. */
+  private disposed = false;
+  private audio: AudioMix;
+  private readonly unsubscribe: () => void;
 
-  constructor(private audio: VisualPreferences['audio'], manifestUrl = '/audio/manifest.json') {
+  constructor(audio: AudioMix = getAudioMix(), manifestUrl = '/audio/manifest.json') {
+    this.audio = audio;
+    this.unsubscribe = subscribeAudioMix((mix) => this.setPreferences(mix));
     void this.loadRecorded(manifestUrl);
   }
 
   private get volume(): number {
-    return this.audio.muted ? 0 : (this.audio.master / 100) * (this.audio.music / 100);
+    return channelVolume(this.audio, 'music');
   }
 
-  setPreferences(audio: VisualPreferences['audio']) {
+  setPreferences(audio: AudioMix) {
     this.audio = audio;
-    if (this.master && this.context) this.master.gain.setTargetAtTime(this.volume, this.context.currentTime, 0.1);
+    if (this.master && this.context) this.master.gain.setTargetAtTime(this.volume, this.context.currentTime, 0.05);
   }
 
   private ensureContext(): AudioContext | null {
-    if (typeof AudioContext === 'undefined') return null;
+    if (this.disposed || typeof AudioContext === 'undefined') return null;
     if (!this.context) {
       this.context = new AudioContext();
       this.master = this.context.createGain();
@@ -96,9 +102,11 @@ export class MusicPlayer {
         const ctx = path ? this.ensureContext() : null;
         if (!path || !ctx) continue;
         const response = await fetch(new URL(path, new URL(manifestUrl, window.location.href)));
+        if (this.disposed) return;
         if (response.ok) this.recorded.set(track, await ctx.decodeAudioData(await response.arrayBuffer()));
       }
-      if (this.track && this.recorded.has(this.track)) this.play(this.track, true);
+      // Swap the synthesised stand-in for the recording, but only while this player is still the live one.
+      if (!this.disposed && this.track && this.recorded.has(this.track)) this.play(this.track, true);
     } catch { /* keep the generative music */ }
   }
 
@@ -109,6 +117,7 @@ export class MusicPlayer {
   }
 
   play(track: MusicTrack, force = false) {
+    if (this.disposed) return;
     if (this.track === track && !force && (this.activeSource || this.timer)) return;
     this.stopTrack(true);
     this.track = track;
@@ -284,6 +293,8 @@ export class MusicPlayer {
   }
 
   dispose() {
+    this.disposed = true;
+    this.unsubscribe();
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     }

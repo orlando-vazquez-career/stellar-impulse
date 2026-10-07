@@ -1,6 +1,7 @@
 import type { DurationMode } from '@impulso/sim';
 import { useEffect, useRef, useState } from 'react';
 import { MusicPlayer } from './music';
+import { setAudioMix } from './audio-mix';
 import { AccessScreen } from './access/AccessScreen';
 import { clearSession, logoutAccount, restoreAccount, sessionToken, type AccountUser } from '../auth/client';
 import { createMultiplayerSession, type MultiplayerSession } from '../multiplayer/session';
@@ -116,7 +117,7 @@ function VisualPrototypeContent() {
 
   // One background player for the whole app; browsers only start audio after a gesture.
   useEffect(() => {
-    const player = new MusicPlayer(loadVisualPreferences().audio);
+    const player = new MusicPlayer();
     music.current = player;
     player.resume();
     const wake = () => player.resume();
@@ -135,7 +136,8 @@ function VisualPrototypeContent() {
       music.current = null;
     };
   }, []);
-  useEffect(() => { music.current?.setPreferences(preferences.audio); }, [preferences.audio]);
+  // Every sound source reads this live mix; the saved preferences are its resting value.
+  useEffect(() => { setAudioMix(preferences.audio); }, [preferences.audio]);
   useEffect(() => { music.current?.play(screen === 'gameplay' ? 'match' : 'menu'); }, [screen]);
 
   useEffect(() => {
@@ -165,8 +167,14 @@ function VisualPrototypeContent() {
     {screen === 'multiplayer' && multiplayer && <MultiplayerLobby alias={alias} token={sessionToken() || ''} mode={lobbyMode} session={multiplayer} initialJoinCode={joinCode} onBack={() => { setMultiplayerMatch(false); setJoinCode(''); setScreen('command'); }} />}
     {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
     {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} />}
-    {screen === 'settings' && <SettingsScreen preferences={preferences} onBack={() => setScreen('command')} onSave={(nextPreferences) => { saveVisualPreferences(nextPreferences); setPreferences(nextPreferences); }} />}
-    {screen === 'gameplay' && <GameplayScreen preferences={preferences} difficulty={difficulty} map={map} duration={duration} multiplayerSession={multiplayerMatch ? multiplayer ?? undefined : undefined} onLeave={() => multiplayerMatch ? void leaveMultiplayer() : setScreen('command')} />}
+    {screen === 'settings' && <SettingsScreen preferences={preferences} onPreviewAudio={setAudioMix}
+      onBack={() => { setAudioMix(preferences.audio); setScreen('command'); }}
+      onSave={(nextPreferences) => { saveVisualPreferences(nextPreferences); setPreferences(nextPreferences); }} />}
+    {screen === 'gameplay' && <GameplayScreen preferences={preferences} onAudioChange={(audio) => {
+      const next = { ...preferences, audio };
+      saveVisualPreferences(next);
+      setPreferences(next);
+    }} difficulty={difficulty} map={map} duration={duration} multiplayerSession={multiplayerMatch ? multiplayer ?? undefined : undefined} onLeave={() => multiplayerMatch ? void leaveMultiplayer() : setScreen('command')} />}
     <div className="vi-resolution-warning" role="alert"><div><Brand /><h1>{t('resolutionWarningTitle')}</h1><p>{t('resolutionWarningBody')}</p></div></div>
   </div>;
 }

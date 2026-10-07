@@ -25,16 +25,16 @@ const PRODUCTION_KEYS: Record<string, 'explorer' | 'interceptor' | 'frigate' | '
 const emptySubscribe = () => () => {};
 const emptyMultiplayer = () => null;
 
-export function GameplayScreen({ preferences, difficulty = 'medium', map = 'espiral', duration = 'skirmish', multiplayerSession, onLeave }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; duration?: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void }) {
+export function GameplayScreen({ preferences, difficulty = 'medium', map = 'espiral', duration = 'skirmish', multiplayerSession, onLeave, onAudioChange }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; duration?: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const [match, setMatch] = useState(0);
   // The local mock only knows Sector 01. Selecting before the children render keeps scene, HUD and server on one map.
   const chosen = multiplayerSession || wantsLocalMock() ? 'sector-01' : map;
   selectMap(chosen);
-  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} duration={duration} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
+  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} duration={duration} multiplayerSession={multiplayerSession} onLeave={onLeave} onAudioChange={onAudioChange} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
 }
 
 /** The adapter lives exactly as long as the mounted match, so a server room is never left orphaned. */
-function GameplayMatch({ preferences, difficulty, map, duration, multiplayerSession, onLeave, onRestart }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; duration: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void }) {
+function GameplayMatch({ preferences, difficulty, map, duration, multiplayerSession, onLeave, onRestart, onAudioChange }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; duration: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const [adapter, setAdapter] = useState<GameplayPresentationAdapter | null>(null);
   useEffect(() => {
     const created = multiplayerSession ? createCampaignGameplayAdapter(multiplayerSession)
@@ -43,10 +43,10 @@ function GameplayMatch({ preferences, difficulty, map, duration, multiplayerSess
     return () => created.destroy();
   }, []);
   if (!adapter) return <main className="vi-gameplay vi-screen" aria-busy="true" />;
-  return <GameplayView adapter={adapter} preferences={preferences} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={onRestart} />;
+  return <GameplayView adapter={adapter} preferences={preferences} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={onRestart} onAudioChange={onAudioChange} />;
 }
 
-function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRestart }: { adapter: GameplayPresentationAdapter; preferences: VisualPreferences; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void }) {
+function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRestart, onAudioChange }: { adapter: GameplayPresentationAdapter; preferences: VisualPreferences; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const view = useSyncExternalStore(adapter.subscribe, adapter.getSnapshot);
   const roomState = useSyncExternalStore(multiplayerSession?.subscribe ?? emptySubscribe, multiplayerSession?.getSnapshot ?? emptyMultiplayer);
   const { locale } = useI18n();
@@ -57,7 +57,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
   // Sounds and spoken calls for server events; the banner fades after a few seconds.
   useEffect(() => {
     if (!adapter.subscribeEvents) return;
-    const audio = new MatchAudio(preferences.audio, locale);
+    const audio = new MatchAudio(locale);
     let counter = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = adapter.subscribeEvents((event) => {
@@ -69,7 +69,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
       timer = setTimeout(() => setAnnouncement(null), 3200);
     });
     return () => { unsubscribe(); clearTimeout(timer); audio.dispose(); };
-  }, [adapter, preferences.audio, locale]);
+  }, [adapter, locale]);
   const [developmentOpen, setDevelopmentOpen] = useState(false);
   const [cameraView, setCameraView] = useState<CameraView | null>(null);
   const battlefieldRef = useRef<PhaserBattlefieldHandle>(null);
@@ -109,7 +109,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
         onAttackSelected={(targetId) => adapter.dispatch({ type: 'attack-selected', targetId })}
         onCameraChange={setCameraView} />
     </Suspense>
-    <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onBaseRange={previewBaseRange} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)} onResetCamera={() => battlefieldRef.current?.resetCamera()} onDevelopment={() => setDevelopmentOpen(true)} onLeave={onLeave} multiplayer={Boolean(multiplayerSession)} />
+    <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onBaseRange={previewBaseRange} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)} onResetCamera={() => battlefieldRef.current?.resetCamera()} onDevelopment={() => setDevelopmentOpen(true)} onLeave={onLeave} multiplayer={Boolean(multiplayerSession)} audio={preferences.audio} onAudioChange={onAudioChange} />
     {developmentOpen && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}
     <AugmentHud view={view} adapter={adapter} sound={!preferences.audio.muted && preferences.audio.effects > 0 && preferences.audio.master > 0} />
     {announcement && !view.result && <div key={announcement.id} className={`vi-announcement vi-announcement--${announcement.tone}`} role="status">{announcement.text}</div>}

@@ -574,6 +574,29 @@
 .vi-top-controls > button { min-width: 42px; min-height: 42px; padding: 0 12px; border: 1px solid var(--vi-border); border-radius: 2px; background: var(--vi-panel); }
 .vi-top-controls > button:hover { border-color: var(--vi-blue); }
 .vi-top-controls .vi-leave { color: var(--vi-muted); font-size: 12px; }
+.vi-top-controls .vi-sound-button { display: grid; place-items: center; color: var(--vi-text); }
+.vi-top-controls .vi-sound-button[aria-expanded="true"] { border-color: var(--vi-blue-light); color: var(--vi-blue-light); }
+.vi-sound-panel { position: absolute; top: 52px; right: 0; z-index: 30; width: 340px; padding: 14px 16px 6px; display: grid; gap: 6px; }
+.vi-sound-panel > header { display: flex; justify-content: space-between; align-items: center; font-family: var(--vi-display); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; }
+.vi-sound-panel > header button { min-width: 28px; min-height: 28px; color: var(--vi-muted); font-size: 18px; }
+.vi-sound-panel > p { color: var(--vi-muted); font-size: 12px; }
+.vi-sound-panel .vi-setting-range { padding: 9px 0 11px; border-bottom: 1px solid var(--vi-border); display: grid; gap: 7px; }
+.vi-sound-panel .vi-setting-range > span { display: flex; justify-content: space-between; align-items: center; }
+.vi-sound-panel .vi-setting-range strong { font-size: 12px; }
+.vi-sound-panel .vi-setting-range output { min-width: 40px; text-align: right; color: var(--vi-blue-light); font-family: var(--vi-display); font-size: 15px; }
+.vi-sound-panel .vi-setting-range input { width: 100%; accent-color: var(--vi-blue-light); }
+.vi-sound-panel .vi-setting-range input:disabled { opacity: .3; }
+.vi-sound-panel .vi-setting-toggle { padding: 10px 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; }
+.vi-sound-panel .vi-setting-toggle > span { display: grid; gap: 2px; }
+.vi-sound-panel .vi-setting-toggle strong { font-size: 12px; }
+.vi-sound-panel .vi-setting-toggle small { color: var(--vi-muted); font-size: 11px; }
+.vi-setting-range__tail { display: flex; align-items: center; gap: 10px; }
+.vi-audio-test { padding: 3px 9px; border: 1px solid var(--vi-border); border-radius: 0; background: transparent; color: var(--vi-muted); font: 600 11px var(--vi-display); letter-spacing: .06em; cursor: pointer; }
+.vi-settings .vi-audio-test { border-color: var(--settings-border); color: var(--settings-accent); }
+.vi-sound-panel .vi-setting-range .vi-audio-test { min-width: 0; min-height: 0; padding: 3px 9px; border: 1px solid var(--vi-border); font-size: 11px; color: var(--vi-muted); }
+.vi-audio-test:hover:not(:disabled) { border-color: var(--vi-blue); color: var(--vi-text); }
+.vi-audio-test:disabled { opacity: .35; }
+.vi-audio-unsaved { margin-top: 12px; color: var(--vi-warning); font-size: 12px; }
 
 .vi-minimap { position: absolute; bottom: 20px; left: 20px; width: 222px; padding: 11px; }
 .vi-minimap.is-collapsed { width: 150px; }
