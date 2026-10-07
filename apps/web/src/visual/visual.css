@@ -63,12 +63,14 @@
 .vi-brand {
   display: inline-flex;
   align-items: center;
-  gap: 13px;
-  font-family: var(--vi-display);
-  font-size: 24px;
-  font-weight: 700;
-  line-height: .85;
-  letter-spacing: .16em;
+  width: 184px;
+  min-width: 0;
+}
+
+.vi-brand__logo {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .vi-brand small {
@@ -664,6 +666,10 @@
   .vi-sector-status { min-width: 320px; grid-template-columns: 62px 80px 1fr; }
   .vi-top-controls .vi-language { display: none; }
   .vi-squad { width: 420px; }
+}
+
+@media (max-width: 520px) {
+  .vi-brand { width: 148px; }
 }
 
 @media (max-width: 1023px) {

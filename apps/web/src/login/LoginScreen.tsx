@@ -26,7 +26,7 @@ export interface LoginScreenProps {
 /**
  * Puerta de entrada principal del juego: la nave ardiendo en primer plano,
  * asteroides detrás, y el panel-holograma cyberpunk del login a la derecha.
- * Ocupa el viewport completo e inicia toda la experiencia de Impulso Stellar.
+ * Ocupa el viewport completo e inicia toda la experiencia de Stellar Impulse.
  */
 export function LoginScreen(props: LoginScreenProps) {
   const {

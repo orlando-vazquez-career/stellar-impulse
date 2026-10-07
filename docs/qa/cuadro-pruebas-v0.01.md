@@ -1,4 +1,4 @@
-# Cuadro de Pruebas v0.01 — Impulso Stellar
+# Cuadro de Pruebas v0.01 — Stellar Impulse
 
 **Responsable:** Yamil (Desarrollo y Pruebas Integrales)
 **Fecha de creación:** 27 de septiembre de 2026

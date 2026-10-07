@@ -113,10 +113,13 @@ describe('deterministic integer simulation', () => {
     expect(replay().winner).toBe('p1');
     expect(replay().players.p1.metal).toBeGreaterThan(0);
   });
-  it('moves on the configured tick using eight-way routing and keeps prior snapshots', () => {
+  it('takes the first step at once, then moves on the configured beat, keeping prior snapshots', () => {
     const world = applyCommand(createWorld(), 'p1', move()).world;
-    expect(ticks(world, 2).squads[0]).toMatchObject({ x: 2, y: 17 });
-    expect(ticks(world, 6).squads[0]).toMatchObject(findPath({ x: 2, y: 17 }, { x: 4, y: 4 }, world.width, world.height, world.obstacles)[1]!);
+    const route = findPath({ x: 2, y: 17 }, { x: 4, y: 4 }, world.width, world.height, world.obstacles);
+    // A fresh order responds on the next tick instead of waiting up to a full step.
+    expect(ticks(world, 1).squads[0]).toMatchObject(route[1]!);
+    expect(ticks(world, 5).squads[0]).toMatchObject(route[1]!);
+    expect(ticks(world, 6).squads[0]).toMatchObject(route[2]!);
     expect(world.tick).toBe(0);
     expect(world.squads[0]).toMatchObject({ x: 2, y: 17 });
   });

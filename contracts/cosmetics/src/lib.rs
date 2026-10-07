@@ -2,7 +2,7 @@
 // create_class mirrors every class field; a struct argument would hide them from the CLI.
 #![allow(clippy::too_many_arguments)]
 
-//! Cosmetic ownership for Impulso Stellar.
+//! Cosmetic ownership for Stellar Impulse.
 //!
 //! Each cosmetic piece is a non-fungible token that belongs to a class (for example
 //! "livery Aurora Andina"). The token interface mirrors the Stellar NFT shape
