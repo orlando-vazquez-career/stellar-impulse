@@ -7,6 +7,7 @@ import { MatchProgress } from '../profile/MatchProgress';
 import { createMockGameplayAdapter } from './mock-adapter';
 import { createServerGameplayAdapter } from './server-adapter';
 import { createCampaignGameplayAdapter } from './campaign-adapter';
+import { nextFormation } from './formation';
 import type { MultiplayerSession } from '../../multiplayer/session';
 import { MatchAudio, playEvent, type Announcement } from './audio';
 import { useI18n } from '../i18n';
@@ -92,6 +93,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
         return;
       }
       if (/^[wasd]$/i.test(key)) return; // Camera navigation is never an action shortcut.
+      if (key.toLowerCase() === 'f' && !event.repeat && view.formation) { adapter.dispatch({ type: 'set-formation', formation: nextFormation(view.formation) }); return; }
       if (view.canProduce !== false && PRODUCTION_KEYS[key] && !event.repeat) { adapter.dispatch({ type: 'produce', kind: PRODUCTION_KEYS[key] }); return; }
       if (key.toLowerCase() === preferences.controls.cancel.toLowerCase()) adapter.dispatch({ type: 'set-action', action: null });
       else if (key.toLowerCase() === preferences.controls.move.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'move' });
@@ -100,7 +102,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [adapter, preferences.controls, view.canProduce]);
+  }, [adapter, preferences.controls, view.canProduce, view.formation]);
   return <main className="vi-gameplay vi-screen" data-room-id={roomState?.roomId} data-player-id={roomState?.phase?.playerId} data-connection={roomState?.connection} data-sequence={roomState?.acknowledgedSequence} data-tick={view.tick}>
     <Suspense fallback={<div className="vi-phaser" aria-busy="true" />}>
       <PhaserBattlefield ref={battlefieldRef} view={view}

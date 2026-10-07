@@ -4,6 +4,7 @@ import type { GridPoint } from './grid';
 import { activeMapId, HIDDEN_LAYERS, mapImageUrl, planSectorMove, sectorMap, sectorSurface, TILE_WIDTH, type Tileset } from '../../map/sector-map';
 import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT } from './isometric';
 import { WeaponEffects } from './weapon-effects';
+import { DEFAULT_FORMATION, formationSeats } from '../formation';
 
 /** Tiled stores flip flags in the top bits of every gid. */
 const GID_MASK = 0x1fffffff;
@@ -521,6 +522,44 @@ export class MainScene extends Phaser.Scene {
     return visual;
   }
 
+  private seatPreview: { key: string; seats: Map<string, GridPoint> } | null = null;
+  /** Cell of the last group order: hovering it shows the seats given, not a fresh preview. */
+  private orderedCell: GridPoint | null = null;
+
+  /** One tile outline per ship: where a group order will seat it (hover) or has seated it (order). */
+  private drawFormationSeats(graphics: Phaser.GameObjects.Graphics) {
+    const group = this.snapshot.squads.filter((squad) => squad.selected && squad.owner === 'blue' && squad.healthPercent > 0);
+    if (group.length < 2) return;
+    const aiming = (this.snapshot.activeAction === null || this.snapshot.activeAction === 'move') && this.hoverPoint;
+    const center = aiming ? { x: Math.round(this.hoverPoint!.x), y: Math.round(this.hoverPoint!.y) } : null;
+    if (this.orderedCell && (center?.x !== this.orderedCell.x || center?.y !== this.orderedCell.y)) this.orderedCell = null;
+    const preview = !!center && !this.orderedCell && center.x >= 0 && center.y >= 0 && center.x < sectorMap.width && center.y < sectorMap.height
+      && sectorSurface.walkable[center.y * sectorMap.width + center.x] === true;
+    if (preview) {
+      const formation = this.snapshot.formation ?? DEFAULT_FORMATION;
+      const key = `${formation}:${center!.x},${center!.y}:${group.map((ship) => `${ship.id}@${Math.round(ship.gridX)},${Math.round(ship.gridY)}`).join(';')}`;
+      if (this.seatPreview?.key !== key) {
+        this.seatPreview = { key, seats: formationSeats(group.map((ship) => ({ id: ship.id, x: ship.gridX, y: ship.gridY })), center!, formation) };
+      }
+    }
+    const halfWidth = TILE_WIDTH / 2 * 0.62;
+    const halfHeight = TILE_HALF_HEIGHT * 0.62;
+    for (const ship of group) {
+      const seat = preview ? this.seatPreview?.seats.get(ship.id) : ship.destination;
+      if (!seat) continue;
+      const point = cellToIso(seat.x, seat.y);
+      const hue = preview ? color.blueLight : color.blue;
+      const outline = [
+        new Phaser.Math.Vector2(point.x, point.y - halfHeight), new Phaser.Math.Vector2(point.x + halfWidth, point.y),
+        new Phaser.Math.Vector2(point.x, point.y + halfHeight), new Phaser.Math.Vector2(point.x - halfWidth, point.y),
+      ];
+      graphics.fillStyle(hue, preview ? 0.1 : 0.16);
+      graphics.fillPoints(outline, true);
+      graphics.lineStyle(1.5, hue, preview ? 0.55 : 0.8);
+      graphics.strokePoints(outline, true);
+    }
+  }
+
   private drawRoute() {
     const graphics = this.route;
     if (!graphics) return;
@@ -547,6 +586,7 @@ export class MainScene extends Phaser.Scene {
       graphics.lineBetween(blocked.x - 10, blocked.y - 7, blocked.x + 10, blocked.y + 7);
       graphics.lineBetween(blocked.x + 10, blocked.y - 7, blocked.x - 10, blocked.y + 7);
     }
+    this.drawFormationSeats(graphics);
     if (path.length < 2) return;
     const hue = preview.length > 1 ? color.blueLight : color.blue;
     graphics.lineStyle(3, hue, 0.9);
@@ -677,6 +717,7 @@ export class MainScene extends Phaser.Scene {
       }
       if ((this.snapshot.activeAction === null || this.snapshot.activeAction === 'move') && this.snapshot.selectedSquadIds.length) {
         this.onMoveSelected(cell.x, cell.y);
+        this.orderedCell = { x: Math.round(cell.x), y: Math.round(cell.y) };
       }
     });
     this.input.on(Phaser.Input.Events.POINTER_MOVE, (pointer: Phaser.Input.Pointer) => {

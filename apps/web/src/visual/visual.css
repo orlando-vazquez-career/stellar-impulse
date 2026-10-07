@@ -603,6 +603,15 @@
 .vi-squad__group-unit strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vi-display); }
 .vi-squad__group-unit span { color: var(--vi-muted); font-size: 11px; }
 .vi-squad__group-unit progress { width: 100%; height: 5px; accent-color: var(--vi-success); }
+.vi-squad.has-formation:not(.is-collapsed) { width: 560px; }
+.vi-formation { margin-left: auto; margin-right: 10px; display: flex; align-items: center; gap: 4px; }
+.vi-squad .vi-formation button { width: 30px; height: 26px; padding: 0; display: grid; place-items: center; border: 1px solid var(--vi-border); background: var(--vi-surface-raised); }
+.vi-squad .vi-formation button svg { width: 20px; height: 20px; }
+.vi-squad .vi-formation button circle { fill: var(--vi-muted); }
+.vi-squad .vi-formation button circle.is-lead { fill: var(--vi-text); }
+.vi-squad .vi-formation button:hover { border-color: var(--vi-blue); }
+.vi-squad .vi-formation button.is-active { border-color: var(--vi-blue-light); background: color-mix(in srgb, var(--vi-blue) 22%, var(--vi-surface-raised)); }
+.vi-squad .vi-formation button.is-active circle { fill: var(--vi-blue-light); }
 .vi-health > div { display: flex; justify-content: space-between; color: var(--vi-muted); font-size: 12px; }
 .vi-health strong { color: var(--vi-text); }
 .vi-health progress { width: 100%; height: 5px; margin-top: 7px; display: block; border: 0; accent-color: var(--vi-success); }

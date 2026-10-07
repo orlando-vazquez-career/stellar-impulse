@@ -6,6 +6,18 @@ export interface MoveCommand {
   x: number;
   y: number;
 }
+/** Formation shapes a group order can take. The sim owns their geometry. */
+export const FORMATION_KINDS = ['line', 'column', 'wedge', 'box', 'ranks', 'circle'] as const;
+export type FormationKindName = typeof FORMATION_KINDS[number];
+/** Several ships march to one point and settle into a shape facing the march. */
+export interface MoveFormationCommand {
+  seq: number;
+  type: 'move_formation';
+  squadIds: string[];
+  x: number;
+  y: number;
+  formation: FormationKindName;
+}
 export interface AttackCommand {
   seq: number;
   type: 'attack';
@@ -41,7 +53,7 @@ export interface UpgradeBaseCommand { seq: number; type: 'upgrade_base'; upgrade
 /** Build one base module. Slot rules and costs are checked by the server. */
 export interface BuildModuleCommand { seq: number; type: 'build_module'; module: 'refinery' | 'refinery2' | 'shipyard' | 'bastion' | 'radar' }
 export interface SurrenderCommand { seq: number; type: 'surrender' }
-export type Command = MoveCommand | AttackCommand | StopCommand | EnqueueCommand | StanceCommand | ProduceCommand | DisbandCommand
+export type Command = MoveCommand | MoveFormationCommand | AttackCommand | StopCommand | EnqueueCommand | StanceCommand | ProduceCommand | DisbandCommand
   | UpgradeBaseCommand | BuildModuleCommand | SurrenderCommand;
 export type ParseResult = { ok: true; command: Command } | { ok: false; reason: 'invalid_command' };
 
@@ -57,6 +69,7 @@ export function parseCommand(value: unknown): ParseResult {
     : type === 'attack' ? ['seq', 'type', 'squadId', 'targetId']
     : type === 'stop' ? ['seq', 'type', 'squadId']
     : type === 'disband' ? ['seq', 'type', 'squadIds']
+    : type === 'move_formation' ? ['seq', 'type', 'squadIds', 'x', 'y', 'formation']
     : type === 'stance' ? ['seq', 'type', 'squadId', 'stance']
     : type === 'produce' ? ['seq', 'type', 'kind']
     : type === 'upgrade_base' ? ['seq', 'type', 'upgrade']
@@ -66,7 +79,7 @@ export function parseCommand(value: unknown): ParseResult {
   if (expected.some((key) => !fields[key] || !('value' in fields[key]))) return invalid;
   const seq: unknown = fields.seq!.value;
   if (typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 1) return invalid;
-  if (type === 'disband') {
+  if (type === 'disband' || type === 'move_formation') {
     const value = fields.squadIds!.value;
     if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return invalid;
     const length = Object.getOwnPropertyDescriptor(value, 'length')!.value;
@@ -78,7 +91,13 @@ export function parseCommand(value: unknown): ParseResult {
         || squadIds.includes(field.value)) return invalid;
       squadIds.push(field.value);
     }
-    return { ok: true, command: { seq, type, squadIds } };
+    if (type === 'disband') return { ok: true, command: { seq, type, squadIds } };
+    const x: unknown = fields.x!.value;
+    const y: unknown = fields.y!.value;
+    const formation: unknown = fields.formation!.value;
+    if (typeof x !== 'number' || !Number.isSafeInteger(x) || typeof y !== 'number' || !Number.isSafeInteger(y)) return invalid;
+    if (typeof formation !== 'string' || !(FORMATION_KINDS as readonly string[]).includes(formation)) return invalid;
+    return { ok: true, command: { seq, type, squadIds, x, y, formation: formation as FormationKindName } };
   }
   if (type === 'surrender') return { ok: true, command: { seq, type } };
   if (type === 'build_module') {

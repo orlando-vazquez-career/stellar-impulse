@@ -1,0 +1,71 @@
+import { expect, test, type Page } from '@playwright/test';
+import { chooseOpening, openApp } from './helpers';
+
+/** Screen point of a minimap marker, through the camera attributes the minimap publishes. */
+async function screenPointOf(page: Page, cx: number, cy: number) {
+  const camera = page.locator('.map-camera');
+  const scale = 172 / Number(await camera.getAttribute('data-iso-width'));
+  const offsetY = 4 + (172 - Number(await camera.getAttribute('data-iso-height')) * scale) / 2;
+  const worldX = Number(await camera.getAttribute('data-world-x'));
+  const worldY = Number(await camera.getAttribute('data-world-y'));
+  const zoom = Number(await camera.getAttribute('data-zoom'));
+  const canvas = (await page.locator('.vi-phaser canvas').boundingBox())!;
+  return { x: canvas.x + ((cx - 4) / scale - worldX) * zoom, y: canvas.y + ((cy - offsetY) / scale - worldY) * zoom };
+}
+
+test('a selected group picks a formation and marches as one order', async ({ page }) => {
+  test.setTimeout(90000);
+  await page.setViewportSize({ width: 1366, height: 768 });
+  // Command frames are msgpack, so the command type travels as plain text inside them.
+  const sent: string[] = [];
+  page.on('websocket', (socket) => socket.on('framesent', (frame) => {
+    const text = typeof frame.payload === 'string' ? frame.payload : frame.payload.toString('latin1');
+    if (text.includes('move_formation')) sent.push('move_formation');
+    else if (/move/.test(text)) sent.push('move');
+  }));
+  await openApp(page);
+  await page.getByLabel('Identificador de comandante').fill('Vega');
+  await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+  await page.getByRole('button', { name: /Preparar operación/ }).click();
+  await page.getByRole('button', { name: /Fácil/ }).click();
+  await page.getByLabel('Estoy listo para desplegar').check();
+  await page.getByRole('button', { name: 'Iniciar operación' }).click();
+  await chooseOpening(page);
+  await page.locator('.vi-production').getByRole('button', { name: /Explorador/ }).click();
+  await expect(page.locator('.vi-resources')).toContainText('3/12', { timeout: 15000 });
+
+  // Box-select the whole fleet around the hangar.
+  const allies = page.locator('.map-ally');
+  const points = [];
+  for (const marker of await allies.all()) {
+    points.push(await screenPointOf(page, Number(await marker.getAttribute('cx')), Number(await marker.getAttribute('cy'))));
+  }
+  const xs = points.map((point) => point.x), ys = points.map((point) => point.y);
+  await page.mouse.move(Math.min(...xs) - 50, Math.min(...ys) - 50);
+  await page.mouse.down();
+  await page.mouse.move(Math.max(...xs) + 50, Math.max(...ys) + 40, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByText('3 unidades seleccionadas')).toBeVisible();
+
+  const picker = page.getByRole('radiogroup', { name: 'Formación' });
+  await expect(picker.getByRole('radio')).toHaveCount(6);
+  await picker.getByRole('radio', { name: 'Cuña' }).click();
+  await expect(picker.getByRole('radio', { name: 'Cuña' })).toHaveAttribute('aria-checked', 'true');
+  // F cycles to the next shape.
+  await page.keyboard.press('f');
+  await expect(picker.getByRole('radio', { name: 'Cuadro' })).toHaveAttribute('aria-checked', 'true');
+
+  // One click sends one group order and every ship sets off.
+  const starts = await allies.evaluateAll((markers) => markers.map((marker) => `${marker.getAttribute('cx')},${marker.getAttribute('cy')}`));
+  const centre = { x: xs.reduce((a, b) => a + b, 0) / xs.length, y: ys.reduce((a, b) => a + b, 0) / ys.length };
+  for (const [dx, dy] of [[160, 90], [-160, 90], [160, -60], [-160, -60], [0, 140]] as const) {
+    await page.mouse.click(centre.x + dx, centre.y + dy, { button: 'right' });
+    // A click on rock is refused before it is sent; try the next spot.
+    if (await expect.poll(() => sent.length, { timeout: 3000 }).toBeGreaterThan(0).then(() => true, () => false)) break;
+  }
+  expect(sent).toEqual(['move_formation']);
+  await expect.poll(async () => {
+    const now = await allies.evaluateAll((markers) => markers.map((marker) => `${marker.getAttribute('cx')},${marker.getAttribute('cy')}`));
+    return now.filter((position, index) => position !== starts[index]).length;
+  }, { timeout: 20000 }).toBe(3);
+});

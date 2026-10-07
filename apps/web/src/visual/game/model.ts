@@ -2,7 +2,7 @@ import type { AugmentView } from '@impulso/state';
 export type SquadOwner = 'blue' | 'red' | 'neutral';
 import type { ShipStats } from '@impulso/sim';
 import type { UnitKind } from '@impulso/state';
-import type { BaseUpgradeKind, BaseUpgrades, ExtraModule, ModuleKind, ModuleSpec } from '@impulso/sim';
+import type { BaseUpgradeKind, BaseUpgrades, ExtraModule, FormationKind, ModuleKind, ModuleSpec } from '@impulso/sim';
 export type SquadType = UnitKind;
 
 export interface SquadViewModel {
@@ -20,6 +20,8 @@ export interface SquadViewModel {
   gridY: number;
   healthPercent: number;
   attackTargetId?: string | null;
+  /** Own ships only: the cell the ship is flying to (its formation seat on a group order). */
+  destination?: { x: number; y: number } | null;
   selected: boolean;
   visible: boolean;
   composition: { interceptors: number; frigates: number; bombers?: number; explorers?: number };
@@ -88,6 +90,8 @@ export interface GameplayViewModel {
   selectedSquadIds: string[];
   activeAction: GameplayAction;
   moveOrder: MoveOrder | null;
+  /** Shape a group order takes. Only server-backed matches march in formation. */
+  formation?: FormationKind;
   resources: {
     metal: number;
     metalRate: number;
@@ -136,6 +140,7 @@ export type PresentationIntent =
   | { type: 'set-action'; action: GameplayAction }
   | { type: 'move-squad'; squadId: string; x: number; y: number }
   | { type: 'move-selected'; x: number; y: number }
+  | { type: 'set-formation'; formation: FormationKind }
   | { type: 'attack-squad'; squadId: string; targetId: string }
   | { type: 'attack-selected'; targetId: string }
   | { type: 'set-core-state'; state: CoreState }

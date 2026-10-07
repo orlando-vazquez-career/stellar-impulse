@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { SHIP_COUNTERS, UNIT_COSTS, EXTRA_MODULES, type ModuleKind } from '@impulso/sim';
+import { SHIP_COUNTERS, UNIT_COSTS, EXTRA_MODULES, FORMATIONS, formationShape, type FormationKind, type ModuleKind } from '@impulso/sim';
 import { useI18n } from '../i18n';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { formatStat } from './format-stat';
@@ -153,6 +153,33 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
   </Panel>;
 }
 
+const FORMATION_LABEL = {
+  line: 'formationLine', column: 'formationColumn', wedge: 'formationWedge', box: 'formationBox', ranks: 'formationRanks', circle: 'formationCircle',
+} as const satisfies Record<FormationKind, string>;
+
+/** The icon is the real shape for six ships, drawn from the same geometry the server uses. */
+function FormationIcon({ kind }: { kind: FormationKind }) {
+  const seats = formationShape(kind, 6);
+  const sides = seats.map((seat) => seat.side), depths = seats.map((seat) => seat.depth);
+  const span = Math.max(Math.max(...sides) - Math.min(...sides), Math.max(...depths) - Math.min(...depths), 1);
+  const midSide = (Math.max(...sides) + Math.min(...sides)) / 2, midDepth = (Math.max(...depths) + Math.min(...depths)) / 2;
+  return <svg viewBox="-12 -12 24 24" width="24" height="24" aria-hidden="true">
+    {seats.map((seat, index) => <circle key={index} cx={(seat.side - midSide) / span * 18} cy={-(seat.depth - midDepth) / span * 18}
+      r={index === 0 ? 2.6 : 2.1} className={index === 0 ? 'is-lead' : undefined} />)}
+  </svg>;
+}
+
+function FormationPicker({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
+  const { t } = useI18n();
+  if (!view.formation) return null;
+  return <div className="vi-formation" role="radiogroup" aria-label={t('formation')}>
+    {FORMATIONS.map((kind) => <button key={kind} role="radio" aria-checked={view.formation === kind}
+      className={view.formation === kind ? 'is-active' : undefined} title={`${t(FORMATION_LABEL[kind])} · ${t('formationHint')}`}
+      aria-label={t(FORMATION_LABEL[kind])} onClick={() => adapter.dispatch({ type: 'set-formation', formation: kind })}>
+      <FormationIcon kind={kind} /></button>)}
+  </div>;
+}
+
 function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
   const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
@@ -163,8 +190,10 @@ function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: Gamepla
   const status = squad.status === 'moving' ? t('moving') : squad.status === 'attacking' ? t('attacking') : squad.status === 'holding' ? t('holding') : squad.status === 'capturing' ? t('capturing') : t('idle');
   const stats = squad.stats ?? view.unitStats?.[squad.unitType];
   const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
-  return <Panel className={`vi-squad ${collapsed ? 'is-collapsed' : ''}`}>
-    <header><span>{selected.length > 1 ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span>
+  const group = selected.length > 1;
+  return <Panel className={`vi-squad ${collapsed ? 'is-collapsed' : ''} ${group && view.formation ? 'has-formation' : ''}`}>
+    <header><span>{group ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span>
+      {!collapsed && group && <FormationPicker view={view} adapter={adapter} />}
       <div className="vi-squad__tools"><button className="vi-retire" disabled={!!view.result}
         title={t('retireShipsHelp')} onClick={() => adapter.dispatch({ type: 'disband-selected' })}>{t('retireShips')}</button>
         <button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></div></header>

@@ -3,6 +3,7 @@ import { Client, type Room } from '@colyseus/sdk';
 import { FLEET_CAP, BASE_DEFENSE_RANGE, findTiledPath } from '@impulso/sim';
 import { type PlayerView, type UnitKind } from '@impulso/state';
 import { sectorSurface, type TrainingMapId } from '../map/sector-map';
+import { formationSeats, readStoredFormation, storeFormation } from './formation';
 import type {
   CoreState, GameplayEvent, GameplayPresentationAdapter, GameplayViewModel, PresentationIntent, SquadOwner, SquadViewModel,
 } from './model';
@@ -45,7 +46,7 @@ export const REJECTION_TEXT: Record<string, string> = {
 function blankSnapshot(): GameplayViewModel {
   return {
     tick: 0, sector: 1, elapsedSeconds: 0,
-    selectedSquadId: null, selectedSquadIds: [], activeAction: null, moveOrder: null,
+    selectedSquadId: null, selectedSquadIds: [], activeAction: null, moveOrder: null, formation: readStoredFormation(),
     resources: { metal: 0, metalRate: 0, energy: 0, energyRate: 0, fleet: 0, fleetCap: FLEET_CAP },
     squads: [], core: { state: 'locked', progress: 0, opensInSeconds: 0 },
     enemiesVisible: true, clockRunning: true,
@@ -153,6 +154,8 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
   let lastAttackAlert = -Infinity;
   /** Destination shown the moment the player clicks, until the server view carries the order. */
   let pendingOrder: { squadId: string; destination: Point; at: number } | null = null;
+  /** Formation seats shown the moment the player clicks, until the server view carries them. */
+  let pendingSeats = new Map<string, Point>();
 
   const send = (command: Record<string, unknown>) => {
     if (!room || snapshot.result) return;
@@ -186,6 +189,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         healthPercent: Math.round(squad.hp / squad.maxHp * 100),
         attackCooldown: squad.attackCooldown, lastShot: squad.lastShot,
         attackTargetId: own ? squad.attackTargetId ?? null : null,
+        ...(own ? { destination: squad.target ? { ...squad.target } : pendingSeats.get(squad.id) ?? null } : {}),
         selected: selectedIds.includes(squad.id), visible: true,
         composition: {
           interceptors: squad.kind === 'interceptor' ? 1 : 0, frigates: squad.kind === 'frigate' ? 1 : 0,
@@ -208,6 +212,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     const waypoints = leader ? [...(leader.target ? [leader.target] : []), ...(leader.route ?? [])] : [];
     const leaderAt = leader ? shown.get(leader.id) ?? leader : null;
     if (pendingOrder && (waypoints.length || performance.now() - pendingOrder.at > 1500 || pendingOrder.squadId !== leader?.id)) pendingOrder = null;
+    if (!pendingOrder) pendingSeats = new Map();
     const ownedMetal = view.nodes.filter((node) => node.kind === 'metal' && node.ownerId === me).length;
     const own = view.players[me];
     snapshot = {
@@ -443,6 +448,12 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         if (!latest) emit();
         return;
       }
+      if (intent.type === 'set-formation') {
+        storeFormation(intent.formation);
+        snapshot = { ...snapshot, formation: intent.formation };
+        emit();
+        return;
+      }
       if (intent.type === 'set-action') {
         if (intent.action === 'hold') {
           for (const squad of selectedOwn()) send({ type: 'stance', squadId: squad.id, stance: 'guard' });
@@ -461,13 +472,17 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         const { x, y } = cell;
         const movers = intent.type === 'move-squad'
           ? selectedOwn().filter((squad) => squad.id === intent.squadId) : selectedOwn();
-        // The server spreads ships that share a destination around it.
-        for (const squad of movers) send({ type: 'move', squadId: squad.id, x, y });
+        const servers = movers.flatMap((squad) => latest?.squads.find((candidate) => candidate.id === squad.id) ?? []);
+        // A group flies as one formation: every ship gets its own seat, facing the march.
+        const formation = snapshot.formation ?? readStoredFormation();
+        pendingSeats = movers.length > 1 ? formationSeats(servers, { x, y }, formation) : new Map();
+        if (movers.length > 1) send({ type: 'move_formation', squadIds: movers.map((squad) => squad.id).slice(0, 24), x, y, formation });
+        else for (const squad of movers) send({ type: 'move', squadId: squad.id, x, y });
         if (movers.length && snapshot.selectedSquadId) pendingOrder = { squadId: snapshot.selectedSquadId, destination: { x, y }, at: performance.now() };
         for (const squad of movers) {
           const server = latest?.squads.find((candidate) => candidate.id === squad.id);
           if (!server) continue;
-          const next = nextCell({ x: server.x, y: server.y }, { x, y });
+          const next = nextCell({ x: server.x, y: server.y }, pendingSeats.get(squad.id) ?? { x, y });
           if (!next) continue;
           const at = shown.get(squad.id) ?? { x: server.x, y: server.y };
           const trail = trails.get(squad.id) ?? newTrail(at, (latest?.rules.tickRate ?? 10) / (server.moveTicks ?? latest?.rules.moveEveryTicks ?? 6));
