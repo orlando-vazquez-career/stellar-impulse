@@ -109,7 +109,7 @@ Los cuerpos no admiten campos extra. `parseBattlefieldCommand` copia y valida lo
 | `ack` | `{ protocolVersion, seq }` | Solo para una orden de campaña aceptada. |
 | `rejected` | `{ protocolVersion, reason }` | Solo a quien envió el mensaje. |
 | `paused` | `{ protocolVersion, by, remainingMs }` | Cuando una desconexión pausa el sector. |
-| `campaign_end` | `{ protocolVersion, result: { winner, reason }, sectorResults }` | Una vez al terminar la campaña. |
+| `campaign_end` | `{ protocolVersion, result: { winner, reason }, sectorResults, reward? }` | Una vez al terminar la campaña. `reward` es el premio de cuenta de quien lo recibe (`xpGained`, `beforeXp`, `profile`, `unlocked`); ver [progresión](progression.md). |
 
 La vista usa `schemaVersion: 2` y `mode: "battlefield"`; incluye `mapId`, `mapVersion`, `tick`, `playerId`, dimensiones, reglas, jugadores, escuadrones, guardianes, nodos, núcleo, máscaras `visible`/`explored` y ganador. Los jugadores y bases son públicos por las reglas del juego. El cliente solo recibe su metal y su `lastSequence`; solo sus escuadrones llevan `route` y `target`. De los escuadrones rivales solo se envían los vivos dentro de la visión actual. Guardianes y nodos aparecen cuando son visibles; el núcleo es público. Exploración se conserva en el mundo aunque una celda ya no esté visible.
 

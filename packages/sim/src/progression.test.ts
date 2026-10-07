@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { applyCommand,createMatchWorld,createSquad,emptyProgress,emptyMatchRecord,profileFor,rewardForMatch,stepWorld,unlockedPool,CHALLENGES,type RivalDifficulty } from './index.js';
+import { applyCommand,createMatchWorld,createSquad,emptyProgress,emptyMatchRecord,profileFor,rewardForCampaign,rewardForMatch,stepWorld,unlockedPool,CHALLENGES,type RivalDifficulty } from './index.js';
 function finished(){const w=createMatchWorld('sector-01','complete',42);w.winner='p1';w.squads=[];w.matchRecord!.players.p1.combatLosses=1;return w;}
 describe('account progression',()=>{
   it.each([['medium','complete',100],['hard','complete',100],['easy','complete',25],['medium','skirmish',60],['easy','skirmish',15]] as const)('scales official loss XP in %s/%s', (difficulty,mode,winningBase)=>{
@@ -48,4 +48,28 @@ describe('account progression',()=>{
     expect(retired.matchRecord!.players.p1.combatLosses).toBe(1);expect(w.matchRecord!.players.p1.combatLosses).toBe(0);
   });
   it('requires a terminal authoritative result',()=>expect(()=>rewardForMatch(emptyProgress(),'x',createMatchWorld(),'p1','medium')).toThrow('official result'));
+});
+describe('campaign progression',()=>{
+  // [name, outcome, completed sectors, player, expected XP]
+  const rows=[
+    ['core winner',{winner:'p1',reason:'core'},3,'p1',125],
+    ['core loser',{winner:'p1',reason:'core'},3,'p2',40],
+    ['draw on the final core',{winner:null,reason:'draw'},3,'p2',40],
+    ['forfeit after a played sector',{winner:'p2',reason:'forfeit'},1,'p2',40],
+    ['instant forfeit pays nothing',{winner:'p2',reason:'forfeit'},0,'p2',0],
+    ['the player who left',{winner:'p2',reason:'forfeit'},2,'p1',0],
+    ['annulled campaign',{winner:null,reason:'annulled'},2,'p1',0],
+  ] as const;
+  it.each(rows)('%s',(_name,outcome,sectors,player,xp)=>{
+    const result=rewardForCampaign(emptyProgress(),'campaign:ROOM',outcome,sectors,player);
+    expect(result.reward.xpGained).toBe(xp);
+    expect(result.progress.xp).toBe(xp);
+    expect(result.reward.challenges).toEqual([]);
+  });
+  it('pays a campaign once even if the result is reported again',()=>{
+    const first=rewardForCampaign(emptyProgress(),'campaign:ROOM',{winner:'p1',reason:'core'},3,'p1');
+    const again=rewardForCampaign(first.progress,'campaign:ROOM',{winner:'p1',reason:'core'},3,'p1');
+    expect(again.progress.xp).toBe(125);
+    expect(again.reward).toEqual(first.reward);
+  });
 });

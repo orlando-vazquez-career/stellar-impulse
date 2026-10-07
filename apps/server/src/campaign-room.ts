@@ -4,7 +4,7 @@ import {
   CAMPAIGN_PROTOCOL_VERSION, openCampaignEnvelope, parseBattlefieldCommand,
   parseCampaignJoinOptions, parseReady, parseTechChoice,
 } from '@impulso/input';
-import { createBattlefieldWorld, SECTOR_01_BATTLEFIELD_MAP, type PlayerId } from '@impulso/sim';
+import { createBattlefieldWorld, SECTOR_01_BATTLEFIELD_MAP, type MatchReward, type PlayerId } from '@impulso/sim';
 import { battlefieldViewFor } from '@impulso/state';
 import * as campaigns from './campaign/machine';
 import { publicMapMetadata } from './map-catalog';
@@ -152,9 +152,23 @@ export class CampaignRoom extends Room {
     if (phase !== before || this.ticks % 10 === 0) this.sendPhase(now);
     if (phase === 'results' && !this.announcedEnd) {
       this.announcedEnd = true;
-      this.broadcast('campaign_end', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, result: this.campaign.result, sectorResults: this.campaign.sectorResults });
+      this.announceEnd();
     }
     if (phase === 'closed') void this.disconnect();
+  }
+
+  /** Saves each seated account's campaign XP once, then tells every player its own reward. */
+  private announceEnd() {
+    const { result, sectorResults } = this.campaign;
+    const rewards = new Map<PlayerId, MatchReward>();
+    for (const [userId, player] of this.users) {
+      rewards.set(player, this.auth.awardCampaign(userId, `campaign:${this.roomId}`, result!, sectorResults.length, player));
+    }
+    for (const client of this.clients) {
+      const player = this.seats.get(client.sessionId);
+      const reward = player ? rewards.get(player) : undefined;
+      client.send('campaign_end', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, result, sectorResults, ...(reward ? { reward } : {}) });
+    }
   }
 
   /** Each player gets its own phase view: technology picks stay private until they activate. */
