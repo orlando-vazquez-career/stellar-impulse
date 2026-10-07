@@ -5,7 +5,7 @@ import { type PlayerView, type UnitKind } from '@impulso/state';
 import { sectorSurface, type TrainingMapId } from '../map/sector-map';
 import { formationSeats, readStoredFormation, storeFormation } from './formation';
 import type {
-  CoreState, GameplayEvent, GameplayPresentationAdapter, GameplayViewModel, PresentationIntent, SquadOwner, SquadViewModel,
+  CoreState, GameplayEvent, GameplayPresentationAdapter, GameplayViewModel, NodeViewModel, PresentationIntent, SquadOwner, SquadViewModel,
 } from './model';
 
 /** The client renders at this rate and eases ships toward the last authoritative cell. */
@@ -71,6 +71,35 @@ export function nearestOpenCell(x: number, y: number): Point | null {
 }
 
 const UNDER_ATTACK_COOLDOWN_MS = 10_000;
+
+/** What the player remembers between views: explored terrain and the last seen state of each node. */
+export interface FogMemory {
+  explored: boolean[] | null;
+  nodes: Map<string, NodeViewModel>;
+}
+
+/**
+ * Fold a new server view into the player's memory and say whether new terrain was explored.
+ * Built only from what the server already sent, so remembering never reveals anything new.
+ */
+export function rememberView(memory: FogMemory, view: PlayerView): boolean {
+  let grew = false;
+  if (!memory.explored || memory.explored.length !== view.width * view.height) {
+    memory.explored = Array<boolean>(view.width * view.height).fill(false);
+    grew = true;
+  }
+  for (const cell of view.visibleCells) {
+    const index = cell.y * view.width + cell.x;
+    if (!memory.explored[index]) { memory.explored[index] = true; grew = true; }
+  }
+  const ownerOf = (ownerId: string | null): SquadOwner | null => ownerId === null ? null : ownerId === view.playerId ? 'blue' : 'red';
+  const seenNow = new Set(view.nodes.map((node) => node.id));
+  for (const node of view.nodes) {
+    memory.nodes.set(node.id, { id: node.id, kind: node.kind, x: node.x, y: node.y, owner: ownerOf(node.ownerId), stale: false });
+  }
+  for (const [id, node] of memory.nodes) if (!seenNow.has(id) && !node.stale) memory.nodes.set(id, { ...node, stale: true });
+  return grew;
+}
 
 /** Compare two consecutive server views and name what changed for the player. */
 export function diffViews(previous: PlayerView | null, next: PlayerView): GameplayEvent[] {
@@ -181,6 +210,10 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     }
     return fog.cells;
   };
+  // Player memory for this match: explored terrain and the last seen owner of each node.
+  const memory: FogMemory = { explored: null, nodes: new Map() };
+  /** Copy of the explored cells handed to the view; replaced only when new terrain is seen. */
+  let explored: boolean[] | null = null;
   /** Rebuild the view model from the last server view plus the eased on-screen positions. */
   const rebuild = () => {
     const view = latest;
@@ -249,11 +282,15 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       },
       satellites: view.satellites?.map((fall) => ({ id: fall.id, x: fall.x, y: fall.y, radius: fall.radius, warnTick: fall.warnTick, impactTick: fall.impactTick })),
       squads, unitStats: view.unitStats, augments:view.augments, chart:view.chart, productionForbidden:view.productionForbidden,
-      nodes: view.nodes.map((node) => ({
-        id: node.id, kind: node.kind, x: node.x, y: node.y,
-        owner: node.ownerId === null ? null : ownerOf(node.ownerId),
-        ...(node.activeAt !== undefined ? { stabilizingSeconds: Math.ceil((node.activeAt - view.tick) / TICKS_PER_SECOND) } : {}),
-      })),
+      nodes: [
+        ...view.nodes.map((node) => ({
+          id: node.id, kind: node.kind, x: node.x, y: node.y,
+          owner: node.ownerId === null ? null : ownerOf(node.ownerId),
+          ...(node.activeAt !== undefined ? { stabilizingSeconds: Math.ceil((node.activeAt - view.tick) / TICKS_PER_SECOND) } : {}),
+        })),
+        // Nodes out of sight keep the owner the player last saw, marked as stale.
+        ...[...memory.nodes.values()].filter((node) => node.stale).map((node) => ({ ...node })),
+      ],
       core: {
         state: coreState(view),
         progress: Math.round((view.coreFraction ?? Math.max(view.core.progress.p1, view.core.progress.p2) / view.rules.coreCaptureTicks) * 100),
@@ -274,6 +311,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       result: view.winner === null ? null : view.winner === me ? 'victory' : 'defeat',
       reward: view.reward,
       visibleCells: fogOf(view),
+      exploredCells: explored,
     };
     emit();
   };
@@ -343,6 +381,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     }
     const previous = latest;
     latest = view;
+    if (rememberView(memory, view)) explored = [...memory.explored!];
     const units = [...view.squads, ...view.guardians].filter((unit) => unit.hp > 0);
     const present = new Set(units.map((unit) => unit.id));
     for (const id of shown.keys()) if (!present.has(id)) { shown.delete(id); trails.delete(id); }

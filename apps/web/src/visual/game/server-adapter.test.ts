@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import type { PlayerView } from '@impulso/state';
-import { diffViews, nearestOpenCell } from './server-adapter';
+import { diffViews, nearestOpenCell, rememberView, type FogMemory } from './server-adapter';
 import { selectMap } from '../map/sector-map';
 
 const ship = (id: string, ownerId: 'p1' | 'p2', x: number, y: number, hp = 100) =>
@@ -57,5 +57,21 @@ describe('click snapping', () => {
   it('moves an edge click onto the nearest open cell and ignores the void', () => {
     expect(nearestOpenCell(2.4, 11)).toEqual({ x: 3, y: 11 });
     expect(nearestOpenCell(9, 0.2)).toBeNull();
+  });
+});
+
+describe('fog memory', () => {
+  it('keeps explored cells and the last seen owner of nodes that leave sight', () => {
+    const memory: FogMemory = { explored: null, nodes: new Map() };
+    const node = { id: 'metal-1', kind: 'metal' as const, guardianId: 'g', x: 5, y: 5, ownerId: 'p2' as const, progress: { p1: 0, p2: 30 } };
+    expect(rememberView(memory, view({ visibleCells: [{ x: 5, y: 5 }], nodes: [node] }))).toBe(true);
+    expect(rememberView(memory, view({ visibleCells: [{ x: 3, y: 3 }], nodes: [] }))).toBe(true);
+    expect(memory.explored![5 * 29 + 5]).toBe(true);
+    expect(memory.explored![3 * 29 + 3]).toBe(true);
+    expect(memory.explored![0]).toBe(false);
+    expect(memory.nodes.get('metal-1')).toMatchObject({ owner: 'red', stale: true });
+    // Seeing only explored cells again adds nothing new to remember.
+    expect(rememberView(memory, view({ visibleCells: [{ x: 5, y: 5 }], nodes: [{ ...node, ownerId: 'p1' }] }))).toBe(false);
+    expect(memory.nodes.get('metal-1')).toMatchObject({ owner: 'blue', stale: false });
   });
 });

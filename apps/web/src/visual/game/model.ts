@@ -68,6 +68,8 @@ export interface NodeViewModel {
   x: number;
   y: number;
   owner: SquadOwner | null;
+  /** Out of sight: `owner` is the last one the player saw, which may have changed since. */
+  stale?: boolean;
   /** Seconds until a freshly captured node starts producing. */
   stabilizingSeconds?: number;
 }
@@ -137,6 +139,8 @@ export interface GameplayViewModel {
   connection: ConnectionState;
   /** Row-major cells inside the player's vision; null when there is no fog (local mock). */
   visibleCells: boolean[] | null;
+  /** Row-major cells seen at least once this match (always includes visibleCells); null without fog memory. */
+  exploredCells?: boolean[] | null;
 }
 
 /** Things that happened between two server views, for sounds and announcements. */

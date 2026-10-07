@@ -14,6 +14,13 @@ const GID_MASK = 0x1fffffff;
 const DEPTH = { layer: 10000, nodes: 90000, units: 100000, route: 200000, core: 200001, selection: 300000 } as const;
 /** Multiplicative tint for tiles outside vision: dark, but the terrain stays readable. */
 const FOG_TINT = 0x4a5566;
+/** Never seen: much darker, so scouting reveals the map. */
+const UNEXPLORED_TINT = 0x1f2632;
+/** Fog level per cell: never seen, explored but out of sight, in sight. */
+const UNSEEN = 0, EXPLORED = 1, IN_SIGHT = 2;
+const FOG_TINTS: Record<number, number | null> = { [UNSEEN]: UNEXPLORED_TINT, [EXPLORED]: FOG_TINT, [IN_SIGHT]: null };
+/** Enemy ships fade in and out at the edge of vision instead of popping. */
+const FADE_MS = 220;
 /** Layer written by scripts/obstaculos-tmx.ts so the editor shows the obstacles; never drawn in game. */
 const OBSTACLE_PREVIEW_LAYER = 'obstaculos-vista';
 /** Opening zoom over your own fleet. The wheel goes from ZOOM_MIN (wider view of the sector)
@@ -105,8 +112,9 @@ export class MainScene extends Phaser.Scene {
   private baseMarks?: Phaser.GameObjects.Graphics;
   /** Terrain images per cell, so fog can tint the real tile art instead of painting over it. */
   private tileImages: Phaser.GameObjects.Image[][] = [];
-  private fogShown: boolean[] = [];
+  private fogShown: number[] = [];
   private fogSource: boolean[] | null | undefined;
+  private exploredSource: boolean[] | null | undefined;
   private terrainLayers: { data: number[]; order: number }[] = [];
   private chunks: TerrainChunk[] = [];
   /** Flat ground tiles with no see-through pixels: whatever flat tile lies under one is never visible. */
@@ -348,7 +356,7 @@ export class MainScene extends Phaser.Scene {
   private drawTerrain() {
     this.terrainLayers = sectorMap.layers.filter((layer) => layer.visible && layer.data && !HIDDEN_LAYERS.has(layer.name))
       .map((layer, order) => ({ data: layer.data, order }));
-    this.fogShown = Array.from({ length: sectorMap.width * sectorMap.height }, () => true);
+    this.fogShown = Array.from({ length: sectorMap.width * sectorMap.height }, () => IN_SIGHT);
     this.chunks = [];
     this.solidGround.clear();
     for (const tileset of sectorMap.tilesets) {
@@ -437,7 +445,8 @@ export class MainScene extends Phaser.Scene {
         const image = this.add.image(point.x - TILE_WIDTH / 2 + offset.x + tileset.tilewidth / 2,
           point.y + TILE_HALF_HEIGHT + offset.y, key, gid - tileset.firstgid)
           .setOrigin(0.5, 1).setDepth(DEPTH.layer * layer.order + (x + y) * 32 + x);
-        if (this.fogShown[y * columns + x] === false) image.setTint(FOG_TINT);
+        const tint = FOG_TINTS[this.fogShown[y * columns + x] ?? IN_SIGHT];
+        if (tint !== null && tint !== undefined) image.setTint(tint);
         (this.tileImages[y * columns + x] ??= []).push(image);
         images.push(image);
       }
@@ -507,11 +516,13 @@ export class MainScene extends Phaser.Scene {
     for (const node of this.snapshot.nodes) {
       const center = cellToIso(node.x, node.y);
       const hue = node.owner === 'blue' ? color.blue : node.owner === 'red' ? color.red : 0x8aa0b8;
-      // A freshly captured node is faint until it starts producing.
-      graphics.lineStyle(2, hue, node.stabilizingSeconds ? 0.35 : 0.9);
+      // A freshly captured node is faint until it starts producing; a remembered one keeps its last
+      // known owner, faint until it is seen again.
+      const alpha = node.stale ? 0.4 : node.stabilizingSeconds ? 0.35 : 0.9;
+      graphics.lineStyle(2, hue, alpha);
       graphics.strokeEllipse(center.x, center.y + 9, 54, 27);
       if (node.kind === 'metal') {
-        graphics.fillStyle(hue, 0.95);
+        graphics.fillStyle(hue, node.stale ? 0.4 : 0.95);
         graphics.fillPoints(polygon([{ x: center.x, y: center.y - 2 }, { x: center.x + 7, y: center.y + 9 },
           { x: center.x, y: center.y + 20 }, { x: center.x - 7, y: center.y + 9 }]), true);
       }
@@ -555,19 +566,24 @@ export class MainScene extends Phaser.Scene {
   }
 
   /** Darken the tile art of every cell outside the player's current vision. Only changed cells are touched. */
+  /** Three fog levels on the real tile art: in sight, explored (dimmed) and never seen (dark). */
   private drawFog() {
     const cells = this.snapshot.visibleCells;
-    // The adapter hands over the same array until the server sends new vision.
-    if (cells === this.fogSource) return;
+    const explored = this.snapshot.exploredCells;
+    // The adapter hands over the same arrays until the server sends new vision.
+    if (cells === this.fogSource && explored === this.exploredSource) return;
     this.fogSource = cells;
+    this.exploredSource = explored;
     const total = sectorMap.width * sectorMap.height;
     for (let index = 0; index < total; index++) {
-      const visible = cells ? cells[index] === true : true;
-      if (this.fogShown[index] === visible) continue;
-      this.fogShown[index] = visible;
+      // Without memory (local mock, campaign) everything out of sight is simply dimmed.
+      const level = !cells || cells[index] ? IN_SIGHT : !explored || explored[index] ? EXPLORED : UNSEEN;
+      if (this.fogShown[index] === level) continue;
+      this.fogShown[index] = level;
+      const tint = FOG_TINTS[level];
       for (const image of this.tileImages[index] ?? []) {
-        if (visible) image.clearTint();
-        else image.setTint(FOG_TINT);
+        if (tint === null || tint === undefined) image.clearTint();
+        else image.setTint(tint);
       }
     }
   }
@@ -613,11 +629,17 @@ export class MainScene extends Phaser.Scene {
     for (const [id, visual] of this.unitVisuals) {
       if (visible.has(id)) continue;
       this.tweens.killTweensOf(visual.container);
-      visual.container.destroy();
       this.unitVisuals.delete(id);
+      // Ships leaving sight (or destroyed) fade out; a later view may bring them back as a new visual.
+      this.tweens.add({ targets: visual.container, alpha: 0, duration: FADE_MS, onComplete: () => visual.container.destroy() });
     }
     for (const squad of this.snapshot.squads.filter((candidate) => candidate.visible)) {
+      const fresh = !this.unitVisuals.has(squad.id);
       const visual = this.unitVisuals.get(squad.id) ?? this.createUnit(squad);
+      if (fresh && squad.owner === 'red') {
+        visual.container.setAlpha(0);
+        this.tweens.add({ targets: visual.container, alpha: 1, duration: FADE_MS });
+      }
       visual.selection.setVisible(squad.selected);
       visual.label.setVisible(squad.selected);
       if (squad.healthPercent < visual.healthPercent) {

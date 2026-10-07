@@ -150,9 +150,14 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
   const bases = { blue: sectorSurface.bases.p1, red: sectorSurface.bases.p2 };
   // Thousands of cells in one path: rebuild it only when vision changes, not on every camera or ship frame.
   const visibleCells = view.visibleCells;
+  const exploredCells = view.exploredCells;
   const seenPath = useMemo(() => visibleCells
     ? floor.filter((cell) => visibleCells[cell.y * sectorMap.width + cell.x] === true).map((cell) => cell.path).join(' ')
     : terrainPath, [visibleCells, floor, terrainPath]);
+  // Without fog memory every cell counts as explored, as before.
+  const exploredPath = useMemo(() => exploredCells
+    ? floor.filter((cell) => exploredCells[cell.y * sectorMap.width + cell.x] === true).map((cell) => cell.path).join(' ')
+    : terrainPath, [exploredCells, floor, terrainPath]);
   return <Panel className={`vi-minimap ${collapsed ? 'is-collapsed' : ''}`}>
     <header><strong>{t('minimap')}</strong><button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></header>
     {!collapsed && <button className="vi-minimap__pan" aria-label={t('minimapPan')} onClick={(event) => {
@@ -164,13 +169,14 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
     }}><svg viewBox="0 0 180 180" role="img" aria-label={t('minimap')}>
       <rect className="map-boundary" x="4" y="4" width="172" height="172" />
       {/* Batch terrain into two paths so every server view does not reconcile thousands of SVG elements. */}
-      <path d={terrainPath} fill="#34587a" />
+      <path d={terrainPath} fill="#22384f" />
+      <path d={exploredPath} fill="#34587a" />
       <path d={seenPath} fill="#5b95c4" />
       {[...(view.chart?.nodes??[]),...(view.chart?.guardians??[])].map((cell,index)=>{
         const point=miniPoint(cell.x,cell.y);return <circle key={`chart-${index}`} className="map-chart-marker" cx={point.x} cy={point.y} r="2.4" fill="none" stroke="#b5c4d1" opacity=".65"/>;
       })}
       {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); return <rect key={node.id} x={point.x - 2.2} y={point.y - 2.2} width="4.4" height="4.4"
-        transform={`rotate(45 ${point.x} ${point.y})`} fill={node.owner ? OWNER_FILL[node.owner] : '#8aa0b8'} />; })}
+        transform={`rotate(45 ${point.x} ${point.y})`} fill={node.owner ? OWNER_FILL[node.owner] : '#8aa0b8'} opacity={node.stale ? 0.45 : 1} />; })}
       <circle className="map-core" cx={miniPoint(core.x, core.y).x} cy={miniPoint(core.x, core.y).y} r="4" />
       {Object.entries(bases).map(([owner, cell]) => { const point = miniPoint(cell.x, cell.y); return <rect key={owner}
         x={point.x - 5} y={point.y - 3.5} width="10" height="7" fill={owner === 'blue' ? OWNER_FILL.blue : OWNER_FILL.red} />; })}
