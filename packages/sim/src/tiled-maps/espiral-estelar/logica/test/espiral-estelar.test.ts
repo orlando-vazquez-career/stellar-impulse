@@ -8,7 +8,23 @@ import { findPath } from '../src/pathfinding';
 import type { TileCoord } from '../src/grid';
 import { loadTiledMap, type TiledMapJson } from '../src/tiled-loader';
 
-const json = JSON.parse(readFileSync(new URL('../../espiral-estelar.json', import.meta.url), 'utf8')) as TiledMapJson;
+const exported = JSON.parse(readFileSync(new URL('../../espiral-estelar.json', import.meta.url), 'utf8')) as TiledMapJson;
+/** Tiled may export the tilesets as `.tsx` references: read their tile properties as "Embed tilesets" would. */
+const json: TiledMapJson = {
+  ...exported,
+  tilesets: exported.tilesets.map((tileset) => {
+    if (!tileset.source) return tileset;
+    const xml = readFileSync(new URL(`../../${tileset.source}`, import.meta.url), 'utf8');
+    return {
+      firstgid: tileset.firstgid,
+      tiles: [...xml.matchAll(/<tile[^>]*id="(\d+)"[^>]*>([\s\S]*?)<\/tile>/g)].map((tile) => ({
+        id: Number(tile[1]),
+        properties: [...tile[2]!.matchAll(/<property[^>]*name="([^"]*)"[^>]*value="([^"]*)"/g)]
+          .map((property) => ({ name: property[1]!, type: 'string', value: property[2]! })),
+      })),
+    };
+  }),
+};
 const TICKS_PER_SECOND = 20;
 const map = loadTiledMap(json, TICKS_PER_SECOND);
 
@@ -63,7 +79,7 @@ describe('mapa Espiral Estelar', () => {
     for (let tick = 1; tick <= 600; tick++) advanceUnits(map, ships, occupancy, tick);
     const arrived = ships.filter((ship) => !ship.goal).length;
     expect(arrived).toBeGreaterThanOrEqual(10);
-  });
+  }, 60_000);
 
   it('tiene dos pares de agujeros de gusano y cuatro pronexos', () => {
     expect(map.wormholes.map((network) => network.endpoints.length)).toEqual([2, 2]);

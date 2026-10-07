@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '../model';
 import type { GridPoint } from './grid';
 import { activeMapId, HIDDEN_LAYERS, mapImageUrl, planSectorMove, sectorMap, sectorSurface, TILE_WIDTH, type Tileset } from '../../map/sector-map';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, playerViewCenter, playerViewZoom, projectedWorldBounds } from './isometric';
+import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, playerViewCenter, playerViewZoom, projectedWorldBounds } from './isometric';
 import { WeaponEffects } from './weapon-effects';
 import { SatelliteEffects } from './satellite-effects';
 import { RobotEffects, ROBOT_LAYER } from './robot-effects';
@@ -498,11 +498,44 @@ export class MainScene extends Phaser.Scene {
   }
 
 
+  /**
+   * Capture areas of the map's pronexos: always on the ground, grey until the node is in sight. In sight they
+   * take the owner's colour, turn amber while both sides have ships inside and fill with the captor's progress.
+   */
+  private drawCaptureAreas(graphics: Phaser.GameObjects.Graphics) {
+    for (const area of sectorSurface.captures) {
+      if (!area.radius) continue;
+      const node = this.snapshot.nodes.find((candidate) => candidate.x === area.x && candidate.y === area.y);
+      const center = cellToIso(area.x, area.y);
+      // The area is a disc of cells: on the isometric ground that is an ellipse twice as wide as tall.
+      const reach = (area.radius + 0.5) * Math.SQRT2;
+      const width = reach * TILE_HALF_WIDTH * 2, height = reach * TILE_HALF_HEIGHT * 2;
+      const inside = new Set(this.snapshot.squads.filter((squad) => squad.visible && squad.status !== 'destroyed' && (squad.owner === 'blue' || squad.owner === 'red')
+        && squad.stats?.canCapture !== false && !squad.isDecoy
+        && (Math.round(squad.gridX) - area.x) ** 2 + (Math.round(squad.gridY) - area.y) ** 2 <= area.radius! ** 2)
+        .map((squad) => squad.owner));
+      const hue = inside.size === 2 ? color.neutral : node?.owner === 'blue' ? color.blue : node?.owner === 'red' ? color.red : 0x8aa0b8;
+      graphics.fillStyle(hue, node ? 0.1 : 0.05);
+      graphics.fillEllipse(center.x, center.y, width, height);
+      graphics.lineStyle(2, hue, node ? 0.7 : 0.35);
+      graphics.strokeEllipse(center.x, center.y, width, height);
+      if (!node?.capture) continue;
+      const steps = Math.max(2, Math.ceil(64 * node.capture.fraction));
+      const sweep = Math.PI * 2 * node.capture.fraction;
+      graphics.lineStyle(5, node.capture.by === 'blue' ? color.blue : color.red, 1);
+      graphics.strokePoints(Array.from({ length: steps + 1 }, (_, step) => {
+        const angle = -Math.PI / 2 + sweep * step / steps;
+        return new Phaser.Math.Vector2(center.x + Math.cos(angle) * width / 2, center.y + Math.sin(angle) * height / 2);
+      }));
+    }
+  }
+
   /** Resource nodes: a ring in the owner's colour (grey while unclaimed); Metal nodes carry a diamond. */
   private drawNodes() {
     const graphics = this.nodeMarks;
     if (!graphics) return;
     graphics.clear();
+    this.drawCaptureAreas(graphics);
     for (const node of this.snapshot.nodes) {
       const center = cellToIso(node.x, node.y);
       const hue = node.owner === 'blue' ? color.blue : node.owner === 'red' ? color.red : 0x8aa0b8;

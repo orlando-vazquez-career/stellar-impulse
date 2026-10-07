@@ -12,6 +12,7 @@ describe('espiral estelar', () => {
     expect(ESPIRAL.bases).toEqual({ p1: { x: 11, y: 10 }, p2: { x: 82, y: 86 } });
     expect(ESPIRAL.core).toEqual({ x: 48, y: 48 });
     expect(ESPIRAL.captures.map((cell) => [cell.x, cell.y])).toEqual([[30, 31], [63, 20], [32, 75], [65, 64]]);
+    expect(ESPIRAL.captures.map((cell) => cell.radius)).toEqual([3, 3, 3, 3]);
     expect(ESPIRAL.metals[0]).toEqual({ x: 60, y: 20 });
     expect(ESPIRAL.metals).toHaveLength(10);
     expect(ESPIRAL.walkable.filter(Boolean).length).toBeGreaterThan(1000);

@@ -120,22 +120,43 @@ export function resolveCombat(world: MechanicsWorld): void {
   }
 }
 
-/** Shared capture progress/decay. Pass a once-per-tick index in large battlefield worlds. */
+/** Capture pace by capturing ships in the area: the second and third add half a ship each, more add nothing. */
+export const CAPTURE_PACE: readonly number[] = Object.freeze([0, 1, 1.5, 2]);
+/** A side that only outnumbers its rival captures with its spare ships, at this share of their pace. */
+export const CONTESTED_CAPTURE_FACTOR = 0.5;
+const capturePace = (ships: number): number => CAPTURE_PACE[Math.min(ships, CAPTURE_PACE.length - 1)]!;
+
+/**
+ * Shared capture progress/decay. Pass a once-per-tick index in large battlefield worlds.
+ * Nodes: more ships capture faster, and in a dispute the larger side still advances (slowly) while the
+ * smaller one is pushed back; an even dispute freezes. The core keeps one pace and freezes in any dispute.
+ */
 export function advanceCapture(world: MechanicsWorld, objective: CaptureObjective, required: number,
   context = captureContext(world)): PlayerId | null {
   if (context.liveGuardians.has(objective.guardianId)) return null;
-  const present = new Set(context.index.queryManhattan(objective, world.rules.captureRadius)
-    .map((point) => context.owners.get(point.id))
-    .filter((owner): owner is PlayerId => owner === 'p1' || owner === 'p2'));
-  if (present.size === 2) return null;
-  for (const playerId of ['p1', 'p2'] as const) {
-    const duration=captureDuration(world,playerId,required,objective.id===world.core.id);
-    objective.progress[playerId] = present.has(playerId)
-      ? Math.min(duration, objective.progress[playerId] + 1)
-      : Math.max(0, objective.progress[playerId] - 1);
+  const core = objective.id === world.core.id;
+  const radius = objective.radius ?? world.rules.captureRadius;
+  const ships: Record<PlayerId, number> = { p1: 0, p2: 0 };
+  // The area is a disc; the diamond query of twice the radius is only its cheap superset.
+  for (const point of context.index.queryManhattan(objective, radius * 2)) {
+    const owner = context.owners.get(point.id);
+    if (owner && (point.x - objective.x) ** 2 + (point.y - objective.y) ** 2 <= radius * radius) ships[owner] += 1;
   }
+  const disputed = ships.p1 > 0 && ships.p2 > 0;
+  if (disputed && (core || ships.p1 === ships.p2)) return null;
+  const leader: PlayerId = ships.p1 >= ships.p2 ? 'p1' : 'p2';
+  const pace = core ? 1 : disputed
+    ? capturePace(Math.abs(ships.p1 - ships.p2)) * CONTESTED_CAPTURE_FACTOR : capturePace(ships[leader]);
+  let captor: PlayerId | null = null;
   for (const playerId of ['p1', 'p2'] as const) {
-    if (objective.progress[playerId] >= captureDuration(world,playerId,required,objective.id===world.core.id) && present.has(playerId)) return playerId;
+    const duration = captureDuration(world, playerId, required, core);
+    if (ships[playerId] > 0 && playerId === leader) {
+      objective.progress[playerId] = Math.min(duration, objective.progress[playerId] + pace);
+      if (objective.progress[playerId] >= duration) captor = playerId;
+    } else {
+      // Absent sides decay at the usual pace; an outnumbered one is pushed back as fast as its rival advances.
+      objective.progress[playerId] = Math.max(0, objective.progress[playerId] - (disputed ? pace : 1));
+    }
   }
-  return null;
+  return captor;
 }
