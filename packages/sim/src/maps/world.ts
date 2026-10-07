@@ -1,8 +1,9 @@
-import { parseBattlefieldCommand } from '@impulso/input';
+import { MAX_GROUP_UNITS, parseBattlefieldCommand } from '@impulso/input';
 import type { Core, Guardian, Player, PlayerId, ResourceNode, Rules, Squad } from '../index.js';
 import { advanceCapture, captureContext, resolveCombat } from './mechanics.js';
 import { advanceOccupancy } from './occupancy.js';
 import { findPath } from './pathfinding.js';
+import { planFormation } from '../mecanicas/formations.js';
 import { defineMapSpec, type MapCell, type MapSpec } from './types.js';
 import { computeVisibility, MAX_VISIBILITY_RADIUS, unionExplored } from './visibility.js';
 
@@ -180,7 +181,7 @@ export function applyBattlefieldCommand(world: BattlefieldWorld, playerId: strin
     if (selected.every((unit) => unit.damage <= 0)) return reject('cannot_attack');
     const assigned = attackDestinations(world.map, target, selected.length);
     if (assigned.length < selected.length) return reject('unreachable');
-    const cap = Math.min(remainingExpansions, 16 * world.map.width * world.map.height, 32768);
+    const cap = Math.min(remainingExpansions, MAX_GROUP_UNITS * world.map.width * world.map.height, 32768);
     let expansions = 0;
     const routes = new Map<string, { route: MapCell[]; target: MapCell }>();
     for (let index = 0; index < selected.length; index += 1) {
@@ -218,9 +219,15 @@ export function applyBattlefieldCommand(world: BattlefieldWorld, playerId: strin
   const goal = { x: command.x, y: command.y };
   if (goal.x >= world.map.width || goal.y >= world.map.height) return reject('out_of_bounds');
   if (world.map.walkable[indexOf(world.map, goal)] !== true) return reject('blocked');
-  const assigned = destinations(world.map, goal, selected.length);
+  const formation = command.type === 'move_formation'
+    ? planFormation(selected, goal, command.formation, {
+      open: (cell) => cell.x >= 0 && cell.y >= 0 && cell.x < world.width && cell.y < world.height
+        && world.map.walkable[indexOf(world.map, cell)] === true,
+    }) : null;
+  const assigned = formation ? selected.flatMap((unit) => formation.get(unit.id) ?? [])
+    : destinations(world.map, goal, selected.length);
   if (assigned.length < selected.length) return reject('unreachable');
-  const cap = Math.min(remainingExpansions, 16 * world.map.width * world.map.height, 32768);
+  const cap = Math.min(remainingExpansions, MAX_GROUP_UNITS * world.map.width * world.map.height, 32768);
   let expansions = 0;
   const routes = new Map<string, { route: MapCell[]; target: MapCell }>();
   for (let index = 0; index < selected.length; index += 1) {

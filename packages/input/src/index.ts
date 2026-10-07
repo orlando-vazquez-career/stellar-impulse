@@ -7,6 +7,7 @@ export interface MoveCommand {
   y: number;
 }
 /** Formation shapes a group order can take. The sim owns their geometry. */
+export const MAX_GROUP_UNITS = 128;
 export const FORMATION_KINDS = ['line', 'column', 'wedge', 'box', 'ranks', 'circle'] as const;
 export type FormationKindName = typeof FORMATION_KINDS[number];
 /** Several ships march to one point and settle into a shape facing the march. */
@@ -83,7 +84,7 @@ export function parseCommand(value: unknown): ParseResult {
     const value = fields.squadIds!.value;
     if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return invalid;
     const length = Object.getOwnPropertyDescriptor(value, 'length')!.value;
-    if (length < 1 || length > 24 || Reflect.ownKeys(value).length !== length + 1) return invalid;
+    if (length < 1 || length > MAX_GROUP_UNITS || Reflect.ownKeys(value).length !== length + 1) return invalid;
     const squadIds: string[] = [];
     for (let i = 0; i < length; i++) {
       const field = Object.getOwnPropertyDescriptor(value, String(i));

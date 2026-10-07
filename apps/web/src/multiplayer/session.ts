@@ -1,10 +1,12 @@
 import { Client, type Room } from '@colyseus/sdk';
+import type { FormationKind } from '@impulso/sim';
 import type { BattlefieldView, CampaignPhaseView } from '@impulso/state';
 
 const PROTOCOL_VERSION = 2;
 const STORAGE_KEY = 'impulso.multiplayer-room';
 
 export type CommandIntent =
+  | { type: 'move_formation'; squadIds: string[]; x: number; y: number; formation: FormationKind }
   | { type: 'move_group'; squadIds: string[]; x: number; y: number }
   | { type: 'attack_group'; squadIds: string[]; targetId: string }
   | { type: 'stop'; squadIds: string[] };

@@ -36,7 +36,7 @@ describe('battlefield command boundary', () => {
     { ...stop, seq: 0 }, { ...stop, seq: Infinity },
     { ...move, x: -1 }, { ...move, y: 1.5 }, { ...move, x: NaN },
     { ...move, y: Number.MAX_SAFE_INTEGER + 1 }, { ...move, x: '0' },
-    { ...move, squadIds: [] }, { ...move, squadIds: Array.from({ length: 17 }, (_, i) => `s${i}`) },
+    { ...move, squadIds: [] }, { ...move, squadIds: Array.from({ length: 129 }, (_, i) => `s${i}`) },
     { ...move, squadIds: ['p1-a', 'p1-a'] }, { ...stop, squadIds: ['a', 'a'] },
     { ...move, squadIds: ['../secret'] }, { ...move, squadIds: ['a'.repeat(65)] },
     { ...move, squadIds: ['a', 2] }, { ...move, squadIds: 'a' },
@@ -88,4 +88,13 @@ describe('battlefield command boundary', () => {
     expect(parseCommand(stop)).toEqual(invalid);
     expect(parseCommand(attack)).toEqual(invalid);
   });
+});
+
+
+it('validates formation choices and includes large selections without truncation', () => {
+  const command = { ...move, type: 'move_formation', formation: 'wedge', squadIds: Array.from({ length: 26 }, (_, i) => `s${i}`) };
+  expect(parseBattlefieldCommand(command)).toEqual({ ok: true, command });
+  expect(parseBattlefieldCommand({ ...command, formation: 'invalid' })).toEqual(invalid);
+  expect(parseBattlefieldCommand({ ...command, type: 'move_group' })).toEqual(invalid);
+  expect(parseBattlefieldCommand({ ...command, squadIds: Array.from({ length: 129 }, (_, i) => `s${i}`) })).toEqual(invalid);
 });

@@ -1,9 +1,9 @@
 /** Group march orders: every selected ship gets its own seat in a shape that faces the march. */
-import { FORMATION_KINDS, type FormationKindName } from '@impulso/input';
+import { MAX_GROUP_UNITS, FORMATION_KINDS, type FormationKindName } from '@impulso/input';
 
 export const FORMATIONS = FORMATION_KINDS;
 export type FormationKind = FormationKindName;
-export const MAX_FORMATION_SHIPS = 24;
+export const MAX_FORMATION_SHIPS = MAX_GROUP_UNITS;
 
 export interface FormationCell { readonly x: number; readonly y: number }
 export interface FormationUnit extends FormationCell { readonly id: string }

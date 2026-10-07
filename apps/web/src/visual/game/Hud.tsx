@@ -240,10 +240,10 @@ function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: Gamepla
   const group = selected.length > 1;
   return <Panel className={`vi-squad ${collapsed ? 'is-collapsed' : ''} ${group && view.formation ? 'has-formation' : ''}`}>
     <header><span>{group ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span>
-      {!collapsed && group && <FormationPicker view={view} adapter={adapter} />}
       <div className="vi-squad__tools"><button className="vi-retire" disabled={!!view.result}
         title={t('retireShipsHelp')} onClick={() => adapter.dispatch({ type: 'disband-selected' })}>{t('retireShips')}</button>
         <button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></div></header>
+    {!collapsed && group && <FormationPicker view={view} adapter={adapter} />}
     {!collapsed && selected.length > 1 ? <div className="vi-squad__group">{(['explorer','interceptor','frigate','bomber'] as const).map(kind=>{
       const ships=selected.filter(s=>s.unitType===kind);if(!ships.length)return null;
       const hp=ships.reduce((n,s)=>n+(s.hp??s.healthPercent),0),maxHp=ships.reduce((n,s)=>n+(s.maxHp??100),0);

@@ -17,7 +17,7 @@ const LABEL = {
 export function AudioControls({ value, onChange }: { value: AudioMix; onChange(mix: AudioMix): void }) {
   const { t, locale } = useI18n();
   const samples = useRef<{ match: MatchAudio; menu: SpaceSound } | null>(null);
-  useEffect(() => () => { samples.current?.match.dispose(); samples.current = null; }, []);
+  useEffect(() => () => { samples.current?.match.dispose(); samples.current?.menu.dispose(); samples.current = null; }, []);
   const sample = () => (samples.current ??= { match: new MatchAudio(locale), menu: new SpaceSound() });
   const test: Partial<Record<Level, () => void>> = {
     effects: () => sample().match.play('explosion-small'),

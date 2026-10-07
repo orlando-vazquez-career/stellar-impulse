@@ -82,7 +82,7 @@ export interface FogMemory {
  * Fold a new server view into the player's memory and say whether new terrain was explored.
  * Built only from what the server already sent, so remembering never reveals anything new.
  */
-export function rememberView(memory: FogMemory, view: PlayerView): boolean {
+export function rememberView(memory: FogMemory, view: Pick<PlayerView, 'width' | 'height' | 'playerId' | 'visibleCells' | 'nodes'>): boolean {
   let grew = false;
   if (!memory.explored || memory.explored.length !== view.width * view.height) {
     memory.explored = Array<boolean>(view.width * view.height).fill(false);
@@ -527,7 +527,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         // A group flies as one formation: every ship gets its own seat, facing the march.
         const formation = snapshot.formation ?? readStoredFormation();
         pendingSeats = movers.length > 1 ? formationSeats(servers, { x, y }, formation) : new Map();
-        if (movers.length > 1) send({ type: 'move_formation', squadIds: movers.map((squad) => squad.id).slice(0, 24), x, y, formation });
+        if (movers.length > 1) send({ type: 'move_formation', squadIds: movers.map((squad) => squad.id), x, y, formation });
         else for (const squad of movers) send({ type: 'move', squadId: squad.id, x, y });
         if (movers.length && snapshot.selectedSquadId) pendingOrder = { squadId: snapshot.selectedSquadId, destination: { x, y }, at: performance.now() };
         for (const squad of movers) {

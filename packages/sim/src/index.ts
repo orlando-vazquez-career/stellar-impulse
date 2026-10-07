@@ -583,6 +583,8 @@ function commitOrder(world: World, playerId: PlayerId, seq: number, squadId: str
   next.players[playerId].lastSequence = seq;
   const nextSquad = next.squads.find((unit) => unit.id === squadId);
   if (!nextSquad) return { accepted: false, reason: 'unknown_squad', world };
+  delete nextSquad.formationProgress;
+  delete nextSquad.formationWait;
   delete nextSquad.formationPace;
   delete nextSquad.formationSeat;
   delete nextSquad.formationNudged;
@@ -638,6 +640,9 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
     const pace = ships.length > 1 ? Math.max(...ships.map((ship) => moveInterval(next, ship.ownerId, ship.kind))) : undefined;
     for (const ship of ships) {
       const seat = seats.get(ship.id) ?? center;
+      delete ship.formationProgress;
+      delete ship.formationWait;
+      delete ship.formationNudged;
       replaceDestination(ship, seat);
       // The seat is final: the shared-destination ring must not reshuffle it.
       ship.target = { ...seat };

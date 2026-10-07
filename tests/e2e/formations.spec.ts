@@ -43,6 +43,16 @@ test('a selected group picks a formation and marches as one order', async ({ pag
   await page.keyboard.press('f');
   await expect(picker.getByRole('radio', { name: 'Cuadro' })).toHaveAttribute('aria-checked', 'true');
 
+  // The smallest supported viewport must leave the hangar and minimap usable.
+  await page.setViewportSize({ width: 1024, height: 768 });
+  const selection = await page.locator('.vi-squad').boundingBox();
+  const hangar = await page.locator('.vi-production').boundingBox();
+  const minimap = await page.locator('.vi-minimap').boundingBox();
+  expect(selection!.x + selection!.width).toBeLessThanOrEqual(hangar!.x);
+  expect(selection!.x).toBeGreaterThanOrEqual(minimap!.x + minimap!.width);
+  await page.screenshot({ path: 'test-results/formation-layout-1024.png' });
+  await page.setViewportSize({ width: 1366, height: 768 });
+  // Configured actions take precedence over the formation shortcut.
   // One click sends one group order and every ship sets off.
   const starts = await allies.evaluateAll((markers) => markers.map((marker) => `${marker.getAttribute('cx')},${marker.getAttribute('cy')}`));
   const centre = { x: xs.reduce((a, b) => a + b, 0) / xs.length, y: ys.reduce((a, b) => a + b, 0) / ys.length };
@@ -56,4 +66,24 @@ test('a selected group picks a formation and marches as one order', async ({ pag
     const now = await allies.evaluateAll((markers) => markers.map((marker) => `${marker.getAttribute('cx')},${marker.getAttribute('cy')}`));
     return now.filter((position, index) => position !== starts[index]).length;
   }, { timeout: 20000 }).toBe(3);
+});
+
+
+test('a configured F action and live audio settings work during a match', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('impulso.visual-preferences', JSON.stringify({ controls: { attack: 'F' } })));
+  await openApp(page);
+  await page.getByLabel('Identificador de comandante').fill('Audio');
+  await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+  await page.getByRole('button', { name: /Preparar operación/ }).click();
+  await page.getByRole('button', { name: /Fácil/ }).click();
+  await page.getByLabel('Estoy listo para desplegar').check();
+  await page.getByRole('button', { name: 'Iniciar operación' }).click();
+  await chooseOpening(page);
+  await page.keyboard.press('f');
+  await expect(page.locator('.vi-actions').getByRole('button', { name: /Atacar/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Sonido', exact: true }).click();
+  await page.locator('#audio-effects-range').fill('17');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences')!).audio.effects)).toBe(17);
+  await page.locator('.vi-sound-panel input[type=checkbox]').check();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences')!).audio.muted)).toBe(true);
 });

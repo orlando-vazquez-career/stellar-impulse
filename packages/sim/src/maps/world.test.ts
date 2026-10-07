@@ -216,3 +216,22 @@ describe('battlefield world', () => {
       ]);
   });
 });
+
+
+it.each(['line', 'column', 'wedge', 'box', 'ranks', 'circle'] as const)('multiplayer ships reach their %s formation deterministically', (formation) => {
+  let world = createBattlefieldWorld(map(), { moveEveryTicks: 1 });
+  world.guardians = []; world.nodes = [];
+  const first = world.squads[0]!;
+  world.squads = Array.from({ length: 6 }, (_, i) => ({ ...first, id: `ally-${i}`, x: 1 + i, y: 10, route: [] }));
+  const ids = world.squads.map((s) => s.id);
+  const command = { seq: 1, type: 'move_formation', squadIds: ids, x: 6, y: 4, formation };
+  const result = applyBattlefieldCommand(world, 'p1', command);
+  expect(result.accepted).toBe(true);
+  const reversed = applyBattlefieldCommand(world, 'p1', { ...command, squadIds: [...ids].reverse() });
+  expect(reversed).toEqual(result);
+  const targets = result.world.squads.map((s) => ({ ...s.target! }));
+  world = result.world;
+  for (let i = 0; i < 150; i++) world = stepBattlefieldWorld(world);
+  expect(new Set(targets.map((s) => `${s.x},${s.y}`)).size).toBe(6);
+  expect(world.squads.map((s) => ({ x: s.x, y: s.y }))).toEqual(targets);
+});

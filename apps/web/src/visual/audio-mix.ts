@@ -34,3 +34,29 @@ export function subscribeAudioMix(listener: (mix: AudioMix) => void): () => void
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+/** One live gain per channel; sounds already playing follow sliders and mute too. */
+export class AudioChannelBus {
+  private readonly gains = new Map<AudioChannel, GainNode>();
+  private readonly unsubscribe: () => void;
+  constructor(private readonly context: AudioContext) {
+    this.unsubscribe = subscribeAudioMix((mix) => {
+      for (const [channel, gain] of this.gains) gain.gain.setValueAtTime(channelVolume(mix, channel), context.currentTime);
+    });
+  }
+  channel(channel: AudioChannel): GainNode {
+    let gain = this.gains.get(channel);
+    if (!gain) {
+      gain = this.context.createGain();
+      gain.gain.value = channelVolume(getAudioMix(), channel);
+      gain.connect(this.context.destination);
+      this.gains.set(channel, gain);
+    }
+    return gain;
+  }
+  dispose(): void {
+    this.unsubscribe();
+    for (const gain of this.gains.values()) gain.disconnect();
+    this.gains.clear();
+  }
+}

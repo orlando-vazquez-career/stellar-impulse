@@ -40,7 +40,7 @@ function march(world: World, formation: FormationKind, x: number, y: number, tic
 
 describe('formation shapes', () => {
   it.each(FORMATIONS)('%s gives every ship its own cell', (kind) => {
-    for (const count of [2, 3, 5, 8, 12, 24]) {
+    for (const count of [2, 3, 5, 8, 12, 24, 26, 40]) {
       const cells = formationCells(kind, count, { x: 20, y: 20 }, { x: 0, y: -1 });
       expect(cells).toHaveLength(count);
       expect(new Set(cells.map(key)).size).toBe(count);
@@ -217,4 +217,29 @@ describe('formation march in the simulation', () => {
     }
     expect(stranded).toEqual([]);
   }, 120_000);
+});
+
+
+describe('formation regressions', () => {
+  it('resets progress when a moving formation gets a new destination', () => {
+    let world = applyCommand(field(['explorer', 'bomber']), 'p1', {
+      seq: 1, type: 'move_formation', squadIds: ['s0', 's1'], x: 5, y: 10, formation: 'line',
+    }).world;
+    for (let tick = 0; tick < 100; tick++) world = stepWorld(world);
+    const pace = world.squads[0]!.formationPace;
+    expect(pace).toBeDefined();
+    world = applyCommand(world, 'p1', {
+      seq: 2, type: 'move_formation', squadIds: ['s0', 's1'], x: 30, y: 30, formation: 'line',
+    }).world;
+    expect(world.squads.every((ship) => ship.formationProgress === undefined && ship.formationWait === undefined)).toBe(true);
+    for (let tick = 0; tick < 90; tick++) world = stepWorld(world);
+    expect(world.squads.map((ship) => ship.formationPace)).toEqual([pace, pace]);
+  });
+
+  it('commands the whole upgraded fleet, including ships beyond 24', () => {
+    const { world, seats } = march(field(Array(26).fill('interceptor')), 'box', 26, 8, 800);
+    expect(seats.size).toBe(26);
+    expect(new Set([...seats.values()].map(key)).size).toBe(26);
+    for (const ship of world.squads) expect(key(ship)).toBe(key(seats.get(ship.id)!));
+  });
 });

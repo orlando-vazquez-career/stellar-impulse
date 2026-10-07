@@ -1,6 +1,7 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import type { Room } from '@colyseus/sdk';
 import type { PlayerView } from '@impulso/state';
-import { diffViews, nearestOpenCell, rememberView, type FogMemory } from './server-adapter';
+import { createServerGameplayAdapter, diffViews, nearestOpenCell, rememberView, type FogMemory } from './server-adapter';
 import { selectMap } from '../map/sector-map';
 
 const ship = (id: string, ownerId: 'p1' | 'p2', x: number, y: number, hp = 100) =>
@@ -74,4 +75,25 @@ describe('fog memory', () => {
     expect(rememberView(memory, view({ visibleCells: [{ x: 5, y: 5 }], nodes: [{ ...node, ownerId: 'p1' }] }))).toBe(false);
     expect(memory.nodes.get('metal-1')).toMatchObject({ owner: 'blue', stale: false });
   });
+});
+
+
+it('sends every selected ship in a 26-ship formation to the server', () => {
+  selectMap('sector-01');
+  const handlers = new Map<string, (message: PlayerView) => void>();
+  const room = {
+    onMessage(type: string, handler: (message: PlayerView) => void) { handlers.set(type, handler); },
+    onLeave: vi.fn(), leave: vi.fn(async () => {}), send: vi.fn(),
+  };
+  const adapter = createServerGameplayAdapter('http://localhost', 'easy', 'sector-01', 'skirmish', room as unknown as Room);
+  try {
+    const ships = Array.from({ length: 26 }, (_, index) => ship(`p1-${index}`, 'p1', 3 + index % 4, 3 + Math.floor(index / 4)));
+    handlers.get('view')!(view({ squads: ships }));
+    adapter.dispatch({ type: 'select-squads', squadIds: ships.map((unit) => unit.id) });
+    adapter.dispatch({ type: 'move-selected', x: 3, y: 11 });
+    expect(room.send).toHaveBeenCalledTimes(1);
+    expect(room.send.mock.calls[0]).toEqual(['command', expect.objectContaining({
+      type: 'move_formation', squadIds: ships.map((unit) => unit.id), x: 3, y: 11,
+    })]);
+  } finally { adapter.destroy(); selectMap('espiral'); }
 });

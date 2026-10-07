@@ -1,6 +1,6 @@
 // Interface sounds from Diego's original command atlas (PR #10), shared by the visual client.
-import { useState } from 'react';
-import { channelVolume, getAudioMix } from '../visual/audio-mix';
+import { useEffect, useState } from 'react';
+import { AudioChannelBus, channelVolume, getAudioMix } from '../visual/audio-mix';
 
 const SILENCE = 0.0001;
 const FILTER_CUTOFF_HZ = 2400;
@@ -20,6 +20,7 @@ export interface Pitched {
 export class SpaceSound {
   #context: AudioContext | null = null;
   #enabled = true;
+  #bus: AudioChannelBus | null = null;
 
   get enabled() {
     return this.#enabled;
@@ -28,6 +29,13 @@ export class SpaceSound {
   toggle() {
     this.#enabled = !this.#enabled;
     return this.#enabled;
+  }
+
+  dispose() {
+    this.#bus?.dispose();
+    this.#bus = null;
+    void this.#context?.close();
+    this.#context = null;
   }
 
   playHover(mode: Pitched = { pitch: 523 }) {
@@ -50,6 +58,7 @@ export class SpaceSound {
       const AudioContextClass = window.AudioContext || legacy.webkitAudioContext;
       if (!AudioContextClass) return null;
       this.#context = new AudioContextClass();
+      this.#bus = new AudioChannelBus(this.#context);
     }
     if (this.#context.state === 'suspended') void this.#context.resume();
     return this.#context;
@@ -57,8 +66,8 @@ export class SpaceSound {
 
   #sweep({ from, to, duration, wave, volume: base }: Tone) {
     // Menu sounds follow the Interface channel of the player's mix.
-    const volume = base * channelVolume(getAudioMix(), 'interface');
-    if (volume <= SILENCE) return;
+    const volume = base;
+    if (channelVolume(getAudioMix(), 'interface') <= 0) return;
     const context = this.#enabled ? this.#audioContext() : null;
     if (!context) return;
 
@@ -78,7 +87,7 @@ export class SpaceSound {
     gain.gain.exponentialRampToValueAtTime(volume, now + 0.02);
     gain.gain.exponentialRampToValueAtTime(SILENCE, now + duration);
 
-    oscillator.connect(filter).connect(gain).connect(context.destination);
+    oscillator.connect(filter).connect(gain).connect(this.#bus!.channel('interface'));
     oscillator.start(now);
     oscillator.stop(now + duration + 0.05);
   }
@@ -87,6 +96,7 @@ export class SpaceSound {
 export function useSpaceSound() {
   const [sound] = useState(() => new SpaceSound());
   const [enabled, setEnabled] = useState(sound.enabled);
+  useEffect(() => () => sound.dispose(), [sound]);
   function toggle() {
     setEnabled(sound.toggle());
   }

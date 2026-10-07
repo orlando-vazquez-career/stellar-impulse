@@ -94,8 +94,10 @@ Los mensajes de campaña que requieren sobre llevan `{ protocolVersion: 2, body 
 | Canal | `body` | Uso |
 |---|---|---|
 | `ready` | `{}` | En lobby; con ambos jugadores listos comienza cuenta regresiva de 5 s. |
-| `command` | `{ type: 'move_group', seq, squadIds, x, y }`, `{ type: 'attack_group', seq, squadIds, targetId }` o `{ type: 'stop', seq, squadIds }` | Durante un sector activo. Entre 1 y 16 IDs de escuadrón únicos; coordenadas enteras no negativas solo para `move_group`. |
+| `command` | `{ type: 'move_group', seq, squadIds, x, y }`, `{ type: 'move_formation', seq, squadIds, x, y, formation }`, `{ type: 'attack_group', seq, squadIds, targetId }` o `{ type: 'stop', seq, squadIds }` | Durante un sector activo. Entre 1 y 128 IDs de escuadrón únicos; coordenadas enteras no negativas para `move_group` y `move_formation`. |
 | `tech` | `{ techId }` | En transición, usando un identificador ofrecido en `phase.offers`. |
+
+`formation` admite `line`, `column`, `wedge`, `box`, `ranks` o `circle`; el servidor asigna las posiciones y valida las rutas de toda la selección antes de aceptar la orden.
 
 Los cuerpos no admiten campos extra. `parseBattlefieldCommand` copia y valida los datos sin coerción. Los rechazos de unidad se agrupan bajo `unit_unavailable`, tanto si la unidad no existe como si no pertenece al jugador o está destruida.
 

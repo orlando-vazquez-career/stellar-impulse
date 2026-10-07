@@ -626,8 +626,10 @@
 .vi-squad__group-unit strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vi-display); }
 .vi-squad__group-unit span { color: var(--vi-muted); font-size: 11px; }
 .vi-squad__group-unit progress { width: 100%; height: 5px; accent-color: var(--vi-success); }
-.vi-squad.has-formation:not(.is-collapsed) { width: 560px; }
-.vi-formation { margin-left: auto; margin-right: 10px; display: flex; align-items: center; gap: 4px; }
+.vi-squad.has-formation:not(.is-collapsed) { width: min(440px, calc(100vw - 560px)); }
+.vi-squad.has-formation .vi-squad__group { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 6px; }
+.vi-squad.has-formation .vi-squad__group-unit { padding: 4px; }
+.vi-formation { display: flex; justify-content: center; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid var(--vi-border); }
 .vi-squad .vi-formation button { width: 30px; height: 26px; padding: 0; display: grid; place-items: center; border: 1px solid var(--vi-border); background: var(--vi-surface-raised); }
 .vi-squad .vi-formation button svg { width: 20px; height: 20px; }
 .vi-squad .vi-formation button circle { fill: var(--vi-muted); }
