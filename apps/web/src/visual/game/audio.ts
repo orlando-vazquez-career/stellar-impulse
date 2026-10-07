@@ -1,4 +1,4 @@
-import type { VisualPreferences } from '../settings/preferences';
+import { channelVolume, getAudioMix } from '../audio-mix';
 import type { GameplayEvent } from './model';
 
 /**
@@ -47,17 +47,23 @@ export class MatchAudio {
   private sfx = new Map<SfxSlot, AudioBuffer>();
   private voice = new Map<VoiceSlot, AudioBuffer>();
   private speaking: AudioBufferSourceNode | null = null;
+  private disposed = false;
 
-  constructor(private audio: VisualPreferences['audio'], private locale: 'es' | 'en', manifestUrl = '/audio/manifest.json') {
+  /** Volumes are read from the live mix on every sound, so slider changes apply mid-match. */
+  constructor(private locale: 'es' | 'en', manifestUrl = '/audio/manifest.json') {
     void this.load(manifestUrl);
   }
 
   private get volume(): number {
-    return this.audio.muted ? 0 : (this.audio.master / 100) * (this.audio.effects / 100);
+    return channelVolume(getAudioMix(), 'effects');
+  }
+
+  private get voiceVolume(): number {
+    return channelVolume(getAudioMix(), 'voice');
   }
 
   private ctx(): AudioContext | null {
-    if (typeof AudioContext === 'undefined') return null;
+    if (this.disposed || typeof AudioContext === 'undefined') return null;
     this.context ??= new AudioContext();
     if (this.context.state === 'suspended') void this.context.resume();
     return this.context;
@@ -91,13 +97,13 @@ export class MatchAudio {
     }
   }
 
-  private playBuffer(buffer: AudioBuffer, gain = 1): AudioBufferSourceNode | null {
+  private playBuffer(buffer: AudioBuffer, volume: number): AudioBufferSourceNode | null {
     const ctx = this.ctx();
-    if (!ctx || this.volume <= 0) return null;
+    if (!ctx || volume <= 0) return null;
     const source = ctx.createBufferSource();
     const amp = ctx.createGain();
     source.buffer = buffer;
-    amp.gain.value = this.volume * gain;
+    amp.gain.value = volume;
     source.connect(amp).connect(ctx.destination);
     source.start();
     return source;
@@ -117,17 +123,17 @@ export class MatchAudio {
     if ((slot === 'explosion-small' || slot === 'explosion-large') && this.throttled('explosion', 90)) return;
     if (slot === 'alarm' && this.throttled('alarm', 6000)) return;
     const recorded = this.sfx.get(slot);
-    if (recorded) { this.playBuffer(recorded); return; }
+    if (recorded) { this.playBuffer(recorded, this.volume); return; }
     this.synth(slot);
   }
 
   /** Announcer line: the recorded voice if there is one, otherwise the browser's speech engine. */
   announce(slot: VoiceSlot) {
-    if (this.volume <= 0) return;
+    if (this.disposed || this.voiceVolume <= 0) return;
     const recorded = this.voice.get(slot);
     if (recorded) {
       this.speaking?.stop();
-      this.speaking = this.playBuffer(recorded);
+      this.speaking = this.playBuffer(recorded, this.voiceVolume);
       return;
     }
     if (typeof speechSynthesis === 'undefined') return;
@@ -135,7 +141,7 @@ export class MatchAudio {
     const line = new SpeechSynthesisUtterance(VOICE_TEXT[this.locale][slot]);
     line.lang = this.locale === 'es' ? 'es-ES' : 'en-US';
     line.rate = 1.08;
-    line.volume = Math.min(1, this.volume * 1.2);
+    line.volume = Math.min(1, this.voiceVolume * 1.2);
     speechSynthesis.speak(line);
   }
 
@@ -192,6 +198,7 @@ export class MatchAudio {
   }
 
   dispose() {
+    this.disposed = true;
     if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
     this.speaking?.stop();
     void this.context?.close();

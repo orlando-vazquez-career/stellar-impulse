@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AugmentCardView } from '@impulso/state';
 import { useI18n } from '../i18n';
 import type { GameplayPresentationAdapter, GameplayViewModel } from './model';
+import { channelVolume, getAudioMix } from '../audio-mix';
 import './augments.css';
 export function AugmentCard({ card, disabled, onPick }: {card:AugmentCardView;disabled?:boolean;onPick?():void}) {
   const {locale}=useI18n();const text=card.text[locale];
@@ -21,10 +22,11 @@ export function AugmentHud({view,adapter,sound=true}:{view:GameplayViewModel;ada
     const key=offer?`${offer.choice}`:'';
     if(!offer || offer.choice===0 || sounded.current===key) return;
     sounded.current=key;
-    if(!sound) return;
+    const volume=channelVolume(getAudioMix(),'effects');
+    if(!sound||volume<=0) return;
     const audio=new AudioContext(), oscillator=audio.createOscillator(),gain=audio.createGain();
     oscillator.type='sine';oscillator.frequency.setValueAtTime(660,audio.currentTime);oscillator.frequency.exponentialRampToValueAtTime(990,audio.currentTime+0.3);
-    gain.gain.setValueAtTime(0.08,audio.currentTime);gain.gain.exponentialRampToValueAtTime(0.001,audio.currentTime+0.5);
+    gain.gain.setValueAtTime(0.08*volume,audio.currentTime);gain.gain.exponentialRampToValueAtTime(0.001,audio.currentTime+0.5);
     oscillator.connect(gain);gain.connect(audio.destination);oscillator.start();oscillator.stop(audio.currentTime+0.5);
     oscillator.onended=()=>{void audio.close();};
   },[offer?.choice,sound]);
