@@ -61,7 +61,7 @@ import { effectsFor, effectiveFleetCap, effectiveBaseDamage, baseIncome, visionS
 import { cloneMatchRecord, recordMatchTick, type MatchRecord } from './progression.js';
 import { observeKnowledge, type AiKnowledge } from './inteligencia-enemiga/knowledge.js';
 export { CHALLENGES, emptyProgress, emptyMatchRecord, profileFor, unlockedPool, rewardForCampaign, rewardForMatch, challengeProgress } from './progression.js';
-export type { AccountProgress, CampaignOutcome, ProgressProfile, MatchReward, MatchRecord } from './progression.js';
+export type { AccountProgress, AwardRecord, CampaignOutcome, ProgressProfile, MatchReward, MatchRecord } from './progression.js';
 export { effectiveFleetCap, effectiveBaseDamage, effectsFor, statsForUnit, visionSources, isConcealed, captureDuration, metalIncomeRate } from './augments/effects.js';
 export { initializeAugments, setAugmentPool, grantAugment, pickAugment, rerollAugments, chooseAiAugment } from './augments/runtime.js';
 export { AUGMENT_CATALOG, AUGMENTS_BY_ID, INITIAL_AUGMENTS } from './augments/catalog.js';

@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { emptyProgress, profileFor, rewardForCampaign, rewardForMatch, type AccountProgress, type CampaignOutcome, type MatchReward, type PlayerId, type ProgressProfile, type RivalDifficulty, type World } from '@impulso/sim';
 
@@ -29,12 +29,14 @@ export class AuthService {
   private readonly users = new Map<string, StoredUser>();
   private readonly sessions = new Map<string, { userId: string; expiresAt: number }>();
 
+  /** False after loading from the backup: the next write must not copy the broken file over it. */
+  private mainReadable = true;
+
   constructor(private readonly filePath: string | null = null) {
-    if (filePath && existsSync(filePath)) {
-      const stored = JSON.parse(readFileSync(filePath, 'utf8')) as StoredUser[];
-      if (!Array.isArray(stored)) throw new Error('Invalid auth data file');
-      for (const user of stored) this.users.set(user.email, user);
-    }
+    if (!filePath) return;
+    const loaded = loadUsers(filePath);
+    this.mainReadable = loaded.fromMain;
+    for (const user of loaded.users) this.users.set(user.email, user);
   }
 
   register(email: unknown, password: unknown) {
@@ -61,6 +63,9 @@ export class AuthService {
     }
     return this.issue(user);
   }
+
+  /** Accounts survive a restart only with a data file; sessions never do. */
+  get persistent(): boolean { return this.filePath !== null; }
 
   getUser(token: unknown): PublicUser | null {
     if (typeof token !== 'string') return null;
@@ -113,12 +118,44 @@ export class AuthService {
     return { token, expiresAt, user: { id: user.id, email: user.email } };
   }
 
+  /** Flushes a temporary file to disk, keeps the previous version as `.bak` and swaps it in atomically. */
   private persist(): void {
     if (!this.filePath) return;
     mkdirSync(dirname(this.filePath), { recursive: true });
     const temporary = `${this.filePath}.${randomUUID()}.tmp`;
-    writeFileSync(temporary, JSON.stringify([...this.users.values()]), { mode: 0o600 });
-    renameSync(temporary, this.filePath);
+    try {
+      const fd = openSync(temporary, 'w', 0o600);
+      try { writeFileSync(fd, JSON.stringify([...this.users.values()])); fsyncSync(fd); } finally { closeSync(fd); }
+      if (this.mainReadable && existsSync(this.filePath)) copyFileSync(this.filePath, `${this.filePath}.bak`);
+      renameSync(temporary, this.filePath);
+      this.mainReadable = true;
+    } catch (error) {
+      rmSync(temporary, { force: true });
+      throw error;
+    }
+  }
+}
+
+function readUsers(path: string): StoredUser[] {
+  const stored = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+  if (!Array.isArray(stored)) throw new Error(`${path} is not an account list`);
+  return stored as StoredUser[];
+}
+
+/** The main file, or the copy kept before the last write. Never starts empty over unreadable data. */
+function loadUsers(file: string): { users: StoredUser[]; fromMain: boolean } {
+  const backup = `${file}.bak`;
+  if (!existsSync(file) && !existsSync(backup)) return { users: [], fromMain: true };
+  try {
+    return { users: readUsers(file), fromMain: true };
+  } catch (error) {
+    try {
+      const users = readUsers(backup);
+      console.warn(`[auth] ${file} is unreadable; loaded ${backup}`);
+      return { users, fromMain: false };
+    } catch {
+      throw new Error(`Cannot read account data from ${file} or its backup`, { cause: error });
+    }
   }
 }
 

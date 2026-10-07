@@ -9,6 +9,7 @@ import { battlefieldViewFor } from '@impulso/state';
 import * as campaigns from './campaign/machine';
 import { publicMapMetadata } from './map-catalog';
 import type { AuthService } from './auth';
+import { savedReward } from './rewards';
 
 const TICK_MS = 100;
 const LOBBY_TIMEOUT_MS = 15 * 60_000;
@@ -162,7 +163,8 @@ export class CampaignRoom extends Room {
     const { result, sectorResults } = this.campaign;
     const rewards = new Map<PlayerId, MatchReward>();
     for (const [userId, player] of this.users) {
-      rewards.set(player, this.auth.awardCampaign(userId, `campaign:${this.roomId}`, result!, sectorResults.length, player));
+      rewards.set(player, savedReward(this.auth, userId,
+        () => this.auth.awardCampaign(userId, `campaign:${this.roomId}`, result!, sectorResults.length, player)));
     }
     for (const client of this.clients) {
       const player = this.seats.get(client.sessionId);
