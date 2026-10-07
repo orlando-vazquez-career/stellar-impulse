@@ -26,8 +26,8 @@ const URL = `http://127.0.0.1:${PORT}`;
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
 const auth = new AuthService();
 const tokens = {
-  Ana: auth.register('ana-benchmark@example.com', 'secret-1234').token,
-  Beto: auth.register('beto-benchmark@example.com', 'secret-1234').token,
+  Ana: (await auth.register('ana-benchmark@example.com', 'secret-1234')).token,
+  Beto: (await auth.register('beto-benchmark@example.com', 'secret-1234')).token,
 };
 const joins = (name: 'Ana' | 'Beto') => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name] });
 

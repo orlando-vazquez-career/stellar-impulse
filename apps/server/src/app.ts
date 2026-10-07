@@ -41,8 +41,8 @@ export function createGameServer(options: GameServerOptions = {}) {
   const limited = () => Response.json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': '1' } });
   const credentials = (body: unknown) => body && typeof body === 'object' && !Array.isArray(body)
     ? body as { email?: unknown; password?: unknown } : {};
-  const respond = (action: () => unknown, status = 200): Response => {
-    try { return Response.json(action(), { status }); }
+  const respond = async (action: () => unknown, status = 200): Promise<Response> => {
+    try { return Response.json(await action(), { status }); }
     catch (error) {
       if (error instanceof AuthError) return Response.json({ error: error.code }, { status: error.status });
       throw error;
@@ -72,7 +72,7 @@ export function createGameServer(options: GameServerOptions = {}) {
     },
     routes: createRouter({
       health: createEndpoint('/health', { method: 'GET' }, async () => ({
-        status: 'ok', mode: 'training', persistent: auth.persistent,
+        status: 'ok', mode: 'training', persistent: auth.persistent, storage: auth.storage,
       })),
       register: createEndpoint('/auth/register', { method: 'POST' }, async (ctx) => {
         if (!passwordCheck()) return limited();

@@ -10,6 +10,22 @@ Victoria 100, derrota 40, hasta 50 por nodos y 25 por capturar el núcleo. La XP
 
 Cada 300 XP suma un nivel, empezando en nivel 1. El perfil expone XP, nivel, mejores progresos por partida y cartas desbloqueadas. Los mejores progresos no se suman entre partidas para desafíos que exigen una sola partida. Destruir señuelos no da bajas ni recompensas. Retirar una nave de combate cuenta como pérdida para Intocable.
 
+## Emblemas de Mérito
+
+Cada cuenta gana cada emblema una sola vez, solo por resultados oficiales de campaña 1v1:
+**Primera Victoria** al ganar capturando el núcleo final (un abandono del rival no cuenta) y
+**Exploración** al terminar una campaña hasta el núcleo final, gane, pierda o empate. El
+perfil los expone en `merits` y el premio de la campaña en `reward.merits`. Son la base de
+los emblemas en cadena (clases 3 y 4 del contrato de cosméticos); por ahora solo se guardan
+en la cuenta.
+
+## Dónde se guarda
+
+Con `DATABASE_URL`, en Postgres: `accounts` (XP), `achievements` (desafíos y emblemas, con
+la partida que los otorgó), `challenge_bests` y `match_awards` (un registro por resultado
+oficial; su clave impide sumar dos veces el mismo). Sin `DATABASE_URL`, en el archivo de
+cuentas.
+
 ## Campaña 1v1
 
 La sala `campaign` guarda el premio de cada cuenta una sola vez por campaña al entrar en

@@ -11,17 +11,17 @@ const dirs: string[] = [];
 function tempDir() { const dir = mkdtempSync(join(tmpdir(), 'impulso-auth-')); dirs.push(dir); return dir; }
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
-it('recovers the accounts from the backup when the main file is unreadable', () => {
+it('recovers the accounts from the backup when the main file is unreadable', async () => {
   const file = join(tempDir(), 'users.json');
   const auth = new AuthService(file);
-  auth.register('ana@example.com', 'secret-1234');
-  auth.register('beto@example.com', 'secret-1234');
+  await auth.register('ana@example.com', 'secret-1234');
+  await auth.register('beto@example.com', 'secret-1234');
   writeFileSync(file, '[{"id":"tru'); // what a lost write leaves behind
   const restarted = new AuthService(file);
   expect(restarted.login('ana@example.com', 'secret-1234').user.email).toBe('ana@example.com');
 });
 
-it('refuses to start with no accounts when neither file can be read', () => {
+it('refuses to start with no accounts when neither file can be read', async () => {
   const file = join(tempDir(), 'users.json');
   writeFileSync(file, 'garbage');
   writeFileSync(`${file}.bak`, 'garbage');
@@ -39,15 +39,15 @@ it('reports in /health that accounts are kept on disk', async () => {
   }
 });
 
-it('keeps the room alive and the profile unchanged when the account file cannot be written', () => {
+it('keeps the room alive and the profile unchanged when the account file cannot be written', async () => {
   const dir = tempDir();
   const file = join(dir, 'data', 'users.json');
   const auth = new AuthService(file);
-  const user = auth.register('rated@example.com', 'secret-1234').user;
+  const user = (await auth.register('rated@example.com', 'secret-1234')).user;
   rmSync(join(dir, 'data'), { recursive: true });
   writeFileSync(join(dir, 'data'), 'a file where the data folder should be');
   const world = createMatchWorld('sector-01', 'complete'); world.winner = 'p1';
-  const reward = trainingReward(auth, user.id, 'room', world, 'p1', 'hard');
+  const reward = await trainingReward(auth, user.id, 'room', world, 'p1', 'hard');
   expect(reward).toMatchObject({ xpGained: 0, challenges: [], unlocked: [], saveFailed: true });
   expect(auth.profile(user.id).xp).toBe(0);
 });

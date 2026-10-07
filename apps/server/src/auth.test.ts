@@ -26,11 +26,11 @@ async function register(email: string, password = 'secret-1234') {
 }
 
 describe('account and multiplayer admission', () => {
-  it('keeps password hashes on disk and accepts the account after a restart', () => {
+  it('keeps password hashes on disk and accepts the account after a restart', async () => {
     const file = join(process.cwd(), '.local', `auth-test-${randomUUID()}.json`);
     try {
       const initial = new AuthService(file);
-      const account = initial.register('persist@example.com', 'secret-1234');
+      const account = await initial.register('persist@example.com', 'secret-1234');
       const stored = readFileSync(file, 'utf8');
       expect(stored).not.toContain('secret-1234');
       expect(stored).not.toContain(account.token);
