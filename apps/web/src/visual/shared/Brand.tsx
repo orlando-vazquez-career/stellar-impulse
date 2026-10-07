@@ -1,6 +1,5 @@
 export function Brand() {
-  return <div className="vi-brand" aria-label="Impulso Stellar">
-    <span className="vi-brand__mark" aria-hidden="true"><i /></span>
-    <span>IMPULSO<small>STELLAR</small></span>
+  return <div className="vi-brand" aria-label="Stellar Impulse">
+    <img className="vi-brand__logo" src="/brand/stellar-impulse-logo.svg" alt="Stellar Impulse" />
   </div>;
 }

@@ -90,7 +90,7 @@ export function LoginForm(props: LoginFormProps) {
         <span className="li-channel">PROTOCOLO DE ACCESO // CH-01</span>
       </div>
 
-      <h1 className="li-title" data-text="IMPULSO STELLAR">IMPULSO STELLAR</h1>
+      <h1 className="li-title" data-text="STELLAR IMPULSE">STELLAR IMPULSE</h1>
       <h2 className="li-heading-call">{t('accessTitle')}</h2>
       <p className="li-subtitle">{t('accessBody')}</p>
 

@@ -1,4 +1,4 @@
-# Impulso Stellar
+# Stellar Impulse
 
 RTS roguelite competitivo PvPvE para navegador. Explorar para prepararse, combatir para avanzar y defender para ganar.
 
