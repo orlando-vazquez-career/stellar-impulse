@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createSectorWorld } from '@impulso/sim';
-import { sectorMap, sectorSurface, cellAtPixel, cellToPixel, routeAcrossSector, planSectorMove } from './sector-map';
+import { sectorMap, sectorSurface, cellAtPixel, cellToPixel, routeAcrossSector, planSectorMove, selectMap } from './sector-map';
 
 describe('Visual Sector 01 Tiled map', () => {
+  beforeEach(() => {
+    selectMap('sector-01');
+  });
+
   it('reads the editable isometric TMJ and its gameplay walkability from the same source', () => {
     expect(sectorMap.orientation).toBe('isometric');
     expect(sectorMap.width).toBe(29);
@@ -58,11 +62,14 @@ describe('map selection', () => {
     const map = await import('./sector-map');
     map.selectMap('espiral');
     expect(map.activeMapId).toBe('espiral');
-    expect(map.sectorMap.width).toBe(58);
-    expect(map.sectorSurface.width).toBe(58);
-    expect(map.ISO_WORLD_WIDTH).toBe(58 * map.TILE_WIDTH);
+    expect(map.sectorMap.width).toBe(96);
+    expect(map.sectorSurface.width).toBe(96);
+    expect(map.ISO_WORLD_WIDTH).toBe(96 * map.TILE_WIDTH);
     expect(map.mapImageUrl('tilesets/img/suelo.png')).toBeTruthy();
     expect(map.mapImageUrl('tilesets/img/base_jugador.png')).toBeTruthy();
+    expect(map.mapImageUrl('3831233578.png')).toBeTruthy();
+    expect(map.sectorMap.tilesets.some((set) => set.image === 'tilesets/img/logica.png')).toBe(true);
+    expect(map.sectorMap.tilesets.some((set) => set.name === 'planetafondo')).toBe(true);
     const point = map.cellToPixel(map.sectorSurface.bases.p1);
     expect(map.cellAtPixel(point.x, point.y)).toEqual(map.sectorSurface.bases.p1);
     map.selectMap('sector-01');

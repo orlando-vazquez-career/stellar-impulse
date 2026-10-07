@@ -13,7 +13,7 @@ import { MatchAudio, playEvent, type Announcement } from './audio';
 import { useI18n } from '../i18n';
 import type { VisualPreferences } from '../settings/preferences';
 import type { RivalDifficulty } from '../lobby/PreparationLobby';
-import { selectMap, type TrainingMapId } from '../map/sector-map';
+import { DEFAULT_PLAYABLE_MAP, selectMap, type TrainingMapId } from '../map/sector-map';
 import type { CameraView, GameplayPresentationAdapter } from './model';
 import type { PhaserBattlefieldHandle } from './phaser/PhaserBattlefield';
 
@@ -26,9 +26,9 @@ const PRODUCTION_KEYS: Record<string, 'explorer' | 'interceptor' | 'frigate' | '
 const emptySubscribe = () => () => {};
 const emptyMultiplayer = () => null;
 
-export function GameplayScreen({ preferences, difficulty = 'medium', map = 'espiral', duration = 'skirmish', multiplayerSession, onLeave }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; duration?: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void }) {
+export function GameplayScreen({ preferences, difficulty = 'medium', map = DEFAULT_PLAYABLE_MAP, duration = 'skirmish', multiplayerSession, onLeave }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; duration?: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void }) {
   const [match, setMatch] = useState(0);
-  // The local mock only knows Sector 01. Selecting before the children render keeps scene, HUD and server on one map.
+  // Campaign rooms and the offline mock still use Sector 01. Training opens Espiral Estelar.
   const chosen = multiplayerSession || wantsLocalMock() ? 'sector-01' : map;
   selectMap(chosen);
   return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} duration={duration} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
@@ -81,7 +81,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
     if (centered.current || view.connection === 'local') return;
     const own = view.squads.find((squad) => squad.owner === 'blue');
     if (!own || !battlefieldRef.current) return;
-    centered.current = battlefieldRef.current.centerOnCell(Math.round(own.gridX), Math.round(own.gridY));
+    centered.current = battlefieldRef.current.focusFleet(Math.round(own.gridX), Math.round(own.gridY));
   }, [view]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

@@ -3,7 +3,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops
 
-PREVIEW_SCALE = 0.5
+PREVIEW_SCALE = 0.35
 MINIMAP_CELL = 8
 BACKGROUND = (5, 7, 15, 255)
 MINIMAP_COLORS = {"empty": (120, 130, 150), "nebula": (140, 70, 190), "asteroid": (90, 70, 55),
@@ -60,7 +60,7 @@ class TiledRenderer:
         tx, ty = x / self.data["tileheight"], y / self.data["tileheight"]
         return self.origin_x + (tx - ty) * self.half_width, self.top_margin + (tx + ty) * self.half_height
 
-    def render(self, skip=("logica",)):
+    def render(self, skip=("logica", "altura")):
         for layer in self.data["layers"]:
             if layer["name"] in skip:
                 continue

@@ -3,13 +3,15 @@ import Phaser from 'phaser';
 import { useI18n } from '../../i18n';
 import type { CameraView, GameplayViewModel } from '../model';
 import { MainScene } from './MainScene';
-import { activeMapId } from '../../map/sector-map';
+import { activeMapId, activeMapSourceFile } from '../../map/sector-map';
 
 export interface PhaserBattlefieldHandle {
   resetCamera(): void;
   previewBaseRange(enabled:boolean):void;
   /** False while the Phaser scene is still loading. */
   centerOnCell(x: number, y: number): boolean;
+  /** Opening view on the player's fleet (kept whole when the sector fits). False while loading. */
+  focusFleet(x: number, y: number): boolean;
 }
 
 interface PhaserBattlefieldProps {
@@ -43,6 +45,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
     resetCamera: () => sceneRef.current?.resetCamera(),
     previewBaseRange:enabled=>sceneRef.current?.previewBaseRange(enabled),
     centerOnCell: (x, y) => sceneRef.current?.centerOnCell(x, y) ?? false,
+    focusFleet: (x, y) => sceneRef.current?.focusFleet(x, y) ?? false,
   }), []);
 
   useEffect(() => {
@@ -59,7 +62,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
         if (disposed) return;
         setLoadError(null);
         host.parentElement?.setAttribute('data-ready', 'true');
-        host.parentElement?.setAttribute('data-map-source', 'sector-01.tmj');
+        host.parentElement?.setAttribute('data-map-source', activeMapSourceFile());
         host.parentElement?.setAttribute('data-atlas-ready', 'true');
       },
       (message) => { if (!disposed) setLoadError(message); },

@@ -1,17 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { chooseOpening, openApp } from './helpers';
-
-/** Screen point of a minimap marker, through the camera attributes the minimap publishes. */
-async function screenPointOf(page: Page, cx: number, cy: number) {
-  const camera = page.locator('.map-camera');
-  const scale = 172 / Number(await camera.getAttribute('data-iso-width'));
-  const offsetY = 4 + (172 - Number(await camera.getAttribute('data-iso-height')) * scale) / 2;
-  const worldX = Number(await camera.getAttribute('data-world-x'));
-  const worldY = Number(await camera.getAttribute('data-world-y'));
-  const zoom = Number(await camera.getAttribute('data-zoom'));
-  const canvas = (await page.locator('.vi-phaser canvas').boundingBox())!;
-  return { x: canvas.x + ((cx - 4) / scale - worldX) * zoom, y: canvas.y + ((cy - offsetY) / scale - worldY) * zoom };
-}
+import { expect, test } from '@playwright/test';
+import { canvasPointFromMinimap, chooseOpening, openApp } from './helpers';
 
 test('a selected group picks a formation and marches as one order', async ({ page }) => {
   test.setTimeout(90000);
@@ -38,7 +26,7 @@ test('a selected group picks a formation and marches as one order', async ({ pag
   const allies = page.locator('.map-ally');
   const points = [];
   for (const marker of await allies.all()) {
-    points.push(await screenPointOf(page, Number(await marker.getAttribute('cx')), Number(await marker.getAttribute('cy'))));
+    points.push(await canvasPointFromMinimap(page, Number(await marker.getAttribute('cx')), Number(await marker.getAttribute('cy'))));
   }
   const xs = points.map((point) => point.x), ys = points.map((point) => point.y);
   await page.mouse.move(Math.min(...xs) - 50, Math.min(...ys) - 50);

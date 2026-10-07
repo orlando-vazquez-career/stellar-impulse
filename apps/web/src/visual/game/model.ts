@@ -72,6 +72,16 @@ export interface NodeViewModel {
   stabilizingSeconds?: number;
 }
 
+/** A satellite on its way down: warned from `warnTick`, it hits the cell on `impactTick`. */
+export interface SatelliteViewModel {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  warnTick: number;
+  impactTick: number;
+}
+
 export interface ProductionViewModel {
   kind: SquadType;
   remainingSeconds: number;
@@ -106,6 +116,7 @@ export interface GameplayViewModel {
   clockRunning: boolean;
   nodes: NodeViewModel[];
   production: ProductionViewModel | null;
+  satellites?: SatelliteViewModel[];
   /** The campaign battlefield currently provides a fixed starting fleet. */
   canProduce?: boolean;
   unitStats?: Record<SquadType, ShipStats>;
@@ -131,7 +142,7 @@ export interface GameplayViewModel {
 /** Things that happened between two server views, for sounds and announcements. */
 export type GameplayEvent =
   | { kind: 'match-start' | 'ship-launched' | 'guardian-down' | 'node-lost' | 'under-attack'
-      | 'core-soon' | 'core-open' | 'core-own-capturing' | 'core-rival-capturing' | 'victory' | 'defeat' }
+      | 'satellite-warning' | 'satellite-impact' | 'core-soon' | 'core-open' | 'core-own-capturing' | 'core-rival-capturing' | 'victory' | 'defeat' }
   | { kind: 'ship-destroyed' | 'node-captured'; own: boolean };
 
 export type PresentationIntent =

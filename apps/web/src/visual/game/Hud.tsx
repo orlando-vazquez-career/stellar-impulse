@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { SHIP_COUNTERS, UNIT_COSTS, EXTRA_MODULES, FORMATIONS, formationShape, type FormationKind, type ModuleKind } from '@impulso/sim';
 import { useI18n } from '../i18n';
 import { LanguageToggle } from '../shared/LanguageToggle';
@@ -7,7 +7,7 @@ import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
 import type { CameraView, CoreState, GameplayAction, GameplayPresentationAdapter, GameplayViewModel } from './model';
 import { activeMapId, sectorMap, sectorSurface } from '../map/sector-map';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH } from './phaser/isometric';
+import { cellToIso, isoToPoint, ISO_ORIGIN_X, ISO_ORIGIN_Y, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, projectedWorldBounds, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, VIEW_YAW_RADIANS } from './phaser/isometric';
 
 function formatTime(seconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -79,12 +79,13 @@ const MINIMAP_SIZE = 172;
 const OWNER_FILL = { blue: '#36a9ff', red: '#ff4f64', neutral: '#f2b84b' } as const;
 
 /** Minimap scale and floor cells for the active map, rebuilt only when the map changes. */
-let layout: { mapId: string; scale: number; offset: { x: number; y: number }; floor: { x: number; y: number; path: string }[]; terrainPath: string } | null = null;
+let layout: { mapId: string; scale: number; offset: { x: number; y: number }; world: ReturnType<typeof projectedWorldBounds>; floor: { x: number; y: number; path: string }[]; terrainPath: string } | null = null;
 function minimapLayout() {
   if (layout?.mapId === activeMapId) return layout;
-  const scale = MINIMAP_SIZE / ISO_WORLD_WIDTH;
-  const offset = { x: 4, y: 4 + (MINIMAP_SIZE - ISO_WORLD_HEIGHT * scale) / 2 };
-  layout = { mapId: activeMapId, scale, offset, floor: [], terrainPath: '' };
+  const world = projectedWorldBounds();
+  const scale = MINIMAP_SIZE / world.width;
+  const offset = { x: 4 - world.x * scale, y: 4 + (MINIMAP_SIZE - world.height * scale) / 2 - world.y * scale };
+  layout = { mapId: activeMapId, scale, offset, world, floor: [], terrainPath: '' };
   layout.floor = sectorSurface.walkable.flatMap((walkable, index) => {
     if (!walkable) return [];
     const x = index % sectorMap.width;
@@ -114,10 +115,14 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
   const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
   const route = view.moveOrder?.squadId === view.selectedSquadId ? view.moveOrder : null;
-  const { scale: MINIMAP_SCALE, offset: MINIMAP_OFFSET, floor, terrainPath } = minimapLayout();
+  const { scale: MINIMAP_SCALE, offset: MINIMAP_OFFSET, world, floor, terrainPath } = minimapLayout();
   const core = sectorSurface.core;
   const bases = { blue: sectorSurface.bases.p1, red: sectorSurface.bases.p2 };
-  const seen = (cell: { x: number; y: number }) => !view.visibleCells || view.visibleCells[cell.y * sectorMap.width + cell.x] === true;
+  // Thousands of cells in one path: rebuild it only when vision changes, not on every camera or ship frame.
+  const visibleCells = view.visibleCells;
+  const seenPath = useMemo(() => visibleCells
+    ? floor.filter((cell) => visibleCells[cell.y * sectorMap.width + cell.x] === true).map((cell) => cell.path).join(' ')
+    : terrainPath, [visibleCells, floor, terrainPath]);
   return <Panel className={`vi-minimap ${collapsed ? 'is-collapsed' : ''}`}>
     <header><strong>{t('minimap')}</strong><button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></header>
     {!collapsed && <button className="vi-minimap__pan" aria-label={t('minimapPan')} onClick={(event) => {
@@ -130,7 +135,7 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
       <rect className="map-boundary" x="4" y="4" width="172" height="172" />
       {/* Batch terrain into two paths so every server view does not reconcile thousands of SVG elements. */}
       <path d={terrainPath} fill="#34587a" />
-      <path d={view.visibleCells ? floor.filter(seen).map((cell) => cell.path).join(' ') : terrainPath} fill="#5b95c4" />
+      <path d={seenPath} fill="#5b95c4" />
       {[...(view.chart?.nodes??[]),...(view.chart?.guardians??[])].map((cell,index)=>{
         const point=miniPoint(cell.x,cell.y);return <circle key={`chart-${index}`} className="map-chart-marker" cx={point.x} cy={point.y} r="2.4" fill="none" stroke="#b5c4d1" opacity=".65"/>;
       })}
@@ -146,7 +151,13 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
           fill={squad.owner === 'neutral' ? OWNER_FILL.neutral : undefined} />;
       })}
       {route && <circle className="map-destination" cx={miniPoint(route.destination.x, route.destination.y).x} cy={miniPoint(route.destination.x, route.destination.y).y} r="3" />}
-      {cameraView && <rect className="map-camera" data-iso-width={ISO_WORLD_WIDTH} data-iso-height={ISO_WORLD_HEIGHT} data-world-x={cameraView.worldX} data-world-y={cameraView.worldY} data-zoom={cameraView.zoom}
+      {cameraView && <rect className="map-camera"
+        data-iso-width={world.width} data-iso-height={world.height}
+        data-world-origin-x={world.x} data-world-origin-y={world.y}
+        data-tile-origin-x={ISO_ORIGIN_X} data-tile-origin-y={ISO_ORIGIN_Y}
+        data-map-width={sectorMap.width} data-map-height={sectorMap.height}
+        data-view-yaw={VIEW_YAW_RADIANS}
+        data-world-x={cameraView.worldX} data-world-y={cameraView.worldY} data-zoom={cameraView.zoom}
         x={MINIMAP_OFFSET.x + cameraView.worldX * MINIMAP_SCALE} y={MINIMAP_OFFSET.y + cameraView.worldY * MINIMAP_SCALE}
         width={cameraView.width * ISO_WORLD_WIDTH * MINIMAP_SCALE} height={cameraView.height * ISO_WORLD_HEIGHT * MINIMAP_SCALE} />}
     </svg></button>}

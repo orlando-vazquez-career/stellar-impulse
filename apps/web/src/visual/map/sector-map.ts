@@ -1,15 +1,19 @@
 import { findTiledPath, TRAINING_MAPS, type TrainingMapId } from '@impulso/sim';
+import { parseTiledTsx } from '../../../../../packages/sim/src/mapas/tsx-tileset';
 import sectorSource from '../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/sector-01.tmj?raw';
 import espiralSource from '../../../../../packages/sim/src/tiled-maps/espiral-estelar/espiral-estelar.json?raw';
 
 export type { TrainingMapId } from '@impulso/sim';
 
-interface TiledObject { gid?: number; x: number; y: number; width: number; height: number; visible?: boolean }
+interface TiledObject { name?: string; gid?: number; x: number; y: number; width: number; height: number; visible?: boolean }
 interface TileLayer { name: string; type?: string; data: number[]; visible: boolean; objects?: TiledObject[] }
-interface TilesetTile { id: number; image?: string; imagewidth?: number; imageheight?: number }
+interface TilesetTile {
+  id: number; image?: string; imagewidth?: number; imageheight?: number;
+  properties?: { name: string; value: unknown }[]; animation?: { tileid: number; duration: number }[];
+}
 interface Tileset {
   firstgid: number; columns: number; tilewidth: number; tileheight: number; image?: string; name?: string;
-  tiles?: TilesetTile[]; tileoffset?: { x: number; y: number };
+  source?: string; tiles?: TilesetTile[]; tileoffset?: { x: number; y: number };
 }
 interface TiledSector {
   orientation: string;
@@ -23,11 +27,23 @@ export type { TiledObject, TileLayer, Tileset, TilesetTile, TiledSector };
 /** Image files referenced by each map's tilesets, resolved by file name. */
 const IMAGE_URLS: Record<TrainingMapId, Record<string, string>> = {
   'sector-01': byFileName(import.meta.glob('../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/*.png', { eager: true, query: '?url', import: 'default' })),
-  espiral: byFileName(import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar/tilesets/img/*.png', { eager: true, query: '?url', import: 'default' })),
+  espiral: byFileName({
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar/tilesets/img/*.png', { eager: true, query: '?url', import: 'default' }),
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar/assets-externos/sprites/*.png', { eager: true, query: '?url', import: 'default' }),
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar/*.png', { eager: true, query: '?url', import: 'default' }),
+  }),
 };
 const SOURCES: Record<TrainingMapId, string> = { 'sector-01': sectorSource, espiral: espiralSource };
+const ESPIRAL_TSX = import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar/**/*.tsx', {
+  eager: true, query: '?raw', import: 'default',
+}) as Record<string, string>;
 /** Tile layers that carry rules for the server, not art. */
-export const HIDDEN_LAYERS = new Set(['logica']);
+export const HIDDEN_LAYERS = new Set(['logica', 'altura']);
+export const DEFAULT_PLAYABLE_MAP: TrainingMapId = 'espiral';
+const MAP_SOURCE_FILE: Record<TrainingMapId, string> = {
+  espiral: 'espiral-estelar.json',
+  'sector-01': 'sector-01.tmj',
+};
 
 function byFileName(files: Record<string, unknown>): Record<string, string> {
   return Object.fromEntries(Object.entries(files).map(([path, url]) => [path.split('/').pop()!, String(url)]));
@@ -37,10 +53,10 @@ export const TILE_WIDTH = 64;
 export const TILE_HEIGHT = 32;
 export const MAP_ORIGIN_Y = 64;
 
-// Live bindings: every importer sees the map chosen by selectMap(). Sector 01 until a match picks one.
-export let activeMapId: TrainingMapId = 'sector-01';
-export let sectorMap = JSON.parse(sectorSource) as TiledSector;
-export let sectorSurface = TRAINING_MAPS['sector-01'];
+// Live bindings: every importer sees the map chosen by selectMap(). Espiral Estelar until a match picks another.
+export let activeMapId: TrainingMapId = DEFAULT_PLAYABLE_MAP;
+export let sectorMap = readTiledMap(SOURCES[DEFAULT_PLAYABLE_MAP], DEFAULT_PLAYABLE_MAP);
+export let sectorSurface = TRAINING_MAPS[DEFAULT_PLAYABLE_MAP];
 export let MAP_ORIGIN_X = sectorMap.height * TILE_WIDTH / 2;
 export let ISO_WORLD_WIDTH = sectorMap.width * TILE_WIDTH;
 export let ISO_WORLD_HEIGHT = (sectorMap.width + sectorMap.height) * TILE_HEIGHT / 2 + MAP_ORIGIN_Y + 48;
@@ -49,7 +65,7 @@ export let ISO_WORLD_HEIGHT = (sectorMap.width + sectorMap.height) * TILE_HEIGHT
 export function selectMap(id: TrainingMapId): void {
   if (id === activeMapId) return;
   activeMapId = id;
-  sectorMap = JSON.parse(SOURCES[id]) as TiledSector;
+  sectorMap = readTiledMap(SOURCES[id], id);
   sectorSurface = TRAINING_MAPS[id];
   MAP_ORIGIN_X = sectorMap.height * TILE_WIDTH / 2;
   ISO_WORLD_WIDTH = sectorMap.width * TILE_WIDTH;
@@ -60,6 +76,10 @@ export function selectMap(id: TrainingMapId): void {
 export function mapImageUrl(image: string | undefined): string | null {
   if (!image) return null;
   return IMAGE_URLS[activeMapId][image.split('/').pop()!] ?? null;
+}
+
+export function activeMapSourceFile(): string {
+  return MAP_SOURCE_FILE[activeMapId];
 }
 
 export function cellToPixel(cell: { x: number; y: number }) {
@@ -84,6 +104,34 @@ export function routeAcrossSector(start: { x: number; y: number }, target: { x: 
   }
   const result = findTiledPath({ ...sectorSurface, walkable }, start, target);
   return result.status === 'found' ? [start, ...result.path] : [];
+}
+
+function readTiledMap(raw: string, mapId: TrainingMapId): TiledSector {
+  const map = JSON.parse(raw) as TiledSector;
+  if (mapId !== 'espiral') return map;
+  return {
+    ...map,
+    tilesets: map.tilesets.map((tileset) => {
+      if (!tileset.source) return tileset;
+      const xml = tsxXml(tileset.source);
+      if (!xml) return tileset;
+      return parseTiledTsx({
+        xml,
+        firstgid: tileset.firstgid,
+        tsxPathFromMap: tileset.source.replaceAll('\\', '/'),
+      });
+    }),
+  };
+}
+
+function tsxXml(source: string): string | undefined {
+  const needle = source.replaceAll('\\', '/');
+  const matches = Object.entries(ESPIRAL_TSX).filter(([path]) => path.replaceAll('\\', '/').endsWith(needle));
+  const preferred = matches.find(([path]) => {
+    const normalized = path.replaceAll('\\', '/');
+    return normalized.endsWith(`/espiral-estelar/${needle}`);
+  });
+  return (preferred ?? matches[0])?.[1];
 }
 
 type Point = { x: number; y: number };

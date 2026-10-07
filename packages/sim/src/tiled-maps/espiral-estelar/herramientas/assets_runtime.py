@@ -78,7 +78,15 @@ def vision_brush():
     return to_image(np.ones(alpha.shape + (3,)), alpha)
 
 
+from assets_obstaculos import (  # noqa: E402
+    SHOCKWAVE_FRAMES, SHOCKWAVE_SIZE, drone, drone_shadow, shockwave_sheet, stardust_particle,
+)
+
 RUNTIME_ASSETS = {
+    "onda_portal.png": shockwave_sheet,
+    "polvo_estelar.png": stardust_particle,
+    "dron.png": drone,
+    "dron_sombra.png": drone_shadow,
     "portal_apertura.png": portal_opening_sheet,
     "portal_activo.png": portal_active_sheet,
     "niebla.png": fog_texture,
@@ -92,5 +100,8 @@ RUNTIME_ATLAS = {
     "portal_activo": {"image": "portal_activo.png", "frameWidth": PORTAL_SIZE, "frameHeight": PORTAL_SIZE,
                       "frames": ACTIVE_FRAMES, "frameRate": 12, "repeat": -1},
     "origin": {"x": 0.5, "y": (PORTAL_SIZE - 34) / PORTAL_SIZE},
+    "onda_portal": {"image": "onda_portal.png", "frameWidth": SHOCKWAVE_SIZE, "frameHeight": SHOCKWAVE_SIZE // 2,
+                    "frames": SHOCKWAVE_FRAMES, "frameRate": 14, "repeat": 0},
+    "dron": {"image": "dron.png", "shadow": "dron_sombra.png", "liftPx": 14},
     "pincel_vision": {"image": "pincel_vision.png", "originX": 0.5, "originY": BRUSH_GROUND_Y / VISION_BRUSH_HEIGHT},
 }
