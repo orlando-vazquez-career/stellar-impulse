@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { GlitchPanel } from './GlitchPanel';
 import { LoginForm } from './LoginForm';
 import { initialLoginUi, reduceLoginUi } from './login-state';
@@ -45,6 +45,18 @@ export function LoginScreen(props: LoginScreenProps) {
   } = props;
   const canvas = useRef<HTMLCanvasElement>(null);
   const [ui, dispatch] = useReducer(reduceLoginUi, undefined, initialLoginUi);
+  const [glitchTrigger, setGlitchTrigger] = useState(0);
+
+  const triggerGlitch = () => setGlitchTrigger((count) => count + 1);
+
+  // Si notice cambia a un mensaje de error (fallo de contraseña o red), hacer vibrar el panel
+  const prevNoticeRef = useRef(notice);
+  useEffect(() => {
+    if (notice && notice !== prevNoticeRef.current) {
+      triggerGlitch();
+    }
+    prevNoticeRef.current = notice;
+  }, [notice]);
 
   useEffect(() => {
     const element = canvas.current;
@@ -86,12 +98,13 @@ export function LoginScreen(props: LoginScreenProps) {
         <LanguageToggle />
       </header>
       <div className="li-panel-wrap">
-        <GlitchPanel>
+        <GlitchPanel trigger={glitchTrigger}>
           <LoginForm
             alias={alias}
             onAliasChange={onAliasChange}
             onContinueGuest={onContinueGuest}
             onLogin={onLogin}
+            onLoginError={triggerGlitch}
             busy={busy}
             notice={notice}
             ui={ui}

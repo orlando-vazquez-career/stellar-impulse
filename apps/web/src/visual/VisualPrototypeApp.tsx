@@ -118,12 +118,19 @@ function VisualPrototypeContent() {
   useEffect(() => {
     const player = new MusicPlayer(loadVisualPreferences().audio);
     music.current = player;
+    player.resume();
     const wake = () => player.resume();
     window.addEventListener('pointerdown', wake);
     window.addEventListener('keydown', wake);
+    window.addEventListener('click', wake);
+    window.addEventListener('touchstart', wake);
+    window.addEventListener('focusin', wake);
     return () => {
       window.removeEventListener('pointerdown', wake);
       window.removeEventListener('keydown', wake);
+      window.removeEventListener('click', wake);
+      window.removeEventListener('touchstart', wake);
+      window.removeEventListener('focusin', wake);
       player.dispose();
       music.current = null;
     };

@@ -32,6 +32,7 @@ export function AccessScreen({ onContinue, onCreateTraining, onJoinRoom, onSigne
     } catch (error) {
       setNotice(error instanceof AuthRequestError && (error.status === 400 || error.status === 401)
         ? t('accountInvalid') : t('accountUnavailable'));
+      throw error;
     } finally { setBusy(false); }
   }
 
