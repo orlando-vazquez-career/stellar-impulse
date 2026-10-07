@@ -115,6 +115,15 @@ export function diffViews(previous: PlayerView | null, next: PlayerView): Gamepl
   return events;
 }
 
+/** The side taking a node from its owner: whoever is further along among those that do not hold it. */
+export function nodeCapture(node: PlayerView['nodes'][number], captureTicks: number,
+  ownerOf: (ownerId: string) => SquadOwner): { capture?: { by: SquadOwner; fraction: number } } {
+  const leading = (['p1', 'p2'] as const).filter((id) => id !== node.ownerId)
+    .map((id) => ({ by: ownerOf(id), fraction: Math.min(1, node.fraction?.[id] ?? node.progress[id] / captureTicks) }))
+    .filter((side) => side.fraction > 0).sort((a, b) => b.fraction - a.fraction)[0];
+  return leading ? { capture: leading } : {};
+}
+
 function coreState(view: PlayerView): CoreState {
   if (!view.core.open) return 'locked';
   const mine = view.core.progress[view.playerId];
@@ -247,6 +256,8 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       nodes: view.nodes.map((node) => ({
         id: node.id, kind: node.kind, x: node.x, y: node.y,
         owner: node.ownerId === null ? null : ownerOf(node.ownerId),
+        ...(node.radius !== undefined ? { radius: node.radius } : {}),
+        ...nodeCapture(node, view.rules.nodeCaptureTicks, ownerOf),
         ...(node.activeAt !== undefined ? { stabilizingSeconds: Math.ceil((node.activeAt - view.tick) / TICKS_PER_SECOND) } : {}),
       })),
       core: {

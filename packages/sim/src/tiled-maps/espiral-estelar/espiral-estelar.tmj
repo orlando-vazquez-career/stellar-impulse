@@ -1697,6 +1697,11 @@
                          "name":"index",
                          "type":"int",
                          "value":1
+                        }, 
+                        {
+                         "name":"radio",
+                         "type":"int",
+                         "value":3
                         }],
                  "rotation":0,
                  "type":"pronexo",
@@ -1716,6 +1721,11 @@
                          "name":"index",
                          "type":"int",
                          "value":2
+                        }, 
+                        {
+                         "name":"radio",
+                         "type":"int",
+                         "value":3
                         }],
                  "rotation":0,
                  "type":"pronexo",
@@ -1733,6 +1743,11 @@
                  "properties":[
                         {
                          "name":"index",
+                         "type":"int",
+                         "value":3
+                        }, 
+                        {
+                         "name":"radio",
                          "type":"int",
                          "value":3
                         }],
@@ -1754,6 +1769,11 @@
                          "name":"index",
                          "type":"int",
                          "value":4
+                        }, 
+                        {
+                         "name":"radio",
+                         "type":"int",
+                         "value":3
                         }],
                  "rotation":0,
                  "type":"pronexo",
