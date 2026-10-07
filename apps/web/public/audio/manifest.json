@@ -1,7 +1,7 @@
 {
   "music": {
-    "menu": null,
-    "match": null
+    "menu": "music/Gravity_s_Final_Path.mp3",
+    "match": "music/Iron_Vanguard.mp3"
   },
   "sfx": {
     "explosion-small": null,

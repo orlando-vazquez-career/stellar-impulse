@@ -21,14 +21,20 @@ const SCALE = [0, 2, 3, 5, 7, 8, 10, 12, 14, 15, 17, 19];
  * A recorded loop can replace a track through the `music` slots of public/audio/manifest.json.
  */
 export class MusicPlayer {
+  private static readonly CROSSFADE_DURATION = 1.2;
+  private static readonly TAB_FADE_DURATION = 1.2;
+
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
+  private visibilityGain: GainNode | null = null;
   private track: MusicTrack | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private nextBeat = 0;
   private beat = 0;
   private recorded = new Map<MusicTrack, AudioBuffer>();
-  private loop: AudioBufferSourceNode | null = null;
+  private activeSource: AudioBufferSourceNode | null = null;
+  private activeGain: GainNode | null = null;
+  private synthGain: GainNode | null = null;
   private seed = 1;
 
   constructor(private audio: VisualPreferences['audio'], manifestUrl = '/audio/manifest.json') {
@@ -36,12 +42,12 @@ export class MusicPlayer {
   }
 
   private get volume(): number {
-    return this.audio.muted ? 0 : (this.audio.master / 100) * (this.audio.music / 100) * 0.35;
+    return this.audio.muted ? 0 : (this.audio.master / 100) * (this.audio.music / 100);
   }
 
   setPreferences(audio: VisualPreferences['audio']) {
     this.audio = audio;
-    if (this.master && this.context) this.master.gain.setTargetAtTime(this.volume, this.context.currentTime, 0.3);
+    if (this.master && this.context) this.master.gain.setTargetAtTime(this.volume, this.context.currentTime, 0.1);
   }
 
   private ensureContext(): AudioContext | null {
@@ -51,9 +57,36 @@ export class MusicPlayer {
       this.master = this.context.createGain();
       this.master.gain.value = this.volume;
       this.master.connect(this.context.destination);
+
+      this.visibilityGain = this.context.createGain();
+      this.visibilityGain.gain.value = (typeof document !== 'undefined' && document.hidden) ? 0.0001 : 1.0;
+      this.visibilityGain.connect(this.master);
+
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', this.handleVisibilityChange);
+      }
     }
     return this.context;
   }
+
+  private handleVisibilityChange = () => {
+    if (!this.context || !this.visibilityGain) return;
+    const now = this.context.currentTime;
+    const currentVal = Math.max(0.0001, this.visibilityGain.gain.value);
+    this.visibilityGain.gain.cancelScheduledValues(now);
+    this.visibilityGain.gain.setValueAtTime(currentVal, now);
+
+    if (document.hidden) {
+      // Fade out smoothly like Spotify when leaving tab
+      this.visibilityGain.gain.linearRampToValueAtTime(0.0001, now + MusicPlayer.TAB_FADE_DURATION);
+    } else {
+      // Fade back in smoothly when returning to tab
+      this.visibilityGain.gain.linearRampToValueAtTime(1.0, now + MusicPlayer.TAB_FADE_DURATION);
+      if (this.context.state === 'suspended') {
+        void this.context.resume();
+      }
+    }
+  };
 
   private async loadRecorded(manifestUrl: string) {
     try {
@@ -76,30 +109,92 @@ export class MusicPlayer {
   }
 
   play(track: MusicTrack, force = false) {
-    if (this.track === track && !force) return;
-    this.stopTrack();
+    if (this.track === track && !force && (this.activeSource || this.timer)) return;
+    this.stopTrack(true);
     this.track = track;
     const ctx = this.ensureContext();
-    if (!ctx || !this.master) return;
+    if (!ctx || !this.visibilityGain) return;
+
     const recorded = this.recorded.get(track);
+    const now = ctx.currentTime;
+
     if (recorded) {
-      this.loop = ctx.createBufferSource();
-      this.loop.buffer = recorded;
-      this.loop.loop = true;
-      this.loop.connect(this.master);
-      this.loop.start();
+      const trackGain = ctx.createGain();
+      trackGain.gain.setValueAtTime(0.0001, now);
+      trackGain.gain.linearRampToValueAtTime(1.0, now + MusicPlayer.CROSSFADE_DURATION);
+      trackGain.connect(this.visibilityGain);
+
+      const source = ctx.createBufferSource();
+      source.buffer = recorded;
+      source.loop = true;
+      source.connect(trackGain);
+      source.start();
+
+      this.activeSource = source;
+      this.activeGain = trackGain;
       return;
     }
+
+    const synthGain = ctx.createGain();
+    synthGain.gain.setValueAtTime(0.0001, now);
+    synthGain.gain.linearRampToValueAtTime(0.4, now + MusicPlayer.CROSSFADE_DURATION);
+    synthGain.connect(this.visibilityGain);
+    this.synthGain = synthGain;
+
     this.beat = 0;
     this.nextBeat = ctx.currentTime + 0.1;
     this.timer = setInterval(() => this.schedule(), 100);
   }
 
-  private stopTrack() {
+  private stopTrack(fade = true) {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    this.loop?.stop();
-    this.loop = null;
+
+    const ctx = this.context;
+    const now = ctx?.currentTime ?? 0;
+
+    const source = this.activeSource;
+    const gain = this.activeGain;
+    this.activeSource = null;
+    this.activeGain = null;
+
+    if (source && gain && ctx) {
+      if (fade) {
+        const cur = Math.max(0.0001, gain.gain.value);
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(cur, now);
+        gain.gain.linearRampToValueAtTime(0.0001, now + MusicPlayer.CROSSFADE_DURATION);
+        setTimeout(() => {
+          try {
+            source.stop();
+            source.disconnect();
+            gain.disconnect();
+          } catch { /* already stopped */ }
+        }, (MusicPlayer.CROSSFADE_DURATION + 0.1) * 1000);
+      } else {
+        try {
+          source.stop();
+          source.disconnect();
+          gain.disconnect();
+        } catch { /* ignored */ }
+      }
+    }
+
+    const synth = this.synthGain;
+    this.synthGain = null;
+    if (synth && ctx) {
+      if (fade) {
+        const cur = Math.max(0.0001, synth.gain.value);
+        synth.gain.cancelScheduledValues(now);
+        synth.gain.setValueAtTime(cur, now);
+        synth.gain.linearRampToValueAtTime(0.0001, now + MusicPlayer.CROSSFADE_DURATION);
+        setTimeout(() => {
+          try { synth.disconnect(); } catch { /* ignored */ }
+        }, (MusicPlayer.CROSSFADE_DURATION + 0.1) * 1000);
+      } else {
+        try { synth.disconnect(); } catch { /* ignored */ }
+      }
+    }
   }
 
   /** Deterministic pseudo-random so the melody varies without sounding chaotic. */
@@ -151,7 +246,8 @@ export class MusicPlayer {
       amp.connect(filter);
       out = filter;
     }
-    out.connect(this.master!);
+    const dest = this.synthGain || this.visibilityGain || this.master!;
+    out.connect(dest);
     osc.start(at);
     osc.stop(at + duration + 0.1);
   }
@@ -182,14 +278,19 @@ export class MusicPlayer {
     filter.type = 'highpass';
     filter.frequency.value = 6000;
     amp.gain.value = 0.05;
-    source.connect(filter).connect(amp).connect(this.master!);
+    const dest = this.synthGain || this.visibilityGain || this.master!;
+    source.connect(filter).connect(amp).connect(dest);
     source.start(at);
   }
 
   dispose() {
-    this.stopTrack();
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    this.stopTrack(false);
     void this.context?.close();
     this.context = null;
     this.master = null;
+    this.visibilityGain = null;
   }
 }

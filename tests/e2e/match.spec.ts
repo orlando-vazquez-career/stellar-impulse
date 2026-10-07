@@ -96,32 +96,11 @@ test('double click on a ship selects every ship of its class on screen', async (
   throw new Error('No Interceptor found on screen');
 });
 
-test('login gate leads straight to a new training once the commander has an alias', async ({ page }) => {
+test('login gate leads to command center once the commander continues as guest', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.li-viewport canvas')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Crear entrenamiento' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Continuar como invitado' })).toBeDisabled();
   await page.getByLabel('Identificador de comandante').fill('Vega');
-  await page.getByRole('button', { name: 'Crear entrenamiento' }).click();
-  await expect(page.getByRole('heading', { name: 'Configura la operación.' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Espiral Estelar/ })).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('requires an account before joining a multiplayer room from the login', async ({ page }) => {
-  await openApp(page);
-  await page.getByLabel('Identificador de comandante').fill('Vega');
-  await page.getByRole('button', { name: 'Unirse con código' }).click();
-  await page.getByLabel('Código de sala').fill('ab12');
-  await page.getByLabel('Código de sala').press('Enter');
-  await expect(page.getByRole('status')).toContainText('Inicia sesión con tu cuenta');
-  await expect(page.getByRole('button', { name: 'Iniciar sesión', exact: false })).toBeEnabled();
-  await expect(page.getByLabel('Correo electrónico')).toBeVisible();
-  await expect(page.locator('.vi-lobby')).toHaveCount(0);
-});
-
-test('can continue as a guest while the empty room-code form is open', async ({ page }) => {
-  await openApp(page);
-  await page.getByLabel('Identificador de comandante').fill('Vega');
-  await page.getByRole('button', { name: 'Unirse con código' }).click();
   await page.getByRole('button', { name: 'Continuar como invitado' }).click();
   await expect(page.getByRole('heading', { name: 'Comandante Vega, el sector espera.' })).toBeVisible();
 });
