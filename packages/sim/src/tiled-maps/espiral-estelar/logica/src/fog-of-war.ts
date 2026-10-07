@@ -17,8 +17,9 @@ const MIN_VISION_RADIUS = 1;
 const ADJACENT_SQUARED_DISTANCE = 2;
 
 export function effectiveVisionRadius(map: GameMap, observer: Observer, tick: number): number {
+  const { visionPercent, visionRadiusOverride } = TERRAIN_RULES[terrainAt(map, observer.tile, tick)];
+  if (visionRadiusOverride !== undefined) return visionRadiusOverride;
   if (observer.seesThroughNebula) return observer.visionRadius;
-  const { visionPercent } = TERRAIN_RULES[terrainAt(map, observer.tile, tick)];
   return Math.max(MIN_VISION_RADIUS, Math.floor((observer.visionRadius * visionPercent) / 100));
 }
 

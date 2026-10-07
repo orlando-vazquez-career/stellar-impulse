@@ -17,8 +17,7 @@ const DIFFICULTIES: { value: RivalDifficulty; label: string; hint: string }[] = 
   { value: 'hard', label: 'Difícil', hint: 'Toma dos nodos a la vez y asalta los tuyos.' },
 ];
 const MAPS: { value: TrainingMapId; label: string; hint: string }[] = [
-  { value: 'espiral', label: 'Espiral Estelar', hint: '58×58. Carriles de impulso, nebulosas y núcleo con escudo.' },
-  { value: 'sector-01', label: 'Sector 01', hint: '29×29. Mapa compacto con rampas y meseta central.' },
+  { value: 'espiral', label: 'Espiral Estelar', hint: '96×96. Carriles de impulso, nebulosas y núcleo con escudo.' },
 ];
 type FleetSide = 'blue' | 'red';
 

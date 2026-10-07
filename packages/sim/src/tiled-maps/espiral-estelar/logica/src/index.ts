@@ -9,3 +9,5 @@ export * from './occupancy';
 export * from './pathfinding';
 export * from './terrain';
 export * from './tiled-loader';
+export * from './watchtowers';
+export * from './collision';

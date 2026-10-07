@@ -29,7 +29,10 @@ export function registerPortalAnimations(scene: Phaser.Scene): void {
   });
 }
 
-/** Muestra un extremo de agujero de gusano y lo sincroniza con la fase que manda el servidor. */
+/**
+ * Muestra un extremo de agujero de gusano y lo sincroniza con la fase que manda el servidor.
+ * La fase 'warning' la maneja PortalWarning (onda expansiva y texto); aquí el portal sigue oculto.
+ */
 export class PortalView {
   private readonly sprite: Phaser.GameObjects.Sprite;
   private currentPhase: PortalPhase | undefined;

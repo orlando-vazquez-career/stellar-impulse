@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page, type APIRequestContext } from '@playwright/test';
+import { gamePoint } from './helpers';
 
 async function signIn(page: Page, request: APIRequestContext, name: string) {
   const email = `multiplayer-${randomUUID()}@example.com`;
@@ -16,16 +17,6 @@ async function signIn(page: Page, request: APIRequestContext, name: string) {
   await expect(page.getByRole('heading', { name: `Comandante ${name}, el sector espera.` })).toBeVisible();
 }
 
-async function gamePoint(page: Page, x: number, y: number) {
-  const camera = page.locator('.map-camera');
-  const bounds = await page.locator('.vi-phaser canvas').boundingBox();
-  if (!bounds) throw new Error('No playable canvas');
-  const worldX = Number(await camera.getAttribute('data-world-x'));
-  const worldY = Number(await camera.getAttribute('data-world-y'));
-  const zoom = Number(await camera.getAttribute('data-zoom'));
-  return { x: bounds.x + (928 + (x - y) * 32 - worldX) * zoom,
-    y: bounds.y + (64 + (x + y) * 16 - worldY) * zoom };
-}
 
 async function moveOwnShip(page: Page, x: number, y: number, targetX: number, targetY: number) {
   const ship = await gamePoint(page, x, y);

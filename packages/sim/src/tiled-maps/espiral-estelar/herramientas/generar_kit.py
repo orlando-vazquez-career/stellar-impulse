@@ -28,6 +28,18 @@ OBJECT_CLASSES = [
     ("recurso", "#F0A030", [("amount", "int", 300)]),
     ("agujero", "#3CC870", [("pairId", "string", "A"), ("cycleSeconds", "int", 90), ("openSeconds", "int", 30)]),
     ("asteroid_gate", "#A07850", [("cycleSeconds", "int", 60), ("openSeconds", "int", 20)]),
+    ("CRITTER_SPAWN", "#45F0DF", [("entity_type", "string", "maintenance_drone"), ("max_units", "int", 3),
+                                  ("flee_distance", "float", 150.0), ("flee_threshold_units", "int", 5),
+                                  ("fow_sensitive", "bool", True), ("sprite_sheet", "string", "critter_drone.png")]),
+    ("OBSTACLE_RING", "#72C1E8", [("collision_type", "string", "HEAVY_ONLY"), ("height_level", "int", -30),
+                                  ("rotation_speed", "int", 12), ("blocks_vision", "bool", False),
+                                  ("damage_on_collision", "int", 0)]),
+    ("ENVIRONMENTAL_HAZARD", "#A855F7", [("collision_type", "string", "NONE"), ("height_level", "int", -60),
+                                         ("vision_modifier", "string", "REDUCE_TO_1_TILE"),
+                                         ("disable_radar", "bool", True), ("shield_drain_per_sec", "float", 5.0),
+                                         ("blocks_vision", "bool", True)]),
+    ("SOLID_BLOCKER", "#9DA8BE", [("collision_type", "string", "ALL_UNITS_BLOCKED"), ("height_level", "int", -90),
+                                  ("blocks_vision", "bool", True), ("indestructible", "bool", True)]),
 ]
 
 

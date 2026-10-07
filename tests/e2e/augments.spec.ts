@@ -19,6 +19,7 @@ test('chooses a free opening card, rerolls once, and chooses gold during a runni
   await page.screenshot({path:'test-results/augment-opening.png'});
   const chosen=await opening.locator('.augment-card').first().getAttribute('aria-label');
   await opening.locator('.augment-card').first().click();
+  await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-tick', /^[1-9]\d*$/, { timeout: 35000 });
   await expect(opening).toHaveCount(0);
   await expect(page.locator('.augment-strip').getByLabel(chosen!,{exact:true})).toBeVisible();
   await expect(page.locator('.augment-strip__row').nth(1).locator('.augment-badge')).toHaveCount(1);

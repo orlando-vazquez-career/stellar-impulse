@@ -1,7 +1,8 @@
+import { terrainForZone, type CollisionType, type ZoneProperties } from './collision';
 import { cycleFromSeconds } from './cycle';
 import { createGameMap, type AsteroidGate, type GameMap, type MapMarker, type MarkerValue, type WormholeNetwork } from './game-map';
 import type { TileCoord } from './grid';
-import { isTerrain, type Terrain } from './terrain';
+import { isTerrain, TERRAINS, type Terrain } from './terrain';
 
 interface TiledProperty { readonly name: string; readonly value: MarkerValue }
 interface TiledTile { readonly id: number; readonly properties?: readonly TiledProperty[] }
@@ -34,12 +35,17 @@ export interface TiledMapJson {
 
 export const LOGIC_LAYER = 'logica';
 export const OBJECT_LAYER = 'objetos';
+/** Capa de objetos interactivos de la especificación (anillos, tormentas, planetoides). Es opcional. */
+export const INTERACTIVE_LAYER = 'Objects_Interactive';
+const ZONE_KINDS = new Set(['OBSTACLE_RING', 'ENVIRONMENTAL_HAZARD', 'SOLID_BLOCKER']);
+const RING_INNER_RATIO = 0.55;
 const FLIP_FLAGS_MASK = 0x1fffffff;
 const DEFAULT_CYCLE_SECONDS = 90;
 const DEFAULT_OPEN_SECONDS = 30;
+const GATE_KINDS = new Set(['asteroid_gate', 'valla_laser']);
 
 export function loadTiledMap(json: TiledMapJson, ticksPerSecond: number): GameMap {
-  const objects = findLayer(json, OBJECT_LAYER).objects ?? [];
+  const objects = [OBJECT_LAYER, INTERACTIVE_LAYER].flatMap((name) => optionalLayer(json, name)?.objects ?? []);
   const toTile = (x: number, y: number): TileCoord => ({
     x: Math.floor(x / json.tileheight),
     y: Math.floor(y / json.tileheight),
@@ -47,7 +53,7 @@ export function loadTiledMap(json: TiledMapJson, ticksPerSecond: number): GameMa
   return createGameMap({
     width: json.width,
     height: json.height,
-    terrain: readTerrain(json),
+    terrain: stampZones(readTerrain(json), objects, json),
     wormholes: readWormholes(objects, toTile, ticksPerSecond),
     gates: readGates(objects, json.tileheight, ticksPerSecond),
     markers: readMarkers(objects, toTile),
@@ -60,6 +66,50 @@ function findLayer(json: TiledMapJson, name: string): TiledLayer {
   return layer;
 }
 
+function optionalLayer(json: TiledMapJson, name: string): TiledLayer | undefined {
+  return json.layers.find((candidate) => candidate.name === name);
+}
+
+/** Aplica sobre la capa lógica los obstáculos definidos como objetos (anillo de hielo, tormenta, planetoide). */
+function stampZones(terrain: Terrain[], objects: readonly TiledObject[], json: TiledMapJson): Terrain[] {
+  const stamped = [...terrain];
+  for (const zone of objects.filter((object) => ZONE_KINDS.has(kindOf(object)))) {
+    const zoneTerrain = terrainForZone(zonePropertiesOf(zone));
+    if (!zoneTerrain) continue;
+    for (const tile of zoneTiles(zone, json.tileheight)) {
+      if (tile.x >= 0 && tile.y >= 0 && tile.x < json.width && tile.y < json.height) {
+        stamped[tile.y * json.width + tile.x] = zoneTerrain;
+      }
+    }
+  }
+  return stamped;
+}
+
+function zonePropertiesOf(object: TiledObject): ZoneProperties {
+  const value = (name: string) => propertyOf(object.properties, name);
+  const collisionType = value('collision_type');
+  return {
+    ...(isCollisionType(collisionType) ? { collision_type: collisionType } : {}),
+    blocks_vision: value('blocks_vision') === true,
+    vision_modifier: String(value('vision_modifier') ?? ''),
+  };
+}
+
+function isCollisionType(value: unknown): value is CollisionType {
+  return value === 'NONE' || value === 'HEAVY_ONLY' || value === 'ALL_UNITS_BLOCKED';
+}
+
+/** Un anillo solo ocupa su borde: el centro queda libre para que pase una nave. */
+function zoneTiles(object: TiledObject, tileSize: number): TileCoord[] {
+  const tiles = tilesCoveredBy(object, tileSize);
+  if (kindOf(object) !== 'OBSTACLE_RING') return tiles;
+  const centerX = (object.x + object.width / 2) / tileSize - 0.5;
+  const centerY = (object.y + object.height / 2) / tileSize - 0.5;
+  const radiusX = object.width / tileSize / 2;
+  const radiusY = object.height / tileSize / 2;
+  return tiles.filter((tile) => Math.hypot((tile.x - centerX) / radiusX, (tile.y - centerY) / radiusY) >= RING_INNER_RATIO);
+}
+
 function readTerrain(json: TiledMapJson): Terrain[] {
   const terrainByGid = buildTerrainByGid(json.tilesets);
   const data = findLayer(json, LOGIC_LAYER).data ?? [];
@@ -69,7 +119,13 @@ function readTerrain(json: TiledMapJson): Terrain[] {
 function buildTerrainByGid(tilesets: readonly TiledTileset[]): Map<number, Terrain> {
   const lookup = new Map<number, Terrain>();
   for (const tileset of tilesets) {
-    if (tileset.source) throw new Error('Exporta el mapa con "Embed tilesets" activado');
+    if (tileset.source) {
+      // Tiled may keep tilesets in external .tsx files. Only the logic tileset carries terrain,
+      // and its tiles 0–7 follow TERRAINS (see tilesets/logica.tsx); the rest is artwork.
+      if (/(^|[\\/])tilesets[\\/]logica\.tsx$/.test(tileset.source))
+        TERRAINS.forEach((terrain, id) => lookup.set(tileset.firstgid + id, terrain));
+      continue;
+    }
     for (const tile of tileset.tiles ?? []) {
       const terrain = propertyOf(tile.properties, 'terrain');
       if (isTerrain(terrain)) lookup.set(tileset.firstgid + tile.id, terrain);
@@ -94,7 +150,8 @@ function kindOf(object: TiledObject): string {
 function cycleOf(object: TiledObject, ticksPerSecond: number) {
   const cycleSeconds = numberProperty(object, 'cycleSeconds', DEFAULT_CYCLE_SECONDS);
   const openSeconds = numberProperty(object, 'openSeconds', DEFAULT_OPEN_SECONDS);
-  return cycleFromSeconds(cycleSeconds, openSeconds, ticksPerSecond);
+  const warningSeconds = numberProperty(object, 'warningSeconds', 0);
+  return cycleFromSeconds(cycleSeconds, openSeconds, ticksPerSecond, warningSeconds);
 }
 
 function readWormholes(
@@ -117,7 +174,7 @@ function readWormholes(
 
 function readGates(objects: readonly TiledObject[], tileSize: number, ticksPerSecond: number): AsteroidGate[] {
   return objects
-    .filter((object) => kindOf(object) === 'asteroid_gate')
+    .filter((object) => GATE_KINDS.has(kindOf(object)))
     .map((object) => ({ tiles: tilesCoveredBy(object, tileSize), cycle: cycleOf(object, ticksPerSecond) }));
 }
 
@@ -134,7 +191,7 @@ function tilesCoveredBy(object: TiledObject, tileSize: number): TileCoord[] {
 }
 
 function readMarkers(objects: readonly TiledObject[], toTile: (x: number, y: number) => TileCoord): MapMarker[] {
-  const handledKinds = new Set(['agujero', 'asteroid_gate']);
+  const handledKinds = new Set(['agujero', ...GATE_KINDS, ...ZONE_KINDS]);
   return objects
     .filter((object) => !handledKinds.has(kindOf(object)))
     .map((object) => ({

@@ -98,6 +98,29 @@ def lane_tile(glow_color, seed):
     return to_image(rgb, diamond_mask(xs, ys).astype(float))
 
 
+def chevron_pattern(rgb, xs, ys, color_value):
+    """Flechas para el acelerador: se distinguen por forma, no solo por color."""
+    for offset in (-9, 7):
+        arm = np.abs(ys - 16) * 0.9
+        stroke = np.clip(1 - np.abs((xs - (28 + offset)) - arm) / 1.2, 0, 1) * (np.abs(ys - 16) < 7)
+        rgb += stroke[..., None] * color_value * 0.9
+    return rgb
+
+
+def dot_pattern(rgb, xs, ys, color_value):
+    """Puntos para el desacelerador."""
+    for center in ((22, 16), (32, 11), (32, 21), (42, 16)):
+        rgb += radial_glow(xs, ys, center, 2.2)[..., None] * color_value
+    return rgb
+
+
+def patterned_lane_tile(glow_color, seed, pattern):
+    xs, ys = pixel_grid(TILE_WIDTH, TILE_HEIGHT)
+    base = np.asarray(lane_tile(glow_color, seed).resize((TILE_WIDTH * SUPERSAMPLE, TILE_HEIGHT * SUPERSAMPLE)),
+                      dtype=float)[..., :3] / 255
+    return to_image(pattern(base, xs, ys, glow_color), diamond_mask(xs, ys).astype(float))
+
+
 def walkway_tile(seed):
     """Placa metálica de los caminos principales, con luces de borde ocasionales."""
     xs, ys = pixel_grid(TILE_WIDTH, TILE_HEIGHT)

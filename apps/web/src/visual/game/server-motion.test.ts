@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlayerView } from '@impulso/state';
 import { createServerGameplayAdapter } from './server-adapter';
+import { selectMap } from '../map/sector-map';
 
 const { handlers, leave } = vi.hoisted(() => ({ handlers: new Map<string, (view: PlayerView) => void>(), leave: vi.fn() }));
 vi.mock('@colyseus/sdk', () => ({ Client: class {
@@ -21,6 +22,9 @@ function view(x: number, y: number, tick: number): PlayerView {
 afterEach(() => { handlers.clear(); vi.useRealTimers(); });
 
 describe('server movement presentation', () => {
+  // These views use Sector 01 coordinates; the client predicts routes on the selected map.
+  beforeEach(() => { selectMap('sector-01'); });
+  afterEach(() => { selectMap('espiral'); });
   it('passes authoritative shots and reload through to the renderer', async () => {
     const adapter = createServerGameplayAdapter('http://localhost');
     await Promise.resolve();

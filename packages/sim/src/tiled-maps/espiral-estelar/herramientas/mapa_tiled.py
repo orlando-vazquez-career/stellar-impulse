@@ -6,14 +6,21 @@ from xml.sax.saxutils import quoteattr
 from assets import TILE_HEIGHT, TILE_WIDTH
 from diseno_espiral import MAP_SIZE
 
-TILE_LAYERS = ["fondo", "terreno-visual", "decoracion", "logica"]
-LAYER_OPACITY = {"logica": 0.45}
-GROUND_VARIANTS = {"nebulosa": ["nebulosa_1", "nebulosa_2", "nebulosa_3"], "camino": ["camino_1", "camino_2"]}
+TILE_LAYERS = ["fondo", "terreno-visual", "decoracion", "altura", "logica"]
+LAYER_OPACITY = {"logica": 0.45, "altura": 0.35}
+HIDDEN_LAYERS = {"altura"}
+GROUND_VARIANTS = {"nebulosa": ["nebulosa_1", "nebulosa_2", "nebulosa_3"], "camino": ["camino_1", "camino_2"],
+                   "espacio_profundo": ["espacio_profundo_1", "espacio_profundo_2", "espacio_profundo_3"]}
+PLATFORM_VARIANTS = ["plataforma_1", "plataforma_2", "plataforma_3"]
+PLATFORM_LIFT_TILES = 0.5
+FENCE_CYCLE = {"cycleSeconds": 45, "openSeconds": 15, "warningSeconds": 3}
+ASTEROID_GATE_CYCLE = {"cycleSeconds": 60, "openSeconds": 20, "warningSeconds": 3}
 SPACE_VARIANTS = ["espacio_1", "espacio_2", "espacio_3", "espacio_4"]
 
 # Píxeles desde el borde inferior de cada imagen hasta el punto que debe quedar sobre su casilla.
 GROUND_OFFSET_PX = {"base_jugador": 58, "base_enemiga": 58, "pilar": 24, "escudo": 29, "pronexo": 22,
-                    "agujero": 34, "recurso": 14}
+                    "agujero": 34, "recurso": 14, "estacion_rota": 52, "satelite": 26, "cristales": 22,
+                    "valla_laser_x": 16, "valla_laser_y": 16, "torre_vigilancia": 16}
 WRECK_GROUND_RATIO = 0.4
 
 
@@ -36,8 +43,14 @@ class MapBuilder:
         ground = self.layout.ground[y, x]
         if not ground:
             return 0
+        pick = (x * 7 + y * 13)
+        if ground == "plataforma":
+            return self.tilesets["plataformas"].gid(PLATFORM_VARIANTS[pick % len(PLATFORM_VARIANTS)])
         variants = GROUND_VARIANTS.get(ground, [ground])
-        return self.tilesets["suelo"].gid(variants[(x * 7 + y * 13) % len(variants)])
+        return self.tilesets["suelo"].gid(variants[pick % len(variants)])
+
+    def gid_altura(self, x, y):
+        return self.tilesets["altura"].gid("alta" if self.layout.elevation[y, x] else "normal")
 
     def gid_decoracion(self, x, y):
         variant = self.layout.rocks[y, x]
@@ -59,14 +72,21 @@ class MapBuilder:
         for name, (tx, ty) in ordered:
             width, height = tileset.sizes[name]
             offset = GROUND_OFFSET_PX.get(name, height * WRECK_GROUND_RATIO) / TILE_HEIGHT
+            offset -= PLATFORM_LIFT_TILES if self.is_elevated(tx, ty) else 0
             objects.append({"id": self.new_id(), "gid": tileset.gid(name), "name": name, "type": "",
                             "x": (tx + 0.5 + offset) * TILE_HEIGHT, "y": (ty + 0.5 + offset) * TILE_HEIGHT,
                             "width": width, "height": height, "rotation": 0, "visible": True})
         return objects
 
+    def is_elevated(self, tx, ty):
+        return bool(self.layout.elevation[round(ty), round(tx)])
+
     def marker_objects(self):
         objects = [self.point_object(marker) for marker in self.layout.markers]
-        objects += [self.gate_object(tiles) for tiles in self.layout.gates]
+        objects += [self.gate_object(run, "asteroid_gate", ASTEROID_GATE_CYCLE)
+                    for tiles in self.layout.gates for run in row_runs(tiles)]
+        objects += [self.gate_object(run, "valla_laser", FENCE_CYCLE)
+                    for _, tiles in self.layout.fences for run in row_runs(tiles)]
         return objects
 
     def point_object(self, marker):
@@ -75,10 +95,10 @@ class MapBuilder:
                 "y": (ty + 0.5) * TILE_HEIGHT, "width": 0, "height": 0, "rotation": 0, "visible": True,
                 "point": True, "properties": typed_properties(marker.properties)}
 
-    def gate_object(self, tiles):
+    def gate_object(self, tiles, kind, cycle):
         xs, ys = [x for x, _ in tiles], [y for _, y in tiles]
-        properties = typed_properties({"cycleSeconds": 60, "openSeconds": 20})
-        return {"id": self.new_id(), "name": "", "type": "asteroid_gate", "x": min(xs) * TILE_HEIGHT,
+        properties = typed_properties(cycle)
+        return {"id": self.new_id(), "name": "", "type": kind, "x": min(xs) * TILE_HEIGHT,
                 "y": min(ys) * TILE_HEIGHT, "width": (max(xs) - min(xs) + 1) * TILE_HEIGHT,
                 "height": (max(ys) - min(ys) + 1) * TILE_HEIGHT, "rotation": 0, "visible": True,
                 "properties": properties}
@@ -87,7 +107,7 @@ class MapBuilder:
 
     def build(self):
         tile_layers = [{"id": i + 1, "name": name, "type": "tilelayer", "width": MAP_SIZE, "height": MAP_SIZE,
-                        "x": 0, "y": 0, "opacity": LAYER_OPACITY.get(name, 1), "visible": True,
+                        "x": 0, "y": 0, "opacity": LAYER_OPACITY.get(name, 1), "visible": name not in HIDDEN_LAYERS,
                         "data": self.layer_gids(name)} for i, name in enumerate(TILE_LAYERS)]
         next_layer = len(TILE_LAYERS) + 1
         object_layers = [
@@ -102,6 +122,18 @@ class MapBuilder:
                 "nextlayerid": next_layer + 2, "nextobjectid": self.next_object_id, "compressionlevel": -1,
                 "layers": tile_layers + object_layers,
                 "tilesets": [dict(t.data, firstgid=t.first_gid) for t in self.tilesets.values()]}
+
+
+def row_runs(tiles):
+    """Agrupa las casillas de un paso en rectángulos de una fila, para que el objeto cubra solo esas casillas."""
+    runs, ordered = [], sorted(tiles, key=lambda tile: (tile[1], tile[0]))
+    for x, y in ordered:
+        last = runs[-1] if runs else None
+        if last and last[-1][1] == y and last[-1][0] == x - 1:
+            last.append((x, y))
+        else:
+            runs.append([(x, y)])
+    return runs
 
 
 def typed_properties(properties):
@@ -138,6 +170,7 @@ def layer_xml(layer):
     if layer["type"] == "tilelayer":
         rows = (",".join(map(str, layer["data"][y * MAP_SIZE:(y + 1) * MAP_SIZE])) for y in range(MAP_SIZE))
         opacity = f' opacity="{layer["opacity"]}"' if layer["opacity"] != 1 else ""
+        opacity += "" if layer["visible"] else ' visible="0"'
         return (f' <layer id="{layer["id"]}" name="{layer["name"]}" width="{MAP_SIZE}" height="{MAP_SIZE}"{opacity}>\n'
                 f'  <data encoding="csv">\n' + ",\n".join(rows) + "\n</data>\n </layer>\n")
     objects = "".join(object_xml(obj) for obj in layer["objects"])

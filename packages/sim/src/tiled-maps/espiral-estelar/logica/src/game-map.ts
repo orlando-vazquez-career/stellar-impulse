@@ -69,6 +69,11 @@ export function terrainAt(map: GameMap, tile: TileCoord, tick: number): Terrain 
   return gate && isOpenAt(gate.cycle, tick) ? 'empty' : baseTerrain;
 }
 
+/** Casillas que pueden cambiar con el tiempo (pasos de asteroides y vallas láser). */
+export function isTimedTile(map: GameMap, tile: TileCoord): boolean {
+  return map.gateByTile.has(tileIndex(map, tile));
+}
+
 export function canEnterTile(map: GameMap, tile: TileCoord, weight: ShipWeight, tick: number): boolean {
   return isInside(map, tile) && canWeightEnter(terrainAt(map, tile, tick), weight);
 }
