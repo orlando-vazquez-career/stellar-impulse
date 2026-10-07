@@ -14,8 +14,8 @@ test('training server remains available to two clients after the old web lobby i
         second.onMessage('view', (snapshot: PlayerView) => { clearTimeout(timeout); resolve(snapshot); });
       });
       // Espiral Estelar is the default training map.
-      expect(view.width).toBe(58);
-      expect(view.height).toBe(58);
+      expect(view.width).toBe(96);
+      expect(view.height).toBe(96);
       expect(view.playerId).toBe('p2');
     } finally {
       await second.leave();

@@ -238,6 +238,12 @@ export function playEvent(audio: MatchAudio, event: GameplayEvent, locale: 'es' 
     case 'under-attack':
       audio.play('alarm'); audio.announce('under-attack');
       return null;
+    case 'satellite-warning':
+      audio.play('alarm');
+      return { text: es ? '¡Satélite en caída! Despeja la zona marcada' : 'Satellite falling! Clear the marked zone', tone: 'bad' };
+    case 'satellite-impact':
+      audio.play('explosion-large');
+      return null;
     case 'core-soon':
       audio.announce('core-soon');
       return { text: es ? 'El Núcleo se abre en 30 s' : 'Core opens in 30 s', tone: 'info' };

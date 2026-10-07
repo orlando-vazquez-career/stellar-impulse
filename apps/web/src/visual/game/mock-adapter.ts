@@ -6,7 +6,7 @@ import type {
 } from './model';
 import { UNIT_STATS, damageAgainst } from '@impulso/state';
 import { baseDamage, baseUpgradeCost, fleetCapacity, BASE_DEFENSE_RANGE, type BaseUpgrades } from '@impulso/sim';
-import { planSectorMove, sectorSurface } from '../map/sector-map';
+import { planSectorMove, sectorSurface, selectMap } from '../map/sector-map';
 import { advanceShip, CRUISE_SPEED, SHIP_SPACING } from './phaser/ship-motion';
 
 const MOVE_SPEED = CRUISE_SPEED;
@@ -81,6 +81,7 @@ function cloneSnapshot(snapshot: GameplayViewModel): GameplayViewModel {
 }
 
 export function createMockGameplayAdapter(): GameplayPresentationAdapter {
+  selectMap('sector-01');
   let snapshot = cloneSnapshot(initialSnapshot);
   let clock: ReturnType<typeof setInterval> | null = null;
   const orders = new Map<string, MoveOrder>();

@@ -99,6 +99,9 @@ export function diffViews(previous: PlayerView | null, next: PlayerView): Gamepl
     else if (old.ownerId === me) events.push({ kind: 'node-lost' });
     else if (node.ownerId !== null) events.push({ kind: 'node-captured', own: false });
   }
+  const known = new Set((previous.satellites ?? []).map((fall) => fall.id));
+  if ((next.satellites ?? []).some((fall) => !known.has(fall.id))) events.push({ kind: 'satellite-warning' });
+  if ((next.satellites ?? []).some((fall) => previous.tick < fall.impactTick && next.tick >= fall.impactTick)) events.push({ kind: 'satellite-impact' });
   const opensIn = (view: PlayerView) => (view.rules.coreOpenTick - view.tick) / TICKS_PER_SECOND;
   if (opensIn(previous) > 30 && opensIn(next) <= 30) events.push({ kind: 'core-soon' });
   if (!previous.core.open && next.core.open) events.push({ kind: 'core-open' });
@@ -163,6 +166,18 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
   const selectedOwn = () => snapshot.squads.filter((squad) => snapshot.selectedSquadIds.includes(squad.id)
     && squad.owner === 'blue' && squad.healthPercent > 0);
 
+  // One mask per server view: rebuilds between ticks reuse it, so the scene and minimap can skip unchanged fog.
+  let fog: { view: PlayerView; cells: boolean[] } | null = null;
+  const fogOf = (view: PlayerView) => {
+    if (fog?.view !== view) {
+      const cells = Array<boolean>(view.width * view.height).fill(false);
+      for (const cell of view.visibleCells) cells[cell.y * view.width + cell.x] = true;
+      // Unchanged vision keeps the previous array, identity included.
+      const same = fog !== null && fog.cells.length === cells.length && fog.cells.every((seen, index) => seen === cells[index]);
+      fog = { view, cells: same ? fog!.cells : cells };
+    }
+    return fog.cells;
+  };
   /** Rebuild the view model from the last server view plus the eased on-screen positions. */
   const rebuild = () => {
     const view = latest;
@@ -227,6 +242,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         metal: own.metal ?? 0, metalRate: view.metalRate ?? ownedMetal + 0.5, energy: 0, energyRate: 0,
         fleet: alive.filter((u)=>u.ownerId===me && !u.isDecoy).length, fleetCap: view.base?.fleetCap ?? FLEET_CAP,
       },
+      satellites: view.satellites?.map((fall) => ({ id: fall.id, x: fall.x, y: fall.y, radius: fall.radius, warnTick: fall.warnTick, impactTick: fall.impactTick })),
       squads, unitStats: view.unitStats, augments:view.augments, chart:view.chart, productionForbidden:view.productionForbidden,
       nodes: view.nodes.map((node) => ({
         id: node.id, kind: node.kind, x: node.x, y: node.y,
@@ -252,11 +268,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       enemyBase: view.enemyBase && { id: `${me === 'p1' ? 'p2' : 'p1'}-base`, ...view.enemyBase },
       result: view.winner === null ? null : view.winner === me ? 'victory' : 'defeat',
       reward: view.reward,
-      visibleCells: (() => {
-        const cells = Array<boolean>(view.width * view.height).fill(false);
-        for (const cell of view.visibleCells) cells[cell.y * view.width + cell.x] = true;
-        return cells;
-      })(),
+      visibleCells: fogOf(view),
     };
     emit();
   };

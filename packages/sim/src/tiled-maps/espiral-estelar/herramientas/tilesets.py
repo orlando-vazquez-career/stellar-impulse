@@ -11,6 +11,7 @@ ASTEROID_CANVAS = 96
 TERRAINS = [
     ("empty", (110, 118, 132)), ("nebula", (150, 80, 200)), ("asteroid", (140, 100, 70)),
     ("boost", (40, 140, 240)), ("slow", (220, 60, 60)), ("blocked", (25, 25, 30)),
+    ("ice", (114, 193, 232)), ("ion_storm", (168, 85, 247)),
 ]
 
 
@@ -100,6 +101,14 @@ def logic_tileset(tileset_dir):
     return save(tileset_dir, tileset)
 
 
+def elevation_tileset(tileset_dir):
+    """Capa visual de altura: el cliente la usa para subir las naves sobre las plataformas."""
+    tileset = strip_tileset(tileset_dir, "altura", catalogo.ELEVATION_TILES, TILE_WIDTH, TILE_HEIGHT)
+    for tile, level in zip(tileset.data["tiles"], (0, 1)):
+        tile["properties"] = [{"name": "nivel", "type": "int", "value": level}]
+    return save(tileset_dir, tileset)
+
+
 def structures_tileset(tileset_dir):
     images = [(name, draw()) for name, draw in catalogo.STRUCTURES]
     tiles = []
@@ -123,6 +132,8 @@ def write_all(tileset_dir):
         strip_tileset(tileset_dir, "asteroides", catalogo.ASTEROID_TILES, ASTEROID_CANVAS, ASTEROID_CANVAS,
                       offset_x=-(ASTEROID_CANVAS - TILE_WIDTH) // 2),
         structures_tileset(tileset_dir),
+        strip_tileset(tileset_dir, "plataformas", catalogo.PLATFORM_TILES, TILE_WIDTH, TILE_HEIGHT + 16),
+        elevation_tileset(tileset_dir),
     ]
     next_gid = 1
     for tileset in tilesets:

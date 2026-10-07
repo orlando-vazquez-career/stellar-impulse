@@ -18,7 +18,9 @@
         "asteroid",
         "boost",
         "slow",
-        "blocked"
+        "blocked",
+        "ice",
+        "ion_storm"
       ],
       "valuesAsFlags": false
     },
@@ -164,6 +166,201 @@
           "name": "openSeconds",
           "type": "int",
           "value": 20
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "CRITTER_SPAWN",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#45F0DF",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "entity_type",
+          "type": "string",
+          "value": "maintenance_drone"
+        },
+        {
+          "name": "max_units",
+          "type": "int",
+          "value": 3
+        },
+        {
+          "name": "flee_distance",
+          "type": "float",
+          "value": 150.0
+        },
+        {
+          "name": "flee_threshold_units",
+          "type": "int",
+          "value": 5
+        },
+        {
+          "name": "fow_sensitive",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "name": "sprite_sheet",
+          "type": "string",
+          "value": "critter_drone.png"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "OBSTACLE_RING",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#72C1E8",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "collision_type",
+          "type": "string",
+          "value": "HEAVY_ONLY"
+        },
+        {
+          "name": "height_level",
+          "type": "int",
+          "value": -30
+        },
+        {
+          "name": "rotation_speed",
+          "type": "int",
+          "value": 12
+        },
+        {
+          "name": "blocks_vision",
+          "type": "bool",
+          "value": false
+        },
+        {
+          "name": "damage_on_collision",
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "ENVIRONMENTAL_HAZARD",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#A855F7",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "collision_type",
+          "type": "string",
+          "value": "NONE"
+        },
+        {
+          "name": "height_level",
+          "type": "int",
+          "value": -60
+        },
+        {
+          "name": "vision_modifier",
+          "type": "string",
+          "value": "REDUCE_TO_1_TILE"
+        },
+        {
+          "name": "disable_radar",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "name": "shield_drain_per_sec",
+          "type": "float",
+          "value": 5.0
+        },
+        {
+          "name": "blocks_vision",
+          "type": "bool",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "SOLID_BLOCKER",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#9DA8BE",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "collision_type",
+          "type": "string",
+          "value": "ALL_UNITS_BLOCKED"
+        },
+        {
+          "name": "height_level",
+          "type": "int",
+          "value": -90
+        },
+        {
+          "name": "blocks_vision",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "name": "indestructible",
+          "type": "bool",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "zona_caida",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#FF5A3C",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "objeto",
+          "type": "string",
+          "value": "satelite"
+        },
+        {
+          "name": "damage",
+          "type": "int",
+          "value": 40
+        },
+        {
+          "name": "radius",
+          "type": "int",
+          "value": 1
+        },
+        {
+          "name": "intervalSeconds",
+          "type": "int",
+          "value": 45
+        },
+        {
+          "name": "warningSeconds",
+          "type": "int",
+          "value": 4
+        },
+        {
+          "name": "amount",
+          "type": "int",
+          "value": 1
         }
       ]
     }
