@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 120" role="img" aria-labelledby="title desc">
+  <title id="title">Stellar Impulse</title>
+  <desc id="desc">Logo horizontal de Stellar Impulse en una tinta.</desc>
+  <g fill="none" stroke="#F2F6FA" stroke-linecap="square">
+    <path d="M60 5 115 60 60 115 5 60Z" stroke-width="4"/>
+    <path d="M60 25 95 60 60 95 25 60Z" stroke-width="3"/>
+    <path d="m27 86 33-33 33 33" stroke-width="4"/>
+    <path d="m15 105 30-30" stroke-width="3"/>
+  </g>
+  <circle cx="60" cy="60" r="7" fill="#F2F6FA"/>
+  <text x="146" y="59" fill="#F2F6FA" font-family="Rajdhani, Arial Narrow, sans-serif" font-size="39" font-weight="700" letter-spacing="6">STELLAR</text>
+  <path d="M148 73H359" fill="none" stroke="#F2F6FA" stroke-width="2"/>
+  <text x="149" y="101" fill="#F2F6FA" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="600" letter-spacing="7">IMPULSE</text>
+</svg>
