@@ -2,7 +2,7 @@ import { terrainForZone, type CollisionType, type ZoneProperties } from './colli
 import { cycleFromSeconds } from './cycle';
 import { createGameMap, type AsteroidGate, type GameMap, type MapMarker, type MarkerValue, type WormholeNetwork } from './game-map';
 import type { TileCoord } from './grid';
-import { isTerrain, type Terrain } from './terrain';
+import { isTerrain, TERRAINS, type Terrain } from './terrain';
 
 interface TiledProperty { readonly name: string; readonly value: MarkerValue }
 interface TiledTile { readonly id: number; readonly properties?: readonly TiledProperty[] }
@@ -119,7 +119,13 @@ function readTerrain(json: TiledMapJson): Terrain[] {
 function buildTerrainByGid(tilesets: readonly TiledTileset[]): Map<number, Terrain> {
   const lookup = new Map<number, Terrain>();
   for (const tileset of tilesets) {
-    if (tileset.source) throw new Error('Exporta el mapa con "Embed tilesets" activado');
+    if (tileset.source) {
+      // Tiled may keep tilesets in external .tsx files. Only the logic tileset carries terrain,
+      // and its tiles 0–7 follow TERRAINS (see tilesets/logica.tsx); the rest is artwork.
+      if (/(^|[\\/])tilesets[\\/]logica\.tsx$/.test(tileset.source))
+        TERRAINS.forEach((terrain, id) => lookup.set(tileset.firstgid + id, terrain));
+      continue;
+    }
     for (const tile of tileset.tiles ?? []) {
       const terrain = propertyOf(tile.properties, 'terrain');
       if (isTerrain(terrain)) lookup.set(tileset.firstgid + tile.id, terrain);

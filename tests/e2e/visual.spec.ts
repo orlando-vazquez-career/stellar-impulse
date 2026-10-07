@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { gamePoint, gridDistanceFromMinimap, openApp } from './helpers';
+import { gamePoint, gridDistanceFromMinimap, openApp, readBattlefieldCamera } from './helpers';
 
 async function advanceMockCombat(page: import('@playwright/test').Page) {
   // Elapsed-time movement accepts steps up to 100 ms. Keep that bound while
@@ -326,11 +326,12 @@ test.describe('visual interface foundation', () => {
     const destination = await gamePoint(page, 13, 15);
     await page.mouse.click(destination.x, destination.y, { button: 'right' });
     await expect(page.locator('.map-move-route')).toHaveCount(1);
+    const view = await readBattlefieldCamera(page);
     for (let sample = 0; sample < 30; sample++) {
       const markers = await page.locator('.map-ally').evaluateAll((nodes) => nodes.map((node) =>
         ({ x: Number(node.getAttribute('cx')), y: Number(node.getAttribute('cy')) })));
       for (let i = 0; i < markers.length; i++) for (let j = i + 1; j < markers.length; j++) {
-        expect(await gridDistanceFromMinimap(page, markers[i]!, markers[j]!)).toBeGreaterThanOrEqual(0.9 - 1e-6);
+        expect(await gridDistanceFromMinimap(page, markers[i]!, markers[j]!, view)).toBeGreaterThanOrEqual(0.9 - 1e-6);
       }
       await page.waitForTimeout(100);
     }

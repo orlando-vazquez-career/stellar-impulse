@@ -10,6 +10,8 @@ export interface PhaserBattlefieldHandle {
   previewBaseRange(enabled:boolean):void;
   /** False while the Phaser scene is still loading. */
   centerOnCell(x: number, y: number): boolean;
+  /** Opening view on the player's fleet (kept whole when the sector fits). False while loading. */
+  focusFleet(x: number, y: number): boolean;
 }
 
 interface PhaserBattlefieldProps {
@@ -43,6 +45,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
     resetCamera: () => sceneRef.current?.resetCamera(),
     previewBaseRange:enabled=>sceneRef.current?.previewBaseRange(enabled),
     centerOnCell: (x, y) => sceneRef.current?.centerOnCell(x, y) ?? false,
+    focusFleet: (x, y) => sceneRef.current?.focusFleet(x, y) ?? false,
   }), []);
 
   useEffect(() => {

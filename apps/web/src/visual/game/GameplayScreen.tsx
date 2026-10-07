@@ -74,6 +74,14 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
   const [cameraView, setCameraView] = useState<CameraView | null>(null);
   const battlefieldRef = useRef<PhaserBattlefieldHandle>(null);
   const previewBaseRange=useCallback((enabled:boolean)=>battlefieldRef.current?.previewBaseRange(enabled),[]);
+  const centered = useRef(false);
+  // Open the match looking at your own fleet, not at the map origin.
+  useEffect(() => {
+    if (centered.current || view.connection === 'local') return;
+    const own = view.squads.find((squad) => squad.owner === 'blue');
+    if (!own || !battlefieldRef.current) return;
+    centered.current = battlefieldRef.current.focusFleet(Math.round(own.gridX), Math.round(own.gridY));
+  }, [view]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest('input, select, textarea, [contenteditable="true"]')) return;

@@ -66,8 +66,11 @@ export async function canvasPointFromMinimap(page: Page, cx: number, cy: number)
   return { x: rect.x + (worldX - view.worldX) * view.zoom, y: rect.y + (worldY - view.worldY) * view.zoom };
 }
 
-export async function gridDistanceFromMinimap(page: Page, first: { x: number; y: number }, second: { x: number; y: number }) {
-  const view = await readBattlefieldCamera(page);
+/** Pass `view` when comparing many markers: the conversion only uses fixed map attributes, and
+ * re-reading the camera for every pair is slow on a busy software renderer. */
+export async function gridDistanceFromMinimap(page: Page, first: { x: number; y: number }, second: { x: number; y: number },
+  known?: Awaited<ReturnType<typeof readBattlefieldCamera>>) {
+  const view = known ?? await readBattlefieldCamera(page);
   const offset = minimapOffset(view);
   const toGrid = (marker: { x: number; y: number }) => {
     const worldX = (marker.x - offset.x) / offset.scale;

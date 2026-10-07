@@ -5,12 +5,12 @@ import { assignMoveTargets } from '../src/click-targets';
 import { advanceUnits, createMovingUnit, DEFAULT_MOVEMENT_RULES, orderMove } from '../src/movement';
 import { TileOccupancy } from '../src/occupancy';
 import { findPath } from '../src/pathfinding';
+import type { TileCoord } from '../src/grid';
 import { loadTiledMap, type TiledMapJson } from '../src/tiled-loader';
 
 const json = JSON.parse(readFileSync(new URL('../../espiral-estelar.json', import.meta.url), 'utf8')) as TiledMapJson;
 const TICKS_PER_SECOND = 20;
 const map = loadTiledMap(json, TICKS_PER_SECOND);
-const LAST = map.width - 1;
 
 function spawnOf(owner: number): MapMarker {
   const spawn = markersOfKind(map, 'spawn').find((marker) => marker.properties.owner === owner);
@@ -19,12 +19,19 @@ function spawnOf(owner: number): MapMarker {
 }
 
 describe('mapa Espiral Estelar', () => {
-  it('es simétrico para que el 1v1 sea justo', () => {
-    for (let y = 0; y < map.height; y++) {
-      for (let x = 0; x < map.width; x++) {
-        expect(terrainAt(map, { x, y }, 0)).toBe(terrainAt(map, { x: LAST - x, y: LAST - y }, 0));
-      }
-    }
+  it('es justo para el 1v1: ninguna base tiene un camino mucho más corto', () => {
+    // The map is hand-edited in Tiled and is no longer a cell-by-cell mirror; what matters is
+    // that neither spawn reaches the centre or the contested objectives much faster.
+    const steps = (from: TileCoord, to: TileCoord) => (findPath(map, { from, to, weight: 'medium', tick: 0 }) ?? []).length;
+    const center = { x: Math.floor(map.width / 2) + 4, y: Math.floor(map.height / 2) };
+    const pronexos = markersOfKind(map, 'pronexo').map((marker) => marker.tile);
+    const [first, second] = [spawnOf(1).tile, spawnOf(2).tile].map((from) => ({
+      center: steps(from, center),
+      objectives: pronexos.map((to) => steps(from, to)).sort((a, b) => a - b).slice(0, 2).reduce((sum, length) => sum + length, 0),
+    }));
+    const gap = (a: number, b: number) => Math.abs(a - b) / Math.max(a, b);
+    expect(gap(first!.center, second!.center)).toBeLessThan(0.15);
+    expect(gap(first!.objectives, second!.objectives)).toBeLessThan(0.15);
   });
 
   it('una nave mediana llega de base a base y a los cuatro pronexos', () => {

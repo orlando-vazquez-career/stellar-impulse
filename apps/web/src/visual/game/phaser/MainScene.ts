@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '../model';
 import type { GridPoint } from './grid';
 import { activeMapId, HIDDEN_LAYERS, mapImageUrl, planSectorMove, sectorMap, sectorSurface, TILE_WIDTH, type Tileset } from '../../map/sector-map';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, playerViewCenter, playerViewZoom, projectedWorldBounds, VIEW_CLOSE_MULTIPLIER } from './isometric';
+import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, playerViewCenter, playerViewZoom, projectedWorldBounds } from './isometric';
 import { WeaponEffects } from './weapon-effects';
 import { SatelliteEffects } from './satellite-effects';
 import { RobotEffects, ROBOT_LAYER } from './robot-effects';
@@ -15,8 +15,11 @@ const DEPTH = { layer: 10000, nodes: 90000, units: 100000, route: 200000, core: 
 const FOG_TINT = 0x4a5566;
 /** Layer written by scripts/obstaculos-tmx.ts so the editor shows the obstacles; never drawn in game. */
 const OBSTACLE_PREVIEW_LAYER = 'obstaculos-vista';
-/** Fallback zoom before the canvas size is known; the opening view is computed from the bases. */
-export const ZOOM_DEFAULT = 1;
+/** Opening zoom over your own fleet. The wheel goes from ZOOM_MIN (wider view of the sector)
+ * to ZOOM_MAX (close-up). The whole 96×96 map at once is unreadable and costly to draw. */
+export const ZOOM_DEFAULT = 1.5;
+export const ZOOM_MIN = 0.9;
+export const ZOOM_MAX = 2.2;
 /** Terrain is built and drawn in square blocks of this many cells, only while they are on screen. */
 const CHUNK_CELLS = 8;
 /** Pointer distance from a screen edge, in pixels, at which the camera starts to drift. */
@@ -166,8 +169,10 @@ export class MainScene extends Phaser.Scene {
     }
     this.scale.refresh();
     this.cameras.main.setBackgroundColor(color.background);
+    // Margin so a base on the map edge can still be centred clear of the HUD panels.
     const bounds = projectedWorldBounds();
-    this.cameras.main.setBounds(bounds.x, bounds.y, bounds.width, bounds.height);
+    const margin = 360;
+    this.cameras.main.setBounds(bounds.x - margin, bounds.y - margin, bounds.width + margin * 2, bounds.height + margin * 2);
     this.terrain = this.add.graphics().setDepth(0);
     this.route = this.add.graphics().setDepth(DEPTH.route);
     this.attackRanges=this.add.graphics().setDepth(DEPTH.nodes+1);
@@ -269,18 +274,36 @@ export class MainScene extends Phaser.Scene {
     if (this.sys.isActive()) this.renderSnapshot();
   }
 
+  /** Zoom that frames both bases. A small sector (Sector 01) fits on screen at a readable zoom
+   * and opens whole; a large one (Espiral 96×96) would need a tiny zoom and opens on your fleet. */
+  private fitZoom() {
+    return playerViewZoom(this.scale.width, this.scale.height);
+  }
+  private fitsWholeMap() {
+    return this.fitZoom() >= ZOOM_MIN;
+  }
+
+  /** Back to the opening view, centred on your base. A small sector keeps the zoom that shows
+   * nearly all of it; a large one opens at the default zoom. Centring matters: framing both bases
+   * left yours under the HUD panels, where it could not be clicked. */
   resetCamera() {
-    const zoom = playerViewZoom(this.scale.width, this.scale.height);
+    const zoom = this.fitsWholeMap() ? this.fitZoom() : ZOOM_DEFAULT;
     this.cameras.main.setZoom(zoom);
     this.zoomTarget = zoom;
-    const center = playerViewCenter();
+    const base = this.snapshot.base?.position;
+    const center = base ? cellToIso(base.x, base.y) : playerViewCenter();
     this.cameras.main.centerOn(center.x, center.y);
     this.refreshCameraView();
   }
 
+  /** Opening focus on the player's fleet. False while the scene is still loading. */
+  focusFleet(x: number, y: number): boolean {
+    return this.created && this.centerOnCell(x, y);
+  }
+
   private zoomLimits() {
-    const farthest = playerViewZoom(this.scale.width, this.scale.height);
-    return { min: farthest, max: farthest * VIEW_CLOSE_MULTIPLIER };
+    const fit = this.fitZoom();
+    return this.fitsWholeMap() ? { min: Math.min(fit, ZOOM_MAX), max: Math.max(fit, ZOOM_MAX) } : { min: ZOOM_MIN, max: ZOOM_MAX };
   }
 
   /** False until Phaser has created the camera; callers may retry. */
