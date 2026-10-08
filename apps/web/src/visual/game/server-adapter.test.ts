@@ -170,6 +170,16 @@ describe('campaign transport', () => {
     } finally { adapter.destroy(); }
   });
 
+  it('shows the campaign outcome after a reload into the results, before any view arrives', () => {
+    const fake = fakeTransport();
+    fake.setOutcome({ result: 'victory' });
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    try {
+      fake.events().refresh();
+      expect(adapter.getSnapshot().result).toBe('victory');
+    } finally { adapter.destroy(); }
+  });
+
   it('only stops listening on destroy and never leaves the session room', () => {
     const fake = fakeTransport();
     const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);

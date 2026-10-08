@@ -1,8 +1,22 @@
 # Estado del repositorio
 
-Actualizado: 3 de octubre de 2026. Base de producto: 0.1.0.
+Actualizado: 8 de octubre de 2026. Base de producto: 0.1.0.
 
 ## Implementado
+
+### Campaña multijugador con el motor de partida (8 de octubre de 2026)
+
+El multijugador ya no usa el mundo de prueba: la sala `campaign` (protocolo 3) juega tres
+sectores con el mismo motor del entrenamiento, en el mapa Espiral. Cada sector es una
+Escaramuza nueva con base, Metal, producción, módulos, formaciones y rendición. Empieza con
+una oferta privada de aumento (plata, oro y prismático, uno por sector) que detiene el reloj
+hasta que ambos eligen; los aumentos elegidos se vuelven a aplicar en los sectores siguientes
+y quien ganó el sector anterior tiene una renovación extra. Gana la campaña quien gana el
+sector 3. El cliente juega la campaña con la misma pantalla de partida del entrenamiento,
+recupera sala, asiento y secuencia de órdenes al recargar y muestra el resultado de la
+campaña, no el de cada sector. Cada sector registra sus estadísticas: los desafíos de la
+campaña se miden con el mejor sector. La sala `battlefield` conserva el protocolo 2.
+Consulta [protocolo](protocol.md) y [progresión](progression.md).
 
 ### Salas y conexión multijugador (3 de octubre de 2026)
 
@@ -50,10 +64,9 @@ Backend actualizado el 29 de septiembre: campaign usa protocolo v2 y un mundo au
 
 ## Límites
 
-El gameplay de campaña todavía no está completo: los tres sectores reutilizan el
-mapa seleccionado, las tecnologías no tienen efectos jugables y la flota multijugador
-es fija (un Interceptor inicial por jugador). Siguen pendientes producción multijugador,
-Energía y la integración de la campaña completa. El modo training conserva su IA y producción.
+Los tres sectores de la campaña se juegan en el mismo mapa. No hay bot que reemplace a un
+jugador caído: la reserva de asiento y las pausas cubren la reconexión. Energía sigue
+pendiente. El modo training conserva su IA y producción.
 Las limitaciones de blockchain y persistencia descritas en las entregas históricas
 requieren su propia verificación antes de una publicación.
 

@@ -519,7 +519,14 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       },
       notice: (text) => { if (destroyed) return; snapshot = { ...snapshot, notice: text }; emit(); },
       connection: (state) => { if (destroyed) return; snapshot = { ...snapshot, connection: state }; emit(); },
-      refresh: () => { if (destroyed) return; announceOutcome(); rebuild(); emit(); },
+      refresh: () => {
+        if (destroyed) return;
+        announceOutcome();
+        // A reload into the results gets no further views: the outcome alone decides what to show.
+        if (latest) rebuild();
+        else if (link?.outcome) { const final = link.outcome(); snapshot = { ...snapshot, result: final?.result ?? null, reward: final?.reward }; }
+        emit();
+      },
     });
   };
   if (source && 'open' in source) start(source);
