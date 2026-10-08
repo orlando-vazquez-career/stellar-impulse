@@ -237,6 +237,9 @@ export function playEvent(audio: MatchAudio, event: GameplayEvent, locale: 'es' 
     case 'satellite-impact':
       audio.play('explosion-large');
       return null;
+    case 'nebula-warning':
+      audio.play('alarm');
+      return { text: es ? '¡La niebla morada avanza! Ralentiza y tapa la visión' : 'Purple fog advancing! It slows ships and blocks sight', tone: 'bad' };
     case 'core-soon':
       audio.announce('core-soon');
       return { text: es ? 'El Núcleo se abre en 30 s' : 'Core opens in 30 s', tone: 'info' };

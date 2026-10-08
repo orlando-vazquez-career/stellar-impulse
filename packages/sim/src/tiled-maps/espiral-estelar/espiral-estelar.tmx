@@ -775,7 +775,7 @@
    </properties>
    <point/>
   </object>
-  <object id="85" type="mob_spawn" x="1456" y="1392">
+  <object id="85" type="mob_spawn" x="1502" y="1351.33">
    <properties>
     <property name="count" type="int" value="3"/>
    </properties>

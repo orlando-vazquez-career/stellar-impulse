@@ -1,4 +1,5 @@
 import { AUGMENTS_BY_ID, DURATION_MODES, effectsFor, effectiveFleetCap, effectiveBaseDamage, visionSources, isConcealed, statsForUnit, baseUpgradeCost, metalIncomeRate, captureDuration, type Augment } from '@impulso/sim';
+import { nebulaClouds, nebulaHides, nebulaSlowdown, type NebulaCloudState } from '@impulso/sim';
 import { baseArmor, baseDefense, type ExtraModule, type ModuleKind, type ModuleSpec } from '@impulso/sim';
 import { distance, statsFor, moveInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
 import { weaponView, type WeaponView } from './weapons.js';
@@ -18,7 +19,7 @@ export interface VisibleSquad extends Omit<Squad, 'target' | 'attackTargetId' | 
 export type AugmentCardView = Pick<Augment,'id'|'tier'|'icon'|'text'>;
 export interface MatchLobbyView {
   roomId:string; phase:'lobby'|'sector'|'results'; playerId:PlayerId;
-  map:'sector-01'|'espiral'; duration:'complete'|'skirmish';
+  map:'sector-01'|'espiral'|'espiral-2'; duration:'complete'|'skirmish';
   seats:Record<PlayerId,{name:string;ready:boolean}|null>;
 }
 export interface AugmentView {
@@ -34,9 +35,8 @@ export interface PlayerView {
   playerId: PlayerId;
   width: number;
   height: number;
+  /** Static terrain is not repeated here: the client reads it from its own copy of the map. */
   obstacles: Position[];
-  walkable?: boolean[];
-  level?: number[];
   rules: Rules;
   unitStats?: Record<UnitKind, ShipStats>;
   augments?: AugmentView;
@@ -63,16 +63,31 @@ export interface PlayerView {
   reward?: import('@impulso/sim').MatchReward;
   /** Announced satellite falls. Public: the warning crosses the whole sky. */
   satellites?: import('@impulso/sim').SatelliteFall[];
+  /** Drifting purple clouds and their next route. Public: the mass is visible from anywhere. */
+  nebulas?: NebulaCloudState[];
+}
+/** Row-major cells within reach of any vision source. Each source only scans its own bounding box. */
+function cellsInSight(world: World, sources: readonly { position: Position; radius: number }[]): Position[] {
+  const seen = new Uint8Array(world.width * world.height);
+  for (const { position, radius } of sources) {
+    const reach = Math.ceil(radius);
+    const top = Math.max(0, Math.ceil(position.y) - reach), bottom = Math.min(world.height - 1, Math.floor(position.y) + reach);
+    const left = Math.max(0, Math.ceil(position.x) - reach), right = Math.min(world.width - 1, Math.floor(position.x) + reach);
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) if (distance(position, { x, y }) <= radius) seen[y * world.width + x] = 1;
+    }
+  }
+  const cells: Position[] = [];
+  seen.forEach((inSight, index) => { if (inSight) cells.push({ x: index % world.width, y: Math.floor(index / world.width) }); });
+  return cells;
 }
 /** Fresh whitelist snapshot. Never send the authoritative world to a player. */
 export function viewFor(world: World, playerId: PlayerId): PlayerView {
   if (playerId !== 'p1' && playerId !== 'p2') throw new Error('Unknown player');
   const sources=visionSources(world,playerId);
   const visible=(position:Position)=>sources.some((source)=>distance(source.position,position)<=source.radius);
-  const visibleCells: Position[] = [];
-  for (let y = 0; y < world.height; y += 1) {
-    for (let x = 0; x < world.width; x += 1) if (visible({ x, y })) visibleCells.push({ x, y });
-  }
+  // Nebula cells stay dark unless one of the player's ships is right beside them.
+  const visibleCells = cellsInSight(world, sources).filter((cell) => !nebulaHides(world, playerId, cell));
   const players: PlayerView['players'] = {
     p1: { id: 'p1', base: { ...world.players.p1.base } },
     p2: { id: 'p2', base: { ...world.players.p2.base } },
@@ -104,7 +119,6 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     productionForbidden:effectsFor(world,playerId).flatMap((e)=>e.hook==='no-production'?[e.kind]:[]),
     schemaVersion: 1, mode: 'training', tick: world.tick, playerId, duration: world.duration, suddenDeath: world.suddenDeath,
     width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })),
-    ...(world.surface ? { walkable: [...world.surface.walkable], level: [...world.surface.level] } : {}),
     rules: { ...world.rules }, players,
     unitStats: Object.fromEntries(['explorer', 'interceptor', 'frigate', 'bomber'].map((kind) => [kind, statsFor(world, playerId, kind as UnitKind)])) as Record<UnitKind, ShipStats>,
     squads: world.squads.filter((unit) => unit.ownerId === playerId || (unit.hp > 0 && visible(unit) && !isConcealed(world,unit))).map((unit) => {
@@ -115,7 +129,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
       const publicUnit = {
         id: unit.id, ownerId: unit.ownerId, kind: unit.kind,
         x: unit.x, y: unit.y, hp: disguised?unit.hp/unit.maxHp*maxHp:unit.hp, maxHp, damage: stats.damage,
-        stats, moveTicks: moveInterval(world, unit.ownerId, unit.kind),
+        stats, moveTicks: moveInterval(world, unit.ownerId, unit.kind) * nebulaSlowdown(world, unit),
         ...weaponView(unit, stats, world.tick, visible),
       };
       return unit.ownerId === playerId
@@ -144,6 +158,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     },
     visibleCells, winner: world.winner,
     ...(world.satellites ? { satellites: world.satellites.falls.map((fall) => ({ ...fall })) } : {}),
+    ...(world.nebula?.clouds.length ? { nebulas: nebulaClouds(world) } : {}),
   };
 }
 

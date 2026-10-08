@@ -74,6 +74,19 @@ export interface NodeViewModel {
   capture?: { by: SquadOwner; fraction: number };
 }
 
+/** A drifting purple cloud: it slows and hides ships under it; the route it will take is public. */
+export interface NebulaViewModel {
+  id: string;
+  x: number;
+  y: number;
+  size: number;
+  phase: 'resting' | 'warning' | 'advancing' | 'holding' | 'returning';
+  /** Tick on which the current phase ends: the warning counts down to it. */
+  phaseEndsAt: number;
+  /** Cells of the route it takes (or will take next), home first. */
+  path: { x: number; y: number }[];
+}
+
 /** A satellite on its way down: warned from `warnTick`, it hits the cell on `impactTick`. */
 export interface SatelliteViewModel {
   id: string;
@@ -117,6 +130,8 @@ export interface GameplayViewModel {
   nodes: NodeViewModel[];
   production: ProductionViewModel | null;
   satellites?: SatelliteViewModel[];
+  /** Drifting purple clouds announced by the server; MainScene glides them from the map's own routes. */
+  nebulas?: NebulaViewModel[];
   /** The campaign battlefield currently provides a fixed starting fleet. */
   canProduce?: boolean;
   unitStats?: Record<SquadType, ShipStats>;
@@ -142,7 +157,7 @@ export interface GameplayViewModel {
 /** Things that happened between two server views, for sounds and announcements. */
 export type GameplayEvent =
   | { kind: 'match-start' | 'ship-launched' | 'guardian-down' | 'node-lost' | 'under-attack'
-      | 'satellite-warning' | 'satellite-impact' | 'core-soon' | 'core-open' | 'core-own-capturing' | 'core-rival-capturing' | 'victory' | 'defeat' }
+      | 'satellite-warning' | 'satellite-impact' | 'nebula-warning' | 'core-soon' | 'core-open' | 'core-own-capturing' | 'core-rival-capturing' | 'victory' | 'defeat' }
   | { kind: 'ship-destroyed' | 'node-captured'; own: boolean };
 
 export type PresentationIntent =

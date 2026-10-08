@@ -102,6 +102,8 @@ export function diffViews(previous: PlayerView | null, next: PlayerView): Gamepl
   const known = new Set((previous.satellites ?? []).map((fall) => fall.id));
   if ((next.satellites ?? []).some((fall) => !known.has(fall.id))) events.push({ kind: 'satellite-warning' });
   if ((next.satellites ?? []).some((fall) => previous.tick < fall.impactTick && next.tick >= fall.impactTick)) events.push({ kind: 'satellite-impact' });
+  const warned = new Set((previous.nebulas ?? []).filter((cloud) => cloud.phase === 'warning').map((cloud) => cloud.id));
+  if ((next.nebulas ?? []).some((cloud) => cloud.phase === 'warning' && !warned.has(cloud.id))) events.push({ kind: 'nebula-warning' });
   const opensIn = (view: PlayerView) => (view.rules.coreOpenTick - view.tick) / TICKS_PER_SECOND;
   if (opensIn(previous) > 30 && opensIn(next) <= 30) events.push({ kind: 'core-soon' });
   if (!previous.core.open && next.core.open) events.push({ kind: 'core-open' });
@@ -252,6 +254,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         fleet: alive.filter((u)=>u.ownerId===me && !u.isDecoy).length, fleetCap: view.base?.fleetCap ?? FLEET_CAP,
       },
       satellites: view.satellites?.map((fall) => ({ id: fall.id, x: fall.x, y: fall.y, radius: fall.radius, warnTick: fall.warnTick, impactTick: fall.impactTick })),
+      nebulas: view.nebulas?.map((cloud) => ({ id: cloud.id, x: cloud.x, y: cloud.y, size: cloud.size, phase: cloud.phase, phaseEndsAt: cloud.phaseEndsAt, path: cloud.path.map((cell) => ({ ...cell })) })),
       squads, unitStats: view.unitStats, augments:view.augments, chart:view.chart, productionForbidden:view.productionForbidden,
       nodes: view.nodes.map((node) => ({
         id: node.id, kind: node.kind, x: node.x, y: node.y,

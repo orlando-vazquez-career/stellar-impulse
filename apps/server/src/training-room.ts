@@ -48,10 +48,10 @@ export class TrainingRoom extends Room {
     const fields = typeof options === 'object' && options !== null ? options as { difficulty?: unknown; map?: unknown; duration?: unknown; opponent?:unknown; lobby?:unknown; testTimeScale?: unknown; testSeed?: unknown } : {};
     this.lobby=fields.lobby===true;
     this.aiRival=!this.lobby && fields.opponent!=='human';
-    this.map=fields.map==='sector-01'?'sector-01':DEFAULT_MAP;
+    this.map=fields.map==='sector-01'||fields.map==='espiral-2'?fields.map:DEFAULT_MAP;
     const requested = fields.difficulty;
     if (requested === 'easy' || requested === 'medium' || requested === 'hard') this.difficulty = requested;
-    this.world = createMatchWorld(fields.map === 'sector-01' ? 'sector-01' : DEFAULT_MAP, fields.duration === 'complete' ? 'complete' : 'skirmish', randomInt(0x100000000));
+    this.world = createMatchWorld(this.map, fields.duration === 'complete' ? 'complete' : 'skirmish', randomInt(0x100000000));
     if (process.env.GAME_TEST_MODE === '1' && process.env.NODE_ENV !== 'production') {
       if (Number.isSafeInteger(fields.testTimeScale) && Number(fields.testTimeScale) >= 1 && Number(fields.testTimeScale) <= 30) this.timeScale = Number(fields.testTimeScale);
       if (Number.isSafeInteger(fields.testSeed)) this.world.seed = Number(fields.testSeed) >>> 0;

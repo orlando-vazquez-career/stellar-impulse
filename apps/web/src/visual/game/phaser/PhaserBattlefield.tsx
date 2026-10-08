@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 import { useI18n } from '../../i18n';
 import type { CameraView, GameplayViewModel } from '../model';
 import { MainScene } from './MainScene';
-import { activeMapId, activeMapSourceFile } from '../../map/sector-map';
+import { activeMapId, activeMapSourceFile, playableMapLabel } from '../../map/sector-map';
 
 export interface PhaserBattlefieldHandle {
   resetCamera(): void;
@@ -94,7 +94,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
 
   return <div className="vi-phaser" aria-label={t('battlefieldReady')}>
     <div className="vi-phaser__canvas" ref={canvasHostRef} />
-    <div className="vi-phaser__status"><strong>{activeMapId === 'espiral' ? 'ESPIRAL ESTELAR' : t('battlefieldStatus')}</strong><span>{t('cameraHint')}</span></div>
+    <div className="vi-phaser__status"><strong>{activeMapId === 'sector-01' ? t('battlefieldStatus') : playableMapLabel(activeMapId).toUpperCase()}</strong><span>{t('cameraHint')}</span></div>
     {loadError && <div className="vi-phaser__error" role="alert">{loadError}</div>}
   </div>;
 });

@@ -5,7 +5,7 @@ import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
-import type { TrainingMapId } from '../map/sector-map';
+import { playableMapLabel, type TrainingMapId } from '../map/sector-map';
 import './lobby.css';
 
 export type LobbyMode = 'create' | 'join';
@@ -18,7 +18,9 @@ const DIFFICULTIES: { value: RivalDifficulty; label: string; hint: string }[] = 
 ];
 const MAPS: { value: TrainingMapId; label: string; hint: string }[] = [
   { value: 'espiral', label: 'Espiral Estelar', hint: '96×96. Carriles de impulso, nebulosas y núcleo con escudo.' },
+  { value: 'espiral-2', label: 'Caos Estelar', hint: '96×96. Carriles anchos, niebla morada que avanza y satélites que se turnan.' },
 ];
+const UPCOMING_MAP = { label: '3.er mapa', hint: 'En preparación. El más épico del sector.' };
 type FleetSide = 'blue' | 'red';
 
 export function PreparationLobby({
@@ -124,12 +126,12 @@ export function PreparationLobby({
                 <i className="vi-map-preview__blue" />
                 <i className="vi-map-preview__red" />
               </div>
-              <span>{map === 'espiral' ? 'ESPIRAL ESTELAR' : `SECTOR 01 // ${t('mapValue')}`}</span>
+              <span>{playableMapLabel(map).toUpperCase()}</span>
             </div>
             <dl className="vi-briefing__data">
               <div>
                 <dt>{t('map')}</dt>
-                <dd>{map === 'espiral' ? 'Espiral Estelar' : t('mapValue')}</dd>
+                <dd>{playableMapLabel(map)}</dd>
               </div>
               <div>
                 <dt>{t('objective')}</dt>
@@ -154,24 +156,31 @@ export function PreparationLobby({
             >
               Explorar mapa Tiled
             </button>
-                {mode === 'create' && (
-                  <fieldset className="vi-difficulty vi-map-select">
-                    <legend>Mapa</legend>
-                    {MAPS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={map === option.value ? 'is-selected' : ''}
-                        aria-pressed={map === option.value}
-                        onMouseEnter={() => hover(420)}
-                        onClick={() => { sound.playSelect(); setMap(option.value); }}
-                      >
-                        <strong>{option.label}</strong>
-                        <small>{option.hint}</small>
-                      </button>
-                    ))}
-                  </fieldset>
-                )}
+            {mode === 'create' && (
+              <fieldset className="vi-difficulty vi-map-select">
+                <legend>Mapa</legend>
+                {MAPS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={map === option.value ? 'is-selected' : ''}
+                    aria-pressed={map === option.value}
+                    onMouseEnter={() => hover(420)}
+                    onClick={() => {
+                      sound.playSelect();
+                      setMap(option.value);
+                    }}
+                  >
+                    <strong>{option.label}</strong>
+                    <small>{option.hint}</small>
+                  </button>
+                ))}
+                <button type="button" className="is-soon" disabled aria-disabled="true">
+                  <strong>{UPCOMING_MAP.label}</strong>
+                  <small>{UPCOMING_MAP.hint}</small>
+                </button>
+              </fieldset>
+            )}
           </section>
 
           <section className="vi-lobby-card vi-room" aria-labelledby="room-title">

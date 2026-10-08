@@ -5,6 +5,7 @@ import { activeMapId, HIDDEN_LAYERS, mapImageUrl, planSectorMove, sectorMap, sec
 import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, playerViewCenter, playerViewZoom, projectedWorldBounds } from './isometric';
 import { WeaponEffects } from './weapon-effects';
 import { SatelliteEffects } from './satellite-effects';
+import { NebulaEffects } from './nebula-effects';
 import { RobotEffects, ROBOT_LAYER } from './robot-effects';
 
 /** Tiled stores flip flags in the top bits of every gid. */
@@ -119,6 +120,7 @@ export class MainScene extends Phaser.Scene {
   private created = false;
   private weapons?: WeaponEffects;
   private satellites?: SatelliteEffects;
+  private nebulas?: NebulaEffects;
   private robots?: RobotEffects;
   private serverTickAt = 0;
   private readonly unitVisuals = new Map<string, UnitVisual>();
@@ -182,6 +184,7 @@ export class MainScene extends Phaser.Scene {
     this.baseMarks = this.add.graphics().setDepth(DEPTH.core);
     this.weapons = new WeaponEffects(this);
     this.satellites = new SatelliteEffects(this);
+    this.nebulas = new NebulaEffects(this, this.snapshot.tickRate ?? 10);
     this.robots = new RobotEffects(this);
     this.serverTickAt = this.time.now;
 
@@ -206,6 +209,7 @@ export class MainScene extends Phaser.Scene {
       this.chunks = [];
       this.weapons?.destroy();
       this.satellites?.destroy();
+      this.nebulas?.destroy();
       this.robots?.destroy();
     });
   }
@@ -234,6 +238,7 @@ export class MainScene extends Phaser.Scene {
     const tickRate = this.snapshot.tickRate ?? 10;
     const ahead = this.snapshot.clockRunning ? Math.min(1, (this.time.now - this.serverTickAt) / 1000 * tickRate) : 0;
     this.satellites?.update(this.snapshot.tick + ahead, tickRate);
+    this.nebulas?.update(this.snapshot.tick + ahead, tickRate);
     this.robots?.update(Math.min(delta, 100));
     const camera = this.cameras.main;
     const pointer = this.input.activePointer;
@@ -460,7 +465,8 @@ export class MainScene extends Phaser.Scene {
         const cellX = object.x / TILE_HALF_HEIGHT / 2;
         const cellY = object.y / TILE_HALF_HEIGHT / 2;
         const point = cellToIso(cellX, cellY);
-        const image = this.add.image(point.x, point.y - TILE_HALF_HEIGHT, key)
+        const animation = tileAnimation(this, tileset, gid - tileset.firstgid);
+        const image = (animation ? this.add.sprite(point.x, point.y - TILE_HALF_HEIGHT, key).play(animation) : this.add.image(point.x, point.y - TILE_HALF_HEIGHT, key))
           .setDisplaySize(object.width, object.height).setOrigin(0.5, 1).setDepth(DEPTH.units + point.y - TILE_HALF_HEIGHT);
         const col = Phaser.Math.Clamp(Math.floor(cellX), 0, sectorMap.width - 1);
         const row = Phaser.Math.Clamp(Math.floor(cellY), 0, sectorMap.height - 1);
@@ -978,6 +984,21 @@ function structureKey(name: string): string | null {
 /** A ground tile exactly the size of a cell, so it cannot stick out from under another. */
 function isFlat(tileset: Tileset): boolean {
   return !!tileset.image && tileset.tilewidth === TILE_WIDTH && tileset.tileheight === TILE_HALF_HEIGHT * 2 && !tileset.tileoffset;
+}
+
+/** Key of the looping animation a collection tile declares in Tiled (`<animation>`), created on first use. */
+function tileAnimation(scene: Phaser.Scene, tileset: Tileset, tile: number): string | null {
+  const frames = tileset.tiles?.find((candidate) => candidate.id === tile)?.animation;
+  const key = textureKey(tileset, tile);
+  if (!frames?.length || !key) return null;
+  const name = `${key}:anim`;
+  if (!scene.anims.exists(name)) {
+    scene.anims.create({
+      key: name, repeat: -1,
+      frames: frames.map((frame) => ({ key: textureKey(tileset, frame.tileid)!, duration: frame.duration })),
+    });
+  }
+  return name;
 }
 
 function tilesetFor(gid: number): Tileset | undefined {

@@ -1,6 +1,7 @@
 import { isRampDirection, type RampDirection } from './alturas.js';
 import type { DropZoneSpec } from '../mecanicas/satellites.js';
 import type { MapObstacle } from './obstaculos.js';
+import type { NebulaSpec } from '../mecanicas/nebulosas.js';
 
 const MAX_SIDE = 128;
 const FLIP_MASK = 0xe0000000;
@@ -24,6 +25,8 @@ export interface SectorLeido extends Superficie {
   dropZones?: DropZoneSpec[];
   /** `OBSTACLE_RING` points: their cells are already closed in `walkable`. */
   obstaculos?: MapObstacle[];
+  /** Purple nebula that slows and hides ships, and the clouds that drift out of it. */
+  nebula?: NebulaSpec;
 }
 
 interface TileFace {

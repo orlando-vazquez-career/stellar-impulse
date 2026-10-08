@@ -1,6 +1,7 @@
 import mapa from '../tiled-maps/espiral-estelar/espiral-estelar.json';
 import type { SectorLeido } from './leer-tiled.js';
 import type { DropZoneSpec } from '../mecanicas/satellites.js';
+import type { NebulaCloudSpec, NebulaSpec } from '../mecanicas/nebulosas.js';
 import { defaultObstacleModel, isObstacleModel, obstacleCells, OBSTACLE_MODELS, scatterObstacles, type MapObstacle, type ObstacleArea } from './obstaculos.js';
 import { isLogicaTilesetSource, LOGICA_TERRAIN_BY_TILE_ID } from './tsx-tileset.js';
 
@@ -9,6 +10,8 @@ const GAMEPLAY_MARKER_KINDS = new Set(['spawn', 'pilar', 'recurso', 'pronexo']);
 const FLIP_MASK = 0x1fffffff;
 const MAX_SIDE = 128;
 const MAX_CAPTURE_RADIUS = 8;
+const MAX_DROP_GROUPS = 8;
+const MAX_CLOUD_ROUTES = 4;
 
 interface Mark {
   kind: string;
@@ -55,9 +58,11 @@ export function leerEspiral(source: unknown): SectorLeido {
       },
     }));
   }
+  const nebula = readNebula(map, terrain, tileSize, width, height);
   return {
     width, height, walkable, level: terrain.map(() => 0), ramp: terrain.map(() => null),
     bases, core, metals, captures, dropZones: readDropZones(map, tileSize, width, height), obstaculos,
+    ...(nebula ? { nebula } : {}),
   };
 }
 
@@ -209,9 +214,86 @@ function readDropZones(map: Record<string, unknown>, tileSize: number, width: nu
       damage: amount('damage', 40, 1000), radius: amount('radius', 1, 4),
       intervalSeconds: amount('intervalSeconds', 45, 3600), warningSeconds: amount('warningSeconds', 4, 60),
       amount: amount('amount', 1, 8),
+      ...(property(source.properties, 'grupo') !== undefined ? { group: amount('grupo', 1, MAX_DROP_GROUPS) } : {}),
     });
   }
   return zones.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/**
+ * Purple nebula. With the map property `nebulosaActiva` the nebula cells of the logic layer slow ships and
+ * hide them; each `niebla_movil` rectangle of `eventos` is a cloud that leaves its nebula along the
+ * `ruta_niebla` polylines that name it (property `niebla`), in the order of their property `orden`.
+ */
+function readNebula(map: Record<string, unknown>, terrain: readonly string[], tileSize: number, width: number, height: number): NebulaSpec | undefined {
+  const active = property(map.properties ?? [], 'nebulosaActiva') === true;
+  const layer = list(map.layers).find((candidate) => record(candidate).name === 'eventos');
+  const objects = layer ? list(record(layer).objects ?? []).map(record) : [];
+  const kind = (source: Record<string, unknown>) => source.type || source.class;
+  const routes = objects.filter((source) => kind(source) === 'ruta_niebla');
+  const clouds: NebulaCloudSpec[] = [];
+  for (const source of objects.filter((candidate) => kind(candidate) === 'niebla_movil')) {
+    const name = typeof source.name === 'string' && source.name.length > 0 ? source.name : `niebla-${nonNegative(source.id)}`;
+    const size = Math.round(pixel(source.width) / tileSize);
+    if (size < 1 || size > 16 || Math.round(pixel(source.height) / tileSize) !== size) throw new Error('Invalid nebula cloud');
+    const home = { x: Math.floor((pixel(source.x) + pixel(source.width) / 2) / tileSize), y: Math.floor((pixel(source.y) + pixel(source.height) / 2) / tileSize) };
+    if (home.x >= width || home.y >= height) throw new Error('Invalid nebula cloud');
+    const number = (field: string, fallback: number, min: number, max: number) => {
+      const value = property(source.properties, field) ?? fallback;
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) throw new Error('Invalid nebula cloud');
+      return value;
+    };
+    const maxCells = number('maxCells', 13, 1, 40);
+    const own = routes.filter((route) => property(route.properties, 'niebla') === name)
+      .sort((a, b) => Number(property(a.properties, 'orden') ?? 0) - Number(property(b.properties, 'orden') ?? 0) || nonNegative(a.id) - nonNegative(b.id));
+    if (own.length === 0 || own.length > MAX_CLOUD_ROUTES) throw new Error('Invalid nebula cloud');
+    clouds.push({
+      id: name, home, size,
+      routes: own.map((route) => walkRoute(route, home, maxCells, tileSize, width, height)),
+      cellsPerSecond: number('cellsPerSecond', 1.25, 0.1, 20),
+      warningSeconds: number('warningSeconds', 5, 0, 60),
+      holdSeconds: number('holdSeconds', 6, 0, 600),
+      restSeconds: number('restSeconds', 20, 0, 600),
+      startSeconds: number('startSeconds', 30, 0, 3600),
+    });
+  }
+  if (!active && clouds.length === 0) return undefined;
+  const settings = (field: string, fallback: number, max: number) => {
+    const value = property(map.properties ?? [], field) ?? objects.map((source) => property(source.properties, field)).find((found) => found !== undefined) ?? fallback;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 1 || value > max) throw new Error('Invalid nebula cloud');
+    return value;
+  };
+  return {
+    ...(active ? { cells: terrain.map((kind) => kind === 'nebula') } : {}),
+    clouds: clouds.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    slowFactor: settings('slowFactor', 2, 6),
+    visionRadius: settings('visionRadius', 2, 8),
+  };
+}
+
+/** Polyline → cells, one eight-way step at a time from the cloud's home, cut at `maxCells` steps. */
+function walkRoute(route: Record<string, unknown>, home: { x: number; y: number }, maxCells: number, tileSize: number, width: number, height: number): { x: number; y: number }[] {
+  const originX = Number(route.x), originY = Number(route.y);
+  if (!Number.isFinite(originX) || !Number.isFinite(originY)) throw new Error('Invalid nebula route');
+  const corners = list(route.polyline).map((entry) => {
+    const corner = record(entry);
+    const x = Math.floor((originX + Number(corner.x)) / tileSize), y = Math.floor((originY + Number(corner.y)) / tileSize);
+    if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y)) throw new Error('Invalid nebula route');
+    return { x: Math.max(0, Math.min(width - 1, x)), y: Math.max(0, Math.min(height - 1, y)) };
+  });
+  const cells: { x: number; y: number }[] = [];
+  let at = { ...home };
+  for (const corner of corners) {
+    while ((at.x !== corner.x || at.y !== corner.y) && cells.length < maxCells) {
+      const dx = corner.x - at.x, dy = corner.y - at.y;
+      const along = Math.max(Math.abs(dx), Math.abs(dy));
+      // Bresenham-like: diagonal while both axes still need it, straight once one of them is done.
+      at = { x: at.x + (Math.abs(dx) * 2 >= along ? Math.sign(dx) : 0), y: at.y + (Math.abs(dy) * 2 >= along ? Math.sign(dy) : 0) };
+      cells.push(at);
+    }
+  }
+  if (cells.length === 0) throw new Error('Invalid nebula route');
+  return cells;
 }
 
 function layerData(map: Record<string, unknown>, name: string): number[] {

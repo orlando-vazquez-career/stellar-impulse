@@ -37,6 +37,10 @@ export { OBSTACLE_MODELS } from './mapas/obstaculos.js';
 export type { MapObstacle, ObstacleModel } from './mapas/obstaculos.js';
 export { findPath as findTiledPath } from './maps/pathfinding.js';
 import { ESPIRAL } from './mapas/espiral.js';
+import { ESPIRAL_2 } from './mapas/espiral-2.js';
+import { createNebula, nebulaSlowdown, type NebulaField } from './mecanicas/nebulosas.js';
+export { cloudAt, cloudCovers, createNebula, inNebula, nebulaClouds, nebulaHides, nebulaSlowdown, NEBULA_REVEAL_RADIUS } from './mecanicas/nebulosas.js';
+export type { NebulaCloud, NebulaCloudSpec, NebulaCloudState, NebulaField, NebulaPhase, NebulaSpec } from './mecanicas/nebulosas.js';
 import { cloneSatellites, createSatellites, runSatellites, type SatelliteState } from './mecanicas/satellites.js';
 export { SATELLITE_AFTERMATH_TICKS } from './mecanicas/satellites.js';
 export type { DropZone, DropZoneSpec, SatelliteFall, SatelliteState } from './mecanicas/satellites.js';
@@ -222,6 +226,8 @@ export interface World {
   baseRules?: Readonly<BaseRules>;
   /** Falling satellites over the map's `zona_caida` areas. Absent on maps without them. */
   satellites?: SatelliteState;
+  /** Purple nebula that slows and hides ships, with its drifting clouds. Absent on maps without it. */
+  nebula?: NebulaField;
 }
 export type CommandRejection =
   | 'invalid_command' | 'unknown_player' | 'stale_sequence'
@@ -269,8 +275,8 @@ const STARTING_FLEET: readonly { kind: UnitKind; dx: number; dy: number }[] = [
 export const GUARDIAN_AGGRO_RADIUS = 3;
 /** Guardians move one cell every this many ticks (slower than an Interceptor). */
 const GUARDIAN_MOVE_TICKS = 9;
-/** Training maps by id: Diego's Espiral Estelar (96×96) and the original Sector 01 (29×29). */
-export const TRAINING_MAPS = Object.freeze({ espiral: ESPIRAL, 'sector-01': SECTOR_01 });
+/** Training maps by id: Diego's Espiral Estelar and its horizontal variant (96×96), and the original Sector 01 (29×29). */
+export const TRAINING_MAPS = Object.freeze({ espiral: ESPIRAL, 'espiral-2': ESPIRAL_2, 'sector-01': SECTOR_01 });
 export type TrainingMapId = keyof typeof TRAINING_MAPS;
 export function createSectorWorld(map: TrainingMapId = 'sector-01'): World {
   return createWorldOn(TRAINING_MAPS[map]);
@@ -326,6 +332,7 @@ export function createWorldOn(sector: SectorLeido): World {
     built: { p1: 0, p2: 0 },
     economy: true,
     satellites: createSatellites(sector.dropZones, SECTOR_RULES.tickRate),
+    nebula: createNebula(sector.nebula, sector.width, sector.height, SECTOR_RULES.tickRate),
   };
 }
 export function distance(a: Position, b: Position): number {
@@ -719,7 +726,7 @@ function swapBlockedAllies(world: World, squad: Squad, destination: Position, mo
     && unit.id !== squad.id && unit.x === step.x && unit.y === step.y);
   if (!other || moved.has(other.id) || (other.transit && other.transit.untilTick > world.tick)) return false;
   const otherDestination = movementDestination(world, other);
-  const interval = (unit: Squad) => moveInterval(world, unit.ownerId, unit.kind);
+  const interval = (unit: Squad) => squadInterval(world, unit);
   const idle=!otherDestination&&other.stance==='march'&&!other.attackTargetId;
   if(idle&&other.x===destination.x&&other.y===destination.y&&!other.arrivalSeat)return false;
   if ((!otherDestination&&!idle) || (!idle&&world.tick % interval(other) !== 0)) return false;
@@ -798,13 +805,18 @@ function yieldToBlockedAlly(world: World, squad: Squad, destination: Position): 
       || distance(a, destination) - distance(b, destination) || a.y - b.y || a.x - b.x);
   const pocket = pockets[0];
   if (!pocket) return false;
-  const interval = moveInterval(world, squad.ownerId, squad.kind);
-  const otherInterval = moveInterval(world, other.ownerId, other.kind);
+  const interval = squadInterval(world, squad);
+  const otherInterval = squadInterval(world, other);
   squad.transit = { from: { x: squad.x, y: squad.y }, untilTick: world.tick + interval };
   squad.trafficYieldUntil = world.tick + 3 * Math.max(interval, otherInterval);
   Object.assign(squad, pocket);
   squad.lastMovedTick = world.tick;
   return true;
+}
+
+/** Ticks per cell for a ship right now: its class speed, dragged by the nebula it is in. */
+function squadInterval(world: World, unit: Squad): number {
+  return moveInterval(world, unit.ownerId, unit.kind) * nebulaSlowdown(world, unit);
 }
 
 function moveSquads(world: World): void {
@@ -821,7 +833,7 @@ function moveSquads(world: World): void {
     if (squad.hp <= 0 || moved.has(squad.id) || (squad.trafficYieldUntil ?? 0) > world.tick) continue;
     const destination = movementDestination(world, squad);
     if (!destination) continue;
-    const interval = moveInterval(world, squad.ownerId, squad.kind);
+    const interval = squadInterval(world, squad);
     // Orders feel instant: the first step of a fresh order goes on the next tick. Later steps
     // keep the shared beat, which allied swaps rely on.
     const onBeat = world.tick % interval === 0;
