@@ -1,9 +1,9 @@
 import { Room, ServerError, type Client } from '@colyseus/core';
 import {
-  CAMPAIGN_PROTOCOL_VERSION,
-  openCampaignEnvelope,
+  BATTLEFIELD_PROTOCOL_VERSION,
+  openBattlefieldEnvelope,
   parseBattlefieldCommand,
-  parseCampaignJoinOptions,
+  parseBattlefieldJoinOptions,
 } from '@impulso/input';
 import {
   applyBattlefieldCommand,
@@ -51,7 +51,7 @@ export class BattlefieldRoom extends Room {
     this.onMessage('command', (client, message) => {
       const player = this.seats.get(client.sessionId);
       if (!player) return;
-      const opened = openCampaignEnvelope(message);
+      const opened = openBattlefieldEnvelope(message);
       if (!opened.ok) {
         this.reject(client, opened.reason);
         return;
@@ -69,7 +69,7 @@ export class BattlefieldRoom extends Room {
         return;
       }
       this.world = result.world;
-      if (parsed.ok) client.send('ack', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, seq: parsed.command.seq });
+      if (parsed.ok) client.send('ack', { protocolVersion: BATTLEFIELD_PROTOCOL_VERSION, seq: parsed.command.seq });
       this.broadcastViews();
     });
     this.clock.setTimeout(() => {
@@ -78,7 +78,7 @@ export class BattlefieldRoom extends Room {
   }
 
   onAuth(_client: Client, options: unknown) {
-    const parsed = parseCampaignJoinOptions(options);
+    const parsed = parseBattlefieldJoinOptions(options);
     if (!parsed.ok) throw new ServerError(4002, parsed.reason);
     return { name: parsed.name };
   }
@@ -140,7 +140,7 @@ export class BattlefieldRoom extends Room {
   }
 
   private sendMapAndView(client: Client, player: PlayerId) {
-    client.send('map', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, ...publicMapMetadata(this.world.map) });
+    client.send('map', { protocolVersion: BATTLEFIELD_PROTOCOL_VERSION, ...publicMapMetadata(this.world.map) });
     client.send('view', battlefieldViewFor(this.world, player));
   }
 
@@ -175,7 +175,7 @@ export class BattlefieldRoom extends Room {
       rate_limit: 'No puedo hacer eso tan rápido.',
     };
     client.send('rejected', {
-      protocolVersion: CAMPAIGN_PROTOCOL_VERSION,
+      protocolVersion: BATTLEFIELD_PROTOCOL_VERSION,
       reason,
       message: messages[reason] ?? 'No puedo hacer eso.',
     });

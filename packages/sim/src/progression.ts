@@ -91,20 +91,29 @@ export interface CampaignOutcome { winner:PlayerId|null; reason:'core'|'draw'|'f
 /**
  * Campaign XP: the final core pays 125 to the winner and 40 to the loser; a draw pays 40 each.
  * A forfeit pays the remaining player 40 only after a completed sector, so an instant leave cannot be farmed.
- * Whoever left and annulled campaigns get nothing. Battlefield sectors keep no match record, so no challenges.
+ * Whoever left and annulled campaigns get nothing.
  * Merits: Primera Victoria for a core win, Exploración for any campaign played to its final core.
+ * Challenges: each finished sector is a match; the best single-sector progress counts (never a sum),
+ * and every newly completed challenge adds 50 XP. Whoever left and annulled campaigns complete nothing.
  */
-export function rewardForCampaign(progress:AccountProgress,campaignId:string,outcome:CampaignOutcome,completedSectors:number,player:PlayerId):{progress:AccountProgress;reward:MatchReward} {
+export function rewardForCampaign(progress:AccountProgress,campaignId:string,outcome:CampaignOutcome,completedSectors:number,player:PlayerId,sectors:readonly Partial<Record<ChallengeId,number>>[]=[]):{progress:AccountProgress;reward:MatchReward} {
   const repeated=recalled(progress,campaignId);if(repeated)return {progress,reward:repeated};
   const won=outcome.winner===player;
-  const xpGained=outcome.reason==='core'?(won?125:40):outcome.reason==='draw'?40:outcome.reason==='forfeit'&&won&&completedSectors>0?40:0;
+  const resultXp=outcome.reason==='core'?(won?125:40):outcome.reason==='draw'?40:outcome.reason==='forfeit'&&won&&completedSectors>0?40:0;
+  const best={...progress.best},completed=[...progress.completed],challenges:ChallengeId[]=[];
+  if(resultXp>0)for(const challenge of CHALLENGES){
+    const reached=Math.max(0,...sectors.map(sector=>sector[challenge.id]??0));
+    best[challenge.id]=Math.max(best[challenge.id]??0,Math.min(challenge.target,reached));
+    if(reached>=challenge.target&&!completed.includes(challenge.id)){completed.push(challenge.id);challenges.push(challenge.id);}
+  }
+  const xpGained=resultXp+challenges.length*50;
   if(xpGained===0)return {progress,reward:{xpGained:0,beforeXp:progress.xp,profile:profileFor(progress),challenges:[],unlocked:[]}};
   const previous=unlockedPool(progress);
   const owned=progress.merits??[];
   const earned=([outcome.reason==='core'&&won?'primera-victoria':null,outcome.reason==='core'||outcome.reason==='draw'?'exploracion':null] as const)
     .filter((id):id is MeritId=>id!==null&&!owned.includes(id));
-  const next:AccountProgress={xp:progress.xp+xpGained,completed:[...progress.completed],best:{...progress.best},awards:progress.awards,merits:[...owned,...earned]};
-  const reward:MatchReward={xpGained,beforeXp:progress.xp,profile:profileFor(next),challenges:[],unlocked:unlockedPool(next).filter(id=>!previous.includes(id)),merits:earned};
+  const next:AccountProgress={xp:progress.xp+xpGained,completed,best,awards:progress.awards,merits:[...owned,...earned]};
+  const reward:MatchReward={xpGained,beforeXp:progress.xp,profile:profileFor(next),challenges,unlocked:unlockedPool(next).filter(id=>!previous.includes(id)),merits:earned};
   next.awards=remember(progress.awards,campaignId,reward);
   return {progress:next,reward};
 }

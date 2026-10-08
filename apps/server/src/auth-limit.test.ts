@@ -15,11 +15,19 @@ const post = (path: string, email: string) => fetch(`${URL}${path}`, {
 
 it('refuses password checks beyond the shared budget without hashing them', async () => {
   expect((await post('/auth/login', 'ana@example.com')).status).toBe(401);
-  expect((await post('/auth/register', 'ana@example.com')).status).toBe(201);
+  const registered = await post('/auth/register', 'ana@example.com');
+  expect(registered.status).toBe(201);
+  const { token } = await registered.json() as { token: string };
   const limited = await post('/auth/login', 'beto@example.com');
   expect(limited.status).toBe(429);
   expect(limited.headers.get('retry-after')).toBe('1');
   expect(await limited.json()).toEqual({ error: 'rate_limited' });
   expect((await post('/auth/register', 'caro@example.com')).status).toBe(429);
   expect((await fetch(`${URL}/health`)).status).toBe(200);
+  // Changing the alias checks no password, so it does not draw from that budget.
+  const renamed = await fetch(`${URL}/auth/profile`, {
+    method: 'PUT', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ displayName: 'Ana' }),
+  });
+  expect(renamed.status).toBe(200);
 });

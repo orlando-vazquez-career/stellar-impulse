@@ -69,6 +69,19 @@ describe.skipIf(!url)('accounts in Postgres', () => {
     expect((await sql.query('SELECT count(*)::int AS n FROM match_awards')).rows[0].n).toBe(1);
   });
 
+  it('keeps the commander alias across a restart and saves a change without touching progress', async () => {
+    const first = await open();
+    const { user } = await first.auth.register('hugo@example.com', 'secret-1234', 'Hugo');
+    expect((await sql.query('SELECT display_name FROM accounts')).rows).toEqual([{ display_name: 'Hugo' }]);
+    expect((await open()).auth.login('hugo@example.com', 'secret-1234').user).toEqual(user);
+    await first.auth.awardMatch(user.id, 'room-1', won(), 'p1', 'medium');
+    await first.auth.updateDisplayName(user.id, 'Nova');
+    expect((await sql.query('SELECT display_name, xp FROM accounts')).rows).toEqual([{ display_name: 'Nova', xp: 175 }]);
+    const restarted = await open();
+    expect(restarted.auth.login('hugo@example.com', 'secret-1234').user).toEqual({ ...user, displayName: 'Nova' });
+    expect(restarted.auth.profile(user.id).xp).toBe(175);
+  });
+
   it('refuses an email another server registered first', async () => {
     const a = await open();
     const b = await open();
@@ -93,12 +106,13 @@ describe.skipIf(!url)('accounts in Postgres', () => {
     try {
       const file = join(dir, 'users.json');
       const legacy = new AuthService(file);
-      const { user } = await legacy.register('gabi@example.com', 'secret-1234');
+      const { user } = await legacy.register('gabi@example.com', 'secret-1234', 'Gabi');
       await legacy.awardMatch(user.id, 'old-room', won(), 'p1', 'medium');
       const store = new PostgresAccountStore(url!); stores.push(store);
       const imported = await openPostgresAuth(store, file);
       expect(imported.login('gabi@example.com', 'secret-1234').user).toEqual(user);
       expect(imported.profile(user.id)).toEqual(legacy.profile(user.id));
+      expect((await sql.query('SELECT display_name FROM accounts')).rows).toEqual([{ display_name: 'Gabi' }]);
       const again = new PostgresAccountStore(url!); stores.push(again);
       await openPostgresAuth(again, file);
       expect((await sql.query('SELECT count(*)::int AS n FROM accounts')).rows[0].n).toBe(1);

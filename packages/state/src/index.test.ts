@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSquad, createWorld } from '@impulso/sim';
+import { createMatchWorld, createSquad, createWorld, prepareCampaignSector } from '@impulso/sim';
 import { viewFor } from './index.js';
 
 describe('per-player visibility boundary', () => {
@@ -19,7 +19,9 @@ describe('per-player visibility boundary', () => {
     expect(view.players.p1.baseUpgrades).toEqual({ damage: 1, capacity: 2 });
     view.players.p1.baseUpgrades!.capacity = 99;
     expect(world.players.p1.baseUpgrades.capacity).toBe(2);
-    expect(JSON.stringify(view)).not.toContain('lastSequence');
+    // A player sees only its own order sequence, never the rival's.
+    expect(view.players.p2).not.toHaveProperty('lastSequence');
+    expect(JSON.stringify(view)).not.toContain('4321');
     expect(JSON.stringify(view)).not.toContain('seed');
     expect(view.core.progress).toEqual({ p1: 0, p2: 0 });
   });
@@ -61,5 +63,34 @@ describe('per-player visibility boundary', () => {
     const view = viewFor(world, 'p1');
     expect(view.squads[0]).toMatchObject({ stance: 'guard', anchor: { x: 2, y: 17 }, route: [{ x: 3, y: 17 }] });
     expect(view.squads[0]).not.toHaveProperty('gather');
+  });
+});
+
+describe('campaign view fields', () => {
+  it('tells only the owner its last accepted order sequence', () => {
+    const world = createWorld();
+    world.players.p1.lastSequence = 7;
+    world.players.p2.lastSequence = 3;
+    const own = viewFor(world, 'p1');
+    expect(own.players.p1.lastSequence).toBe(7);
+    expect(own.players.p2).not.toHaveProperty('lastSequence');
+    expect(viewFor(world, 'p2').players.p2.lastSequence).toBe(3);
+  });
+  it('shows how many rerolls the current augment offer allows', () => {
+    const world = createMatchWorld('sector-01', 'skirmish', 7);
+    prepareCampaignSector(world, { choice: 1, carried: { p1: [], p2: [] }, extraRerolls: { p1: 1 } });
+    expect(viewFor(world, 'p1').augments!.offer).toMatchObject({ rerolls: 0, rerollLimit: 2 });
+    expect(viewFor(world, 'p2').augments!.offer).toMatchObject({ rerolls: 0, rerollLimit: 1 });
+  });
+});
+
+describe('view size', () => {
+  // Rooms send this view to every player ten times a second. The client draws the terrain from
+  // its own copy of the map, so repeating it only floods slow clients until the heartbeat drops them.
+  it('leaves the static terrain out of the view a room sends every tick', () => {
+    const view = viewFor(createMatchWorld('espiral', 'skirmish', 7), 'p1');
+    expect(view).not.toHaveProperty('walkable');
+    expect(view).not.toHaveProperty('level');
+    expect(JSON.stringify(view).length).toBeLessThan(16_000);
   });
 });

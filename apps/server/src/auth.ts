@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
-import { emptyProgress, profileFor, rewardForCampaign, rewardForMatch, type AccountProgress, type CampaignOutcome, type MatchReward, type PlayerId, type ProgressProfile, type RivalDifficulty, type World } from '@impulso/sim';
+import { parseDisplayName } from '@impulso/input';
+import { emptyProgress, profileFor, rewardForCampaign, rewardForMatch, type AccountProgress, type CampaignOutcome, type ChallengeId, type MatchReward, type PlayerId, type ProgressProfile, type RivalDifficulty, type World } from '@impulso/sim';
 import { FileAccountStore, type AccountStore, type StoredUser } from './account-store';
 
 const SESSION_MS = 24 * 60 * 60_000;
@@ -8,7 +9,11 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export interface PublicUser {
   id: string;
   email: string;
+  /** Commander alias kept in the account; null until the player picks one. */
+  displayName: string | null;
 }
+
+const publicUser = (user: StoredUser): PublicUser => ({ id: user.id, email: user.email, displayName: user.displayName ?? null });
 
 export class AuthError extends Error {
   constructor(public readonly status: number, public readonly code: string) {
@@ -44,13 +49,16 @@ export class AuthService {
 
   get storage(): AccountStore['kind'] { return this.store.kind; }
 
-  async register(email: unknown, password: unknown) {
+  /** The alias is optional; when sent it must be a valid commander name. */
+  async register(email: unknown, password: unknown, displayName?: unknown) {
     const normalized = this.validate(email, password);
+    const alias = displayName === undefined ? undefined : this.validateDisplayName(displayName);
     if (this.users.has(normalized)) throw new AuthError(409, 'email_in_use');
     const salt = randomBytes(16).toString('hex');
     const user: StoredUser = {
       id: randomUUID(), email: normalized, salt,
       passwordHash: scryptSync(password as string, salt, 64).toString('hex'),
+      ...(alias === undefined ? {} : { displayName: alias }),
     };
     this.users.set(normalized, user);
     try {
@@ -80,7 +88,7 @@ export class AuthService {
     if (!session) return null;
     if (session.expiresAt <= Date.now()) { this.sessions.delete(token); return null; }
     const user = this.byId(session.userId);
-    return user ? { id: user.id, email: user.email } : null;
+    return user ? publicUser(user) : null;
   }
 
   logout(token: unknown): boolean {
@@ -93,12 +101,33 @@ export class AuthService {
     return profileFor(user.progress ?? emptyProgress());
   }
 
+  /** Sets the commander alias, which then follows the account to any device. The same alias writes nothing. */
+  async updateDisplayName(userId: string, displayName: unknown): Promise<PublicUser> {
+    const alias = this.validateDisplayName(displayName);
+    return this.inQueue(userId, async () => {
+      const user = this.byId(userId);
+      if (!user) throw new AuthError(401, 'authentication_required');
+      const previous = user.displayName;
+      if (previous === alias) return publicUser(user);
+      user.displayName = alias;
+      try {
+        await this.store.saveProfile(user, [...this.users.values()]);
+      } catch (error) {
+        user.displayName = previous;
+        throw error;
+      }
+      return publicUser(user);
+    });
+  }
+
   awardMatch(userId: string, matchId: string, world: World, player: PlayerId, difficulty: RivalDifficulty | 'pvp'): Promise<MatchReward> {
     return this.award(userId, matchId, (progress) => rewardForMatch(progress, matchId, world, player, difficulty));
   }
 
-  awardCampaign(userId: string, campaignId: string, outcome: CampaignOutcome, completedSectors: number, player: PlayerId): Promise<MatchReward> {
-    return this.award(userId, campaignId, (progress) => rewardForCampaign(progress, campaignId, outcome, completedSectors, player));
+  /** `sectors`: this player's challenge progress in each finished sector. */
+  awardCampaign(userId: string, campaignId: string, outcome: CampaignOutcome, completedSectors: number, player: PlayerId,
+    sectors: readonly Partial<Record<ChallengeId, number>>[] = []): Promise<MatchReward> {
+    return this.award(userId, campaignId, (progress) => rewardForCampaign(progress, campaignId, outcome, completedSectors, player, sectors));
   }
 
   /** Saves only when the reward changed the progress; a repeated or empty reward writes nothing. */
@@ -140,11 +169,17 @@ export class AuthService {
     return normalized;
   }
 
+  private validateDisplayName(value: unknown): string {
+    const alias = parseDisplayName(value);
+    if (alias === null) throw new AuthError(400, 'invalid_display_name');
+    return alias;
+  }
+
   private issue(user: StoredUser) {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = Date.now() + SESSION_MS;
     this.sessions.set(token, { userId: user.id, expiresAt });
-    return { token, expiresAt, user: { id: user.id, email: user.email } };
+    return { token, expiresAt, user: publicUser(user) };
   }
 }
 
