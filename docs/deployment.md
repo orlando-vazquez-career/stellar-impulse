@@ -47,6 +47,16 @@ file is unreadable; back up both files together. `/health` reports
 attached during redeployments. Match state and session tokens are held in memory;
 restarting the server ends matches and requires users to sign in again.
 
+When a new deployment replaces the previous one, Railway sends SIGTERM to the old
+container's PID 1: pnpm, running `pnpm --filter @impulso/server start`. pnpm
+forwards it to the server, which closes its rooms (clients receive close code
+4001) and exits with code 0. Two settings keep that chain intact; keep both.
+`shellEmulator: true` in `pnpm-workspace.yaml` makes pnpm start the server
+directly: with `sh -c` (dash) in between, the shell died on the signal, pnpm
+exited 1 and Railway marked the old deployment as failed. The start script uses
+`node --import tsx` because the tsx CLI kills the server with SIGKILL when it
+does not acknowledge a forwarded signal within 30 ms.
+
 ## Accounts
 
 The account identifier is an email address. Provision demo accounts through

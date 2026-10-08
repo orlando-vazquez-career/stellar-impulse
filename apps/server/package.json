@@ -6,7 +6,7 @@
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "tsx watch src/index.ts",
-    "start": "node scripts/migrate.mjs && tsx src/index.ts",
+    "start": "node scripts/migrate.mjs && node --import tsx src/index.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "db:migrate": "prisma migrate dev"
