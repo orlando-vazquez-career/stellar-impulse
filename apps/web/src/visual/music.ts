@@ -1,4 +1,5 @@
 import { channelVolume, getAudioMix, subscribeAudioMix, type AudioMix } from './audio-mix';
+import { equippedCosmetic } from './hangar/loadout';
 
 export type MusicTrack = 'menu' | 'match';
 
@@ -31,7 +32,10 @@ export class MusicPlayer {
   private timer: ReturnType<typeof setInterval> | null = null;
   private nextBeat = 0;
   private beat = 0;
-  private recorded = new Map<MusicTrack, AudioBuffer>();
+  private recorded = new Map<string, AudioBuffer>();
+  private paths: Partial<Record<MusicTrack, string>> = { match: equippedCosmetic('music').musicFile };
+  private pending = new Map<string, Promise<void>>();
+  private playingPath: string | undefined;
   private activeSource: AudioBufferSourceNode | null = null;
   private activeGain: GainNode | null = null;
   private synthGain: GainNode | null = null;
@@ -97,17 +101,34 @@ export class MusicPlayer {
   private async loadRecorded(manifestUrl: string) {
     try {
       const manifest = await (await fetch(manifestUrl)).json() as { music?: Partial<Record<MusicTrack, string | null>> };
-      for (const track of ['menu', 'match'] as const) {
-        const path = manifest.music?.[track];
-        const ctx = path ? this.ensureContext() : null;
-        if (!path || !ctx) continue;
-        const response = await fetch(new URL(path, new URL(manifestUrl, window.location.href)));
+      const base = new URL(manifestUrl, window.location.href);
+      if (manifest.music?.menu) this.paths.menu = new URL(manifest.music.menu, base).href;
+      if (!this.paths.match && manifest.music?.match) this.paths.match = new URL(manifest.music.match, base).href;
+    } catch { /* the equipped match track can load even if the manifest is unavailable */ }
+    if (this.disposed) return;
+    await Promise.all(['menu', 'match'].map((track) => this.loadTrack(track as MusicTrack)));
+  }
+
+  /** Cache by file, so a late download cannot overwrite a newer hangar selection. */
+  private async loadTrack(track: MusicTrack) {
+    const path = this.paths[track];
+    if (!path || this.disposed || this.recorded.has(path)) return;
+    if (this.pending.has(path)) return this.pending.get(path);
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const request = (async () => {
+      try {
+        const response = await fetch(path);
+        if (!response.ok || this.disposed) return;
+        const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
         if (this.disposed) return;
-        if (response.ok) this.recorded.set(track, await ctx.decodeAudioData(await response.arrayBuffer()));
-      }
-      // Swap the synthesised stand-in for the recording, but only while this player is still the live one.
-      if (!this.disposed && this.track && this.recorded.has(this.track)) this.play(this.track, true);
-    } catch { /* keep the generative music */ }
+        this.recorded.set(path, buffer);
+        if (this.track && this.paths[this.track] === path) this.play(this.track, true);
+      } catch { /* keep the generative fallback for unavailable or undecodable recordings */ }
+      finally { this.pending.delete(path); }
+    })();
+    this.pending.set(path, request);
+    await request;
   }
 
   /** Browsers only allow sound after a user gesture; call this from a click or key press. */
@@ -118,13 +139,18 @@ export class MusicPlayer {
 
   play(track: MusicTrack, force = false) {
     if (this.disposed) return;
-    if (this.track === track && !force && (this.activeSource || this.timer)) return;
+    // The app keeps this player alive while visiting the hangar: reread on match entry.
+    if (track === 'match') this.paths.match = equippedCosmetic('music').musicFile;
+    const path = this.paths[track];
+    void this.loadTrack(track);
+    if (this.track === track && this.playingPath === path && !force && (this.activeSource || this.timer)) return;
     this.stopTrack(true);
     this.track = track;
+    this.playingPath = path;
     const ctx = this.ensureContext();
     if (!ctx || !this.visibilityGain) return;
 
-    const recorded = this.recorded.get(track);
+    const recorded = path ? this.recorded.get(path) : undefined;
     const now = ctx.currentTime;
 
     if (recorded) {
