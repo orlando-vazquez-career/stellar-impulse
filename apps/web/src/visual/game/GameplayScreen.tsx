@@ -6,7 +6,7 @@ import { AugmentHud } from './AugmentHud';
 import { MatchProgress } from '../profile/MatchProgress';
 import { createMockGameplayAdapter } from './mock-adapter';
 import { createServerGameplayAdapter } from './server-adapter';
-import { createCampaignGameplayAdapter } from './campaign-adapter';
+import { campaignTransport } from '../../multiplayer/campaign-transport';
 import { nextFormation } from './formation';
 import type { MultiplayerSession } from '../../multiplayer/session';
 import { MatchAudio, playEvent, type Announcement } from './audio';
@@ -28,8 +28,9 @@ const emptyMultiplayer = () => null;
 
 export function GameplayScreen({ preferences, difficulty = 'medium', map = DEFAULT_PLAYABLE_MAP, duration = 'skirmish', multiplayerSession, onLeave, onAudioChange }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; duration?: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const [match, setMatch] = useState(0);
-  // Campaign rooms and the offline mock still use Sector 01. Training opens Espiral Estelar.
-  const chosen = multiplayerSession || wantsLocalMock() ? 'sector-01' : map;
+  // The campaign plays on the map its room announces; the offline mock keeps Sector 01.
+  const chosen = multiplayerSession ? multiplayerSession.getSnapshot().phase?.renderMap ?? 'espiral'
+    : wantsLocalMock() ? 'sector-01' : map;
   selectMap(chosen);
   return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} duration={duration} multiplayerSession={multiplayerSession} onLeave={onLeave} onAudioChange={onAudioChange} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
 }
@@ -38,7 +39,7 @@ export function GameplayScreen({ preferences, difficulty = 'medium', map = DEFAU
 function GameplayMatch({ preferences, difficulty, map, duration, multiplayerSession, onLeave, onRestart, onAudioChange }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; duration: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const [adapter, setAdapter] = useState<GameplayPresentationAdapter | null>(null);
   useEffect(() => {
-    const created = multiplayerSession ? createCampaignGameplayAdapter(multiplayerSession)
+    const created = multiplayerSession ? createServerGameplayAdapter(SERVER_URL, difficulty, map, 'skirmish', campaignTransport(multiplayerSession))
       : wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL, difficulty, map, duration);
     setAdapter(created);
     return () => created.destroy();

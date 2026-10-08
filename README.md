@@ -2,7 +2,7 @@
 
 RTS roguelite competitivo PvPvE para navegador. Explorar para prepararse, combatir para avanzar y defender para ganar.
 
-**Estado: entrenamiento contra IA y salas multijugador conectadas al servidor. La campaña MVP completa sigue en desarrollo.**
+**Estado: entrenamiento contra IA y campaña multijugador de tres sectores en el servidor, con cuentas y logros en Postgres. El resto del MVP sigue en desarrollo.**
 El brief de referencia es la versión 0.4. El objetivo es 1v1,
 tres sectores isométricos 2D, servidor autoritativo y cosméticos en Stellar testnet.
 Las compras nunca modifican el poder de una flota.
@@ -29,7 +29,8 @@ El servidor escucha en **127.0.0.1:2567** y aplica las órdenes y el estado de l
 Para jugar entre dos personas, inicia sesión con dos cuentas diferentes en dos
 navegadores o perfiles. El primero elige **Crear sala multijugador → Crear sala**;
 el segundo elige **Unirse a sala** y pega el código. Ambos pulsan **Estoy listo**:
-tras la cuenta regresiva entran a la misma partida de Sector 01. Una recarga recupera
+tras la cuenta regresiva juegan una campaña de tres sectores en Espiral Estelar: cada
+sector empieza eligiendo un aumento que se conserva en los siguientes. Una recarga recupera
 la plaza mientras siga vigente la reserva de reconexión. El registro de cuentas y
 el contrato de conexión están en [cuentas y multijugador](docs/auth-multiplayer.md).
 
@@ -48,8 +49,8 @@ wallet para ninguno de estos flujos. `?adapter=mock` conserva el juego visual lo
 - Workspace Rust/Soroban con contrato de arranque, pruebas y build WASM.
 - Plan estratégico, tareas, decisiones, CI y reglas para contribuir.
 
-La campaña de tres sectores, economía completa, bots, reconexión, PostgreSQL,
-SEP-10, compras y premios son **trabajo planificado**. El contrato inicial solo
+Energía, bots de reemplazo, SEP-10, compras y premios en cadena son
+**trabajo planificado**. El contrato inicial solo
 expone su versión; no emite ni vende cosméticos. Ver [estado verificable](docs/status.md).
 
 ## Verificar

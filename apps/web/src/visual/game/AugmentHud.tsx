@@ -46,7 +46,7 @@ export function AugmentHud({view,adapter,sound=true}:{view:GameplayViewModel;ada
           <strong className="augment-timer" aria-label={es?'Tiempo restante':'Time remaining'}>{time(offer.remainingSeconds)}</strong></header>
         <p>{opening?(es?'Tu rival también está eligiendo. La partida comienza cuando ambos estén listos.':'Your rival is choosing too. The match starts when both are ready.'):(es?'La batalla continúa. Elige antes de que termine el tiempo.':'The battle continues. Pick before time runs out.')}</p>
         <div className="augment-cards">{offer.cards.map((card)=><AugmentCard key={card.id} card={card} onPick={()=>adapter.dispatch({type:'augment-pick',choice:offer.choice,id:card.id})}/>)}</div>
-        <footer><span>{es?'GRATIS · SIN COSTO DE METAL':'FREE · NO METAL COST'}</span><button disabled={offer.rerolls!==0} onClick={()=>adapter.dispatch({type:'augment-reroll',choice:offer.choice})}>{es?'Renovar cartas':'Reroll cards'} · {offer.rerolls===0?'1':'0'}</button>
+        <footer><span>{es?'GRATIS · SIN COSTO DE METAL':'FREE · NO METAL COST'}</span><button disabled={offer.rerolls>=(offer.rerollLimit??1)} onClick={()=>adapter.dispatch({type:'augment-reroll',choice:offer.choice})}>{es?'Renovar cartas':'Reroll cards'} · {Math.max(0,(offer.rerollLimit??1)-offer.rerolls)}</button>
           {!opening && <button onClick={()=>setExpanded(!expanded)}>{expanded?(es?'Reducir':'Collapse'):(es?'Ampliar':'Expand')}</button>}</footer>
       </div>
     </section>}

@@ -90,13 +90,33 @@ export async function gridDistanceFromMinimap(page: Page, first: { x: number; y:
 export async function chooseOpening(page: Page) {
   const cards = page.locator('.augment-opening .augment-card');
   await expect(cards).toHaveCount(3);
+  const offered = await openingState(page);
+  let clicked = true;
   try {
     await cards.first().click({ timeout: 10000 });
   } catch (error) {
     // A slow runner may miss the offer; other interaction errors must still fail.
     if (!(error instanceof errors.TimeoutError)) throw error;
+    clicked = false;
   }
-  // At normal speed the server allows 30 seconds; accelerated tests expire sooner.
-  await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-tick', /^[1-9]\d*$/, { timeout: 35000 });
+  try {
+    // At normal speed the server allows 30 seconds; accelerated tests expire sooner.
+    await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-tick', /^[1-9]\d*$/, { timeout: 35000 });
+  } catch (error) {
+    // Tells a pick that never left the page apart from a server clock running behind the wall clock.
+    console.log(`opening unresolved: click ${clicked ? 'sent' : 'timed out'}; offered ${JSON.stringify(offered)}; now ${JSON.stringify(await openingState(page))}`);
+    throw error;
+  }
   await expect(page.locator('.augment-opening')).toHaveCount(0, { timeout: 10000 });
+}
+
+/** The opening as the page shows it: the server's remaining time, a confirmed pick and any room notice. */
+function openingState(page: Page) {
+  return page.evaluate(() => ({
+    at: Date.now(),
+    timer: document.querySelector('.augment-timer')?.textContent ?? null,
+    confirmed: Boolean(document.querySelector('.augment-wait')),
+    notice: document.querySelector('.vi-notice')?.textContent ?? null,
+    connection: document.querySelector('.vi-gameplay')?.getAttribute('data-connection') ?? null,
+  }));
 }

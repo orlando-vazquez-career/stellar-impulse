@@ -96,7 +96,7 @@ function SoundButton({ audio, onAudioChange }: { audio: VisualPreferences['audio
 function TopControls({ view, adapter, onResetCamera, onDevelopment, onLeave, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; onResetCamera(): void; onDevelopment(): void; onLeave(): void; multiplayer?: boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const { t } = useI18n();
   return <div className="vi-top-controls">
-    {!multiplayer && <SurrenderButton view={view} adapter={adapter} />}
+    <SurrenderButton view={view} adapter={adapter} />
     {audio && onAudioChange && <SoundButton audio={audio} onAudioChange={onAudioChange} />}
     <button title={t('cameraReset')} onClick={onResetCamera}><span aria-hidden="true">◎</span></button>
     {!multiplayer && <button title={t('preferences')} onClick={onDevelopment}><span aria-hidden="true">⚙</span></button>}

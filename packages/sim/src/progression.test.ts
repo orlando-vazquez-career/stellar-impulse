@@ -128,3 +128,34 @@ describe('campaign merits',()=>{
     expect(profileFor(old).merits).toEqual([]);
   });
 });
+describe('campaign challenges',()=>{
+  const core={winner:'p1',reason:'core'} as const;
+  it('completes challenges from any sector once, at 50 XP each',()=>{
+    const {progress,reward}=rewardForCampaign(emptyProgress(),'campaign:C',core,3,'p1',[{scrapper:15},{ace:5},{}]);
+    expect(reward.challenges).toEqual(['ace','scrapper']);
+    expect(reward.xpGained).toBe(125+100);
+    expect(progress.completed).toEqual(['ace','scrapper']);
+    expect(progress.best).toMatchObject({scrapper:15,ace:5});
+  });
+  it('keeps the best single-sector progress instead of adding sectors up',()=>{
+    const {progress,reward}=rewardForCampaign(emptyProgress(),'campaign:C',core,3,'p1',[{scrapper:8},{scrapper:9},{scrapper:2}]);
+    expect(reward.challenges).toEqual([]);
+    expect(reward.xpGained).toBe(125);
+    expect(progress.best.scrapper).toBe(9);
+  });
+  it('never completes a challenge twice across campaigns',()=>{
+    const first=rewardForCampaign(emptyProgress(),'campaign:A',core,3,'p1',[{scrapper:15}]).progress;
+    const second=rewardForCampaign(first,'campaign:B',core,3,'p1',[{scrapper:20}]);
+    expect(second.reward.challenges).toEqual([]);
+    expect(second.reward.xpGained).toBe(125);
+  });
+  it.each([
+    ['the player who left',{winner:'p2',reason:'forfeit'},'p1'],
+    ['an annulled campaign',{winner:null,reason:'annulled'},'p1'],
+  ] as const)('%s completes nothing',(_name,outcome,player)=>{
+    const {progress,reward}=rewardForCampaign(emptyProgress(),'campaign:C',outcome,2,player,[{scrapper:15}]);
+    expect(reward.challenges).toEqual([]);
+    expect(progress.completed).toEqual([]);
+    expect(progress.best).toEqual({});
+  });
+});

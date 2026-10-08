@@ -66,10 +66,10 @@ import { observeKnowledge, type AiKnowledge } from './inteligencia-enemiga/knowl
 export { CHALLENGES, MERITS, emptyProgress, emptyMatchRecord, profileFor, unlockedPool, rewardForCampaign, rewardForMatch, challengeProgress } from './progression.js';
 export type { AccountProgress, AwardRecord, CampaignOutcome, MeritId, ProgressProfile, MatchReward, MatchRecord } from './progression.js';
 export { effectiveFleetCap, effectiveBaseDamage, effectsFor, statsForUnit, visionSources, isConcealed, captureDuration, metalIncomeRate } from './augments/effects.js';
-export { initializeAugments, setAugmentPool, grantAugment, pickAugment, rerollAugments, chooseAiAugment } from './augments/runtime.js';
+export { initializeAugments, setAugmentPool, grantAugment, pickAugment, rerollAugments, chooseAiAugment, prepareCampaignSector } from './augments/runtime.js';
 export { AUGMENT_CATALOG, AUGMENTS_BY_ID, INITIAL_AUGMENTS } from './augments/catalog.js';
 export type { Augment, AugmentTier, ChallengeId } from './augments/catalog.js';
-export type { AugmentOffer, AugmentMatch } from './augments/runtime.js';
+export type { AugmentOffer, AugmentMatch, CampaignSectorAugments } from './augments/runtime.js';
 export type { ShipStats, StatModifier } from './stats.js';
 import { DURATION_MODES } from './match-modes.js';
 export { createMatchWorld, DURATION_MODES } from './match-modes.js';

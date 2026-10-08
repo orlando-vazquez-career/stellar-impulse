@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
-import { emptyProgress, profileFor, rewardForCampaign, rewardForMatch, type AccountProgress, type CampaignOutcome, type MatchReward, type PlayerId, type ProgressProfile, type RivalDifficulty, type World } from '@impulso/sim';
+import { emptyProgress, profileFor, rewardForCampaign, rewardForMatch, type AccountProgress, type CampaignOutcome, type ChallengeId, type MatchReward, type PlayerId, type ProgressProfile, type RivalDifficulty, type World } from '@impulso/sim';
 import { FileAccountStore, type AccountStore, type StoredUser } from './account-store';
 
 const SESSION_MS = 24 * 60 * 60_000;
@@ -97,8 +97,10 @@ export class AuthService {
     return this.award(userId, matchId, (progress) => rewardForMatch(progress, matchId, world, player, difficulty));
   }
 
-  awardCampaign(userId: string, campaignId: string, outcome: CampaignOutcome, completedSectors: number, player: PlayerId): Promise<MatchReward> {
-    return this.award(userId, campaignId, (progress) => rewardForCampaign(progress, campaignId, outcome, completedSectors, player));
+  /** `sectors`: this player's challenge progress in each finished sector. */
+  awardCampaign(userId: string, campaignId: string, outcome: CampaignOutcome, completedSectors: number, player: PlayerId,
+    sectors: readonly Partial<Record<ChallengeId, number>>[] = []): Promise<MatchReward> {
+    return this.award(userId, campaignId, (progress) => rewardForCampaign(progress, campaignId, outcome, completedSectors, player, sectors));
   }
 
   /** Saves only when the reward changed the progress; a repeated or empty reward writes nothing. */

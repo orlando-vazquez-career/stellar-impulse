@@ -19,14 +19,17 @@ errores y adapter de wallet con test double. Rust: versión del contrato de arra
 Los tests de wallet no prueban una aprobación humana en extensión.
 
 E2E multijugador: dos contextos de navegador con cuentas diferentes crean y comparten
-una sala, esperan ambos estados listo, entran juntos y envían órdenes confirmadas.
-Una recarga conserva sala, asiento y secuencia; abandonar concede victoria al rival,
-y recargar resultados conserva esa victoria. También se comprueban código inválido,
+una sala, esperan ambos estados listo y entran juntos a la campaña en Espiral. Cada uno
+elige su aumento de apertura y produce un Explorador con una orden confirmada por el
+servidor. Una recarga conserva sala, asiento, flota y secuencia; abandonar concede la
+victoria de la campaña al rival, y recargar resultados conserva esa victoria. También se comprueban código inválido,
 corrección de nombre de sala y salida del lobby incluso durante una caída de red.
 Las pruebas de transporte cubren
 tercer jugador, privacidad, pausa, reconexión automática y ausencia de órdenes reenviadas.
 La suite mantiene login, entrenamiento, mapa, cámara, hangar y ajustes.
-Estas pruebas no certifican la campaña completa, accesibilidad completa ni balance.
+Los tres sectores con aumentos arrastrados se prueban en el servidor
+(`apps/server/src/campaign-flow.test.ts`), no en el navegador.
+Estas pruebas no certifican accesibilidad completa ni balance.
 
 Ejecutar solo la aceptación de salas con `pnpm test:e2e tests/e2e/multiplayer.spec.ts`.
 
@@ -43,7 +46,7 @@ simultáneos e importación del archivo anterior.
 
 | Caso | Evidencia requerida | Estado inicial |
 |---|---|---|
-| Tres sectores1v1 | Dos navegadores, tecnologías, resets y resultado final | Pendiente |
+| Tres sectores 1v1 | Dos navegadores, aumentos, resets y resultado final | Servidor cubierto; navegador cubre sector 1, recarga y abandono |
 | Bot y reconexión | Cortar red, sustitución10s, reserva60s, control recuperado | Pendiente |
 | Niebla | Captura de mensajes por jugador; cero unidades ocultas | Base con tests unitarios; ampliar |
 | Órdenes | Ownership, visión, recursos, frecuencia y duplicados rechazados | Base parcial; ampliar |
