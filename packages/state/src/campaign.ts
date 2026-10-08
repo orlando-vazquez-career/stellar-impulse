@@ -6,10 +6,10 @@ export interface CampaignResult { winner: PlayerId | null; reason: 'core' | 'dra
 
 /** Public per-player campaign state, shared by the server and browser clients. */
 export interface CampaignPhaseView {
-  protocolVersion: 2;
+  protocolVersion: 3;
   playerId: PlayerId;
-  /** Catalog presentation chosen when this room was created. */
-  renderMap?: 'sector-01';
+  /** Map every sector of this campaign is played on. */
+  renderMap?: 'espiral' | 'sector-01';
   phase: CampaignPhase;
   sector: number;
   sectors: number;
@@ -18,9 +18,5 @@ export interface CampaignPhaseView {
   pause: { by: PlayerId; remainingMs: number } | null;
   resumeInMs: number | null;
   sectorResults: CampaignSectorResult[];
-  offers: string[] | null;
-  myTech: string | null;
-  rivalChoseTech: boolean;
-  myTechnologies: string[];
   result: CampaignResult | null;
 }

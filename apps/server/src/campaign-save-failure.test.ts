@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { Client, type Room } from '@colyseus/sdk';
 import { CAMPAIGN_PROTOCOL_VERSION } from '@impulso/input';
 import { createGameServer } from './app.js';
+import { createMatchWorld } from '@impulso/sim';
 import * as campaigns from './campaign/machine.js';
 import { AuthService } from './auth.js';
 
@@ -13,7 +14,7 @@ const PORT = 32_000 + Math.floor(Math.random() * 900);
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
 const oneSectorWonByP1: Partial<campaigns.CampaignConfig> = {
   sectors: 1, countdownMs: 100, resultsMs: 2_000,
-  createSector: (sector) => ({ ...campaigns.DEFAULT_CONFIG.createSector(sector), winner: 'p1' }),
+  createSector: (_sector, seed) => { const world = createMatchWorld('sector-01', 'skirmish', seed); world.winner = 'p1'; return world; },
 };
 
 function next<T = any>(room: Room, type: string): Promise<T> {
