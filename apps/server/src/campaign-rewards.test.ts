@@ -8,18 +8,16 @@ import { AuthService } from './auth.js';
 const PORT = 31_000 + Math.floor(Math.random() * 900);
 const URL = `http://127.0.0.1:${PORT}`;
 const auth = new AuthService();
-const ana = auth.register('ana-rewards@example.com', 'secret-1234');
-const beto = auth.register('beto-rewards@example.com', 'secret-1234');
+const ana = await auth.register('ana-rewards@example.com', 'secret-1234');
+const beto = await auth.register('beto-rewards@example.com', 'secret-1234');
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
 
 // One sector whose core already belongs to p1: the campaign ends on its first tick.
-const server = createGameServer({
-  auth,
-  campaign: {
-    sectors: 1, countdownMs: 100, resultsMs: 2_000,
-    createSector: (sector) => ({ ...campaigns.DEFAULT_CONFIG.createSector(sector), winner: 'p1' }),
-  },
-});
+const oneSectorWonByP1: Partial<campaigns.CampaignConfig> = {
+  sectors: 1, countdownMs: 100, resultsMs: 2_000,
+  createSector: (sector) => ({ ...campaigns.DEFAULT_CONFIG.createSector(sector), winner: 'p1' }),
+};
+const server = createGameServer({ auth, campaign: oneSectorWonByP1 });
 beforeAll(async () => { await server.listen(PORT, '127.0.0.1'); });
 afterAll(async () => { await server.gracefullyShutdown(false); });
 

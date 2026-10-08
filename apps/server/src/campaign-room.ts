@@ -9,6 +9,7 @@ import { battlefieldViewFor } from '@impulso/state';
 import * as campaigns from './campaign/machine';
 import { publicMapMetadata } from './map-catalog';
 import type { AuthService } from './auth';
+import { savedReward } from './rewards';
 
 const TICK_MS = 100;
 const LOBBY_TIMEOUT_MS = 15 * 60_000;
@@ -152,18 +153,19 @@ export class CampaignRoom extends Room {
     if (phase !== before || this.ticks % 10 === 0) this.sendPhase(now);
     if (phase === 'results' && !this.announcedEnd) {
       this.announcedEnd = true;
-      this.announceEnd();
+      void this.announceEnd();
     }
     if (phase === 'closed') void this.disconnect();
   }
 
   /** Saves each seated account's campaign XP once, then tells every player its own reward. */
-  private announceEnd() {
+  private async announceEnd() {
     const { result, sectorResults } = this.campaign;
     const rewards = new Map<PlayerId, MatchReward>();
-    for (const [userId, player] of this.users) {
-      rewards.set(player, this.auth.awardCampaign(userId, `campaign:${this.roomId}`, result!, sectorResults.length, player));
-    }
+    await Promise.all([...this.users].map(async ([userId, player]) => {
+      rewards.set(player, await savedReward(this.auth, userId,
+        () => this.auth.awardCampaign(userId, `campaign:${this.roomId}`, result!, sectorResults.length, player)));
+    }));
     for (const client of this.clients) {
       const player = this.seats.get(client.sessionId);
       const reward = player ? rewards.get(player) : undefined;

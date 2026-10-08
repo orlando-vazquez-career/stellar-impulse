@@ -30,6 +30,15 @@ Estas pruebas no certifican la campaña completa, accesibilidad completa ni bala
 
 Ejecutar solo la aceptación de salas con `pnpm test:e2e tests/e2e/multiplayer.spec.ts`.
 
+Cuentas en Postgres: `apps/server/src/postgres-store.test.ts` corre solo con
+`DATABASE_URL_TEST` apuntando a una base descartable (vacía las tablas en cada caso).
+En CI lo ejecuta el job `database` contra un servicio Postgres 17. En local, con el
+contenedor de [desarrollo](development.md):
+`DATABASE_URL_TEST=postgresql://impulso:impulso@127.0.0.1:55432/impulso pnpm exec vitest run apps/server/src/postgres-store.test.ts`.
+Cubre reinicio y login, XP, desafíos y mejores marcas de una partida, emblemas de campaña,
+resultados repetidos desde otro proceso, correo duplicado entre procesos, dos resultados
+simultáneos e importación del archivo anterior.
+
 ## Aceptación futura del MVP
 
 | Caso | Evidencia requerida | Estado inicial |

@@ -1,0 +1,25 @@
+import { afterAll, beforeAll, expect, it } from 'vitest';
+import { createGameServer } from './app.js';
+
+const PORT = 33_000 + Math.floor(Math.random() * 900);
+const URL = `http://127.0.0.1:${PORT}`;
+// No refill: the third password check inside the window must be refused.
+const server = createGameServer({ authDataFile: null, authLimit: { burst: 2, refillPerSecond: 0 } });
+beforeAll(async () => { await server.listen(PORT, '127.0.0.1'); });
+afterAll(async () => { await server.gracefullyShutdown(false); });
+
+const post = (path: string, email: string) => fetch(`${URL}${path}`, {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ email, password: 'wrong-password' }),
+});
+
+it('refuses password checks beyond the shared budget without hashing them', async () => {
+  expect((await post('/auth/login', 'ana@example.com')).status).toBe(401);
+  expect((await post('/auth/register', 'ana@example.com')).status).toBe(201);
+  const limited = await post('/auth/login', 'beto@example.com');
+  expect(limited.status).toBe(429);
+  expect(limited.headers.get('retry-after')).toBe('1');
+  expect(await limited.json()).toEqual({ error: 'rate_limited' });
+  expect((await post('/auth/register', 'caro@example.com')).status).toBe(429);
+  expect((await fetch(`${URL}/health`)).status).toBe(200);
+});

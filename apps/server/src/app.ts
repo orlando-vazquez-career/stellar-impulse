@@ -6,20 +6,43 @@ import { campaignRoomWith } from './campaign-room';
 import type { CampaignConfig } from './campaign/machine';
 import { AuthError, AuthService, bearerToken } from './auth';
 
+export interface AuthLimit { burst: number; refillPerSecond: number }
+
 export interface GameServerOptions {
   /** Campaign timing overrides for tests or future modes. */
   campaign?: Partial<CampaignConfig>;
   auth?: AuthService;
   authDataFile?: string | null;
+  /** Shared budget of password checks (login and registration). */
+  authLimit?: AuthLimit;
+}
+
+/** 20 testers can sign in at once; past that, a flood cannot keep hashing passwords on the game loop. */
+const DEFAULT_AUTH_LIMIT: AuthLimit = { burst: 20, refillPerSecond: 2 };
+
+/** Password hashing blocks the event loop every room shares, so login and registration draw from one bucket. */
+function tokenBucket({ burst, refillPerSecond }: AuthLimit) {
+  let tokens = burst;
+  let last = Date.now();
+  return () => {
+    const now = Date.now();
+    tokens = Math.min(burst, tokens + ((now - last) / 1000) * refillPerSecond);
+    last = now;
+    if (tokens < 1) return false;
+    tokens -= 1;
+    return true;
+  };
 }
 
 export function createGameServer(options: GameServerOptions = {}) {
   const auth = options.auth ?? new AuthService(options.authDataFile === undefined
     ? (process.env.AUTH_DATA_FILE ?? './data/users.json') : options.authDataFile);
+  const passwordCheck = tokenBucket(options.authLimit ?? DEFAULT_AUTH_LIMIT);
+  const limited = () => Response.json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': '1' } });
   const credentials = (body: unknown) => body && typeof body === 'object' && !Array.isArray(body)
     ? body as { email?: unknown; password?: unknown } : {};
-  const respond = (action: () => unknown, status = 200): Response => {
-    try { return Response.json(action(), { status }); }
+  const respond = async (action: () => unknown, status = 200): Promise<Response> => {
+    try { return Response.json(await action(), { status }); }
     catch (error) {
       if (error instanceof AuthError) return Response.json({ error: error.code }, { status: error.status });
       throw error;
@@ -49,13 +72,15 @@ export function createGameServer(options: GameServerOptions = {}) {
     },
     routes: createRouter({
       health: createEndpoint('/health', { method: 'GET' }, async () => ({
-        status: 'ok', mode: 'training', persistent: false,
+        status: 'ok', mode: 'training', persistent: auth.persistent, storage: auth.storage,
       })),
       register: createEndpoint('/auth/register', { method: 'POST' }, async (ctx) => {
+        if (!passwordCheck()) return limited();
         const { email, password } = credentials(ctx.body);
         return respond(() => auth.register(email, password), 201);
       }),
       login: createEndpoint('/auth/login', { method: 'POST' }, async (ctx) => {
+        if (!passwordCheck()) return limited();
         const { email, password } = credentials(ctx.body);
         return respond(() => auth.login(email, password));
       }),

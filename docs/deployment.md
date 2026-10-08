@@ -26,10 +26,24 @@ Configure one replica and these service variables:
 | `PORT` | `2567` |
 | `WEB_ORIGIN` | Exact public frontend origin, without a trailing slash |
 | `AUTH_DATA_FILE` | `/data/users.json` |
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (reference to the project's Postgres service) |
 | `RAILPACK_NODE_VERSION` | `24.19.0` |
 
+### Accounts in Postgres
+
+With `DATABASE_URL` set, accounts, XP, achievements (challenges and merit emblems),
+best marks and every match result live in Postgres. The start command runs
+`prisma migrate deploy` before the server listens. On the first start against an
+empty database the server imports the accounts in `AUTH_DATA_FILE`, progress
+included, and logs `[accounts] imported N accounts`; later starts skip the import.
+`/health` then reports `storage: "postgres"`. Keep the `/data` volume until that
+import has been checked; afterwards the file is no longer written.
+
 Mount a persistent Railway volume at `/data` before creating accounts. The file
-contains salted password hashes, never plaintext passwords. Keep the volume
+contains salted password hashes, never plaintext passwords. The server keeps the
+previous version next to it as `/data/users.json.bak` and loads it if the main
+file is unreadable; back up both files together. `/health` reports
+`persistent: true` when `AUTH_DATA_FILE` is set. Keep the volume
 attached during redeployments. Match state and session tokens are held in memory;
 restarting the server ends matches and requires users to sign in again.
 
