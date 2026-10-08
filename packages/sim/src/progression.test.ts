@@ -76,7 +76,7 @@ describe('campaign progression',()=>{
 describe('stored awards',()=>{
   it('keeps a compact record per match instead of a profile snapshot',()=>{
     const {progress}=rewardForCampaign(emptyProgress(),'campaign:ROOM',{winner:'p1',reason:'core'},3,'p1');
-    expect(progress.awards['campaign:ROOM']).toEqual({xpGained:125,beforeXp:0,challenges:[],unlocked:[]});
+    expect(progress.awards['campaign:ROOM']).toEqual({xpGained:125,beforeXp:0,challenges:[],unlocked:[],merits:['primera-victoria','exploracion']});
   });
   it('stores training results the same way',()=>{
     const {progress}=rewardForMatch(emptyProgress(),'room',finished(),'p1','medium');
@@ -97,5 +97,34 @@ describe('stored awards',()=>{
     expect(keys).toContain('campaign:5');
     expect(keys).toContain('campaign:104');
     expect(progress.xp).toBe(105*40);
+  });
+});
+describe('campaign merits',()=>{
+  const core={winner:'p1',reason:'core'} as const;
+  it.each([
+    ['first core win earns both emblems',core,'p1',['primera-victoria','exploracion']],
+    ['finishing a campaign as the loser still explores',core,'p2',['exploracion']],
+    ['a draw on the final core explores',{winner:null,reason:'draw'},'p1',['exploracion']],
+    ['a forfeit win earns no emblem',{winner:'p1',reason:'forfeit'},'p1',[]],
+    ['an annulled campaign earns no emblem',{winner:null,reason:'annulled'},'p1',[]],
+  ] as const)('%s',(_name,outcome,player,merits)=>{
+    const {progress,reward}=rewardForCampaign(emptyProgress(),'campaign:ROOM',outcome,3,player);
+    expect(reward.merits??[]).toEqual(merits);
+    expect(profileFor(progress).merits).toEqual(merits);
+  });
+  it('awards each emblem once per account',()=>{
+    const first=rewardForCampaign(emptyProgress(),'campaign:A',core,3,'p1').progress;
+    const second=rewardForCampaign(first,'campaign:B',core,3,'p1');
+    expect(second.reward.merits??[]).toEqual([]);
+    expect(profileFor(second.progress).merits).toEqual(['primera-victoria','exploracion']);
+  });
+  it('keeps earned emblems through a training match',()=>{
+    const withMerits=rewardForCampaign(emptyProgress(),'campaign:A',core,3,'p1').progress;
+    const after=rewardForMatch(withMerits,'room',finished(),'p1','medium').progress;
+    expect(profileFor(after).merits).toEqual(['primera-victoria','exploracion']);
+  });
+  it('reads old accounts without merits',()=>{
+    const old={xp:300,completed:[],best:{},awards:{}};
+    expect(profileFor(old).merits).toEqual([]);
   });
 });

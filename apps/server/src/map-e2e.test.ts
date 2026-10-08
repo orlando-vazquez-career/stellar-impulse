@@ -9,8 +9,8 @@ const PORT = 31_000 + Math.floor(Math.random() * 900);
 const URL = `http://127.0.0.1:${PORT}`;
 const auth = new AuthService();
 const tokens = {
-  Ana: auth.register('ana-map@example.com', 'secret-1234').token,
-  Beto: auth.register('beto-map@example.com', 'secret-1234').token,
+  Ana: (await auth.register('ana-map@example.com', 'secret-1234')).token,
+  Beto: (await auth.register('beto-map@example.com', 'secret-1234')).token,
 };
 const options = (name: 'Ana' | 'Beto') => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name] });
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });

@@ -16,3 +16,4 @@ Thumbs.db
 .vscode/
 .vercel/
 apps/server/data/
+apps/server/src/generated/

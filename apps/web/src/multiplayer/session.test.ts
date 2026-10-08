@@ -7,7 +7,8 @@ import { createMultiplayerSession, type MultiplayerSession, type MultiplayerSnap
 const port = 31_000 + Math.floor(Math.random() * 900);
 const url = `http://127.0.0.1:${port}`;
 const auth = new AuthService();
-const tokens = ['ana', 'beto', 'carla'].map((name) => auth.register(`${name}-session@example.com`, 'secret-1234').token);
+const tokens = await Promise.all(['ana', 'beto', 'carla']
+  .map(async (name) => (await auth.register(`${name}-session@example.com`, 'secret-1234')).token));
 const server = createGameServer({ auth, campaign: {
   countdownMs: 100, reconnectWindowMs: 3_000, resumeCountdownMs: 150,
 } });

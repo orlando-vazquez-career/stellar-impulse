@@ -5,7 +5,7 @@ import { useI18n } from '../i18n';
 import { Brand } from '../shared/Brand';
 import { AugmentCard } from '../game/AugmentHud';
 import './profile.css';
-const guest:ProgressProfile={xp:0,level:1,levelXp:0,nextLevelXp:300,completed:[],best:{},unlocked:[...INITIAL_AUGMENTS]};
+const guest:ProgressProfile={xp:0,level:1,levelXp:0,nextLevelXp:300,completed:[],best:{},unlocked:[...INITIAL_AUGMENTS],merits:[]};
 export function ProfileScreen({onBack}:{onBack():void}) {
   const {locale}=useI18n(),es=locale==='es';
   const [profile,setProfile]=useState<ProgressProfile|null>(sessionToken()?null:guest),[error,setError]=useState(false);

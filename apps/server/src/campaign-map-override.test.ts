@@ -7,8 +7,8 @@ import { AuthService } from './auth.js';
 const PORT = 30_000 + Math.floor(Math.random() * 800);
 const URL = `http://127.0.0.1:${PORT}`;
 const auth = new AuthService();
-const options = (name: string) => ({ protocolVersion: 2, name,
-  token: auth.register(`${name}@override.example.com`, 'secret-1234').token });
+const options = async (name: string) => ({ protocolVersion: 2, name,
+  token: (await auth.register(`${name}@override.example.com`, 'secret-1234')).token });
 const server = createGameServer({ auth, campaign: { countdownMs: 0,
   createSector: () => createBattlefieldWorld() } });
 
@@ -26,8 +26,8 @@ function next(room: Room, type: string, accept: (value: any) => boolean = () => 
 }
 
 it('keeps a server-owned sector override ahead of the creator catalog choice', async () => {
-  const a = await new Client(URL).create('campaign', { ...options('Ana'), map: 'sector-01' });
-  const b = await new Client(URL).joinById(a.roomId, options('Beto'));
+  const a = await new Client(URL).create('campaign', { ...(await options('Ana')), map: 'sector-01' });
+  const b = await new Client(URL).joinById(a.roomId, await options('Beto'));
   for (const room of [a, b]) room.reconnection.enabled = false;
   try {
     const phase = next(a, 'phase', (view) => view.phase === 'sector');

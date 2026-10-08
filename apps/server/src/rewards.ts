@@ -2,12 +2,12 @@ import type { MatchReward } from '@impulso/sim';
 import type { AuthService } from './auth';
 
 /**
- * Rewards are saved from the simulation tick. Colyseus shuts the whole server down on an
- * uncaught error, so a failed save (full or detached disk) reports `saveFailed` instead.
+ * Rooms settle rewards from the simulation tick and never await them there. Colyseus shuts
+ * the whole server down on an uncaught error, so a failed save reports `saveFailed` instead.
  */
-export function savedReward(auth: AuthService, userId: string, award: () => MatchReward): MatchReward {
+export async function savedReward(auth: AuthService, userId: string, award: () => Promise<MatchReward>): Promise<MatchReward> {
   try {
-    return award();
+    return await award();
   } catch (error) {
     console.error('[rewards] could not save account progress', error);
     const profile = auth.profile(userId);
