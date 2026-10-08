@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { emptyProgress, profileFor, rewardForMatch, type AccountProgress, type MatchReward, type PlayerId, type ProgressProfile, type RivalDifficulty, type World } from '@impulso/sim';
+import { emptyProgress, profileFor, rewardForCampaign, rewardForMatch, type AccountProgress, type CampaignOutcome, type MatchReward, type PlayerId, type ProgressProfile, type RivalDifficulty, type World } from '@impulso/sim';
 
 const SESSION_MS = 24 * 60 * 60_000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -81,11 +81,18 @@ export class AuthService {
     return profileFor(user.progress ?? emptyProgress());
   }
   awardMatch(userId:string,matchId:string,world:World,player:PlayerId,difficulty:RivalDifficulty|'pvp'):MatchReward {
+    return this.award(userId,progress=>rewardForMatch(progress,matchId,world,player,difficulty));
+  }
+  awardCampaign(userId:string,campaignId:string,outcome:CampaignOutcome,completedSectors:number,player:PlayerId):MatchReward {
+    return this.award(userId,progress=>rewardForCampaign(progress,campaignId,outcome,completedSectors,player));
+  }
+  /** Saves only when the reward changed the progress; a repeated or empty reward writes nothing. */
+  private award(userId:string,compute:(progress:AccountProgress)=>{progress:AccountProgress;reward:MatchReward}):MatchReward {
     const user=[...this.users.values()].find(u=>u.id===userId);
     if(!user)throw new AuthError(401,'authentication_required');
-    const previous=user.progress;
-    const result=rewardForMatch(previous ?? emptyProgress(),matchId,world,player,difficulty);
-    if(result.progress===previous)return result.reward;
+    const previous=user.progress,base=previous ?? emptyProgress();
+    const result=compute(base);
+    if(result.progress===base)return result.reward;
     user.progress=result.progress;
     try {this.persist();}catch(error){user.progress=previous;throw error;}
     return result.reward;
