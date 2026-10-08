@@ -4,6 +4,7 @@ import type { GridPoint } from './grid';
 import { activeMapId, HIDDEN_LAYERS, mapImageUrl, planSectorMove, sectorMap, sectorSurface, TILE_WIDTH, type Tileset } from '../../map/sector-map';
 import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, playerViewCenter, playerViewZoom, projectedWorldBounds } from './isometric';
 import { WeaponEffects } from './weapon-effects';
+import { DEFAULT_FORMATION, formationSeats } from '../formation';
 import { SatelliteEffects } from './satellite-effects';
 import { RobotEffects, ROBOT_LAYER } from './robot-effects';
 
@@ -13,6 +14,13 @@ const GID_MASK = 0x1fffffff;
 const DEPTH = { layer: 10000, nodes: 90000, units: 100000, route: 200000, core: 200001, selection: 300000 } as const;
 /** Multiplicative tint for tiles outside vision: dark, but the terrain stays readable. */
 const FOG_TINT = 0x4a5566;
+/** Never seen: much darker, so scouting reveals the map. */
+const UNEXPLORED_TINT = 0x1f2632;
+/** Fog level per cell: never seen, explored but out of sight, in sight. */
+const UNSEEN = 0, EXPLORED = 1, IN_SIGHT = 2;
+const FOG_TINTS: Record<number, number | null> = { [UNSEEN]: UNEXPLORED_TINT, [EXPLORED]: FOG_TINT, [IN_SIGHT]: null };
+/** Enemy ships fade in and out at the edge of vision instead of popping. */
+const FADE_MS = 220;
 /** Layer written by scripts/obstaculos-tmx.ts so the editor shows the obstacles; never drawn in game. */
 const OBSTACLE_PREVIEW_LAYER = 'obstaculos-vista';
 /** Opening zoom over your own fleet. The wheel goes from ZOOM_MIN (wider view of the sector)
@@ -104,8 +112,9 @@ export class MainScene extends Phaser.Scene {
   private baseMarks?: Phaser.GameObjects.Graphics;
   /** Terrain images per cell, so fog can tint the real tile art instead of painting over it. */
   private tileImages: Phaser.GameObjects.Image[][] = [];
-  private fogShown: boolean[] = [];
+  private fogShown: number[] = [];
   private fogSource: boolean[] | null | undefined;
+  private exploredSource: boolean[] | null | undefined;
   private terrainLayers: { data: number[]; order: number }[] = [];
   private chunks: TerrainChunk[] = [];
   /** Flat ground tiles with no see-through pixels: whatever flat tile lies under one is never visible. */
@@ -347,7 +356,7 @@ export class MainScene extends Phaser.Scene {
   private drawTerrain() {
     this.terrainLayers = sectorMap.layers.filter((layer) => layer.visible && layer.data && !HIDDEN_LAYERS.has(layer.name))
       .map((layer, order) => ({ data: layer.data, order }));
-    this.fogShown = Array.from({ length: sectorMap.width * sectorMap.height }, () => true);
+    this.fogShown = Array.from({ length: sectorMap.width * sectorMap.height }, () => IN_SIGHT);
     this.chunks = [];
     this.solidGround.clear();
     for (const tileset of sectorMap.tilesets) {
@@ -436,7 +445,8 @@ export class MainScene extends Phaser.Scene {
         const image = this.add.image(point.x - TILE_WIDTH / 2 + offset.x + tileset.tilewidth / 2,
           point.y + TILE_HALF_HEIGHT + offset.y, key, gid - tileset.firstgid)
           .setOrigin(0.5, 1).setDepth(DEPTH.layer * layer.order + (x + y) * 32 + x);
-        if (this.fogShown[y * columns + x] === false) image.setTint(FOG_TINT);
+        const tint = FOG_TINTS[this.fogShown[y * columns + x] ?? IN_SIGHT];
+        if (tint !== null && tint !== undefined) image.setTint(tint);
         (this.tileImages[y * columns + x] ??= []).push(image);
         images.push(image);
       }
@@ -539,11 +549,13 @@ export class MainScene extends Phaser.Scene {
     for (const node of this.snapshot.nodes) {
       const center = cellToIso(node.x, node.y);
       const hue = node.owner === 'blue' ? color.blue : node.owner === 'red' ? color.red : 0x8aa0b8;
-      // A freshly captured node is faint until it starts producing.
-      graphics.lineStyle(2, hue, node.stabilizingSeconds ? 0.35 : 0.9);
+      // A freshly captured node is faint until it starts producing; a remembered one keeps its last
+      // known owner, faint until it is seen again.
+      const alpha = node.stale ? 0.4 : node.stabilizingSeconds ? 0.35 : 0.9;
+      graphics.lineStyle(2, hue, alpha);
       graphics.strokeEllipse(center.x, center.y + 9, 54, 27);
       if (node.kind === 'metal') {
-        graphics.fillStyle(hue, 0.95);
+        graphics.fillStyle(hue, node.stale ? 0.4 : 0.95);
         graphics.fillPoints(polygon([{ x: center.x, y: center.y - 2 }, { x: center.x + 7, y: center.y + 9 },
           { x: center.x, y: center.y + 20 }, { x: center.x - 7, y: center.y + 9 }]), true);
       }
@@ -587,19 +599,24 @@ export class MainScene extends Phaser.Scene {
   }
 
   /** Darken the tile art of every cell outside the player's current vision. Only changed cells are touched. */
+  /** Three fog levels on the real tile art: in sight, explored (dimmed) and never seen (dark). */
   private drawFog() {
     const cells = this.snapshot.visibleCells;
-    // The adapter hands over the same array until the server sends new vision.
-    if (cells === this.fogSource) return;
+    const explored = this.snapshot.exploredCells;
+    // The adapter hands over the same arrays until the server sends new vision.
+    if (cells === this.fogSource && explored === this.exploredSource) return;
     this.fogSource = cells;
+    this.exploredSource = explored;
     const total = sectorMap.width * sectorMap.height;
     for (let index = 0; index < total; index++) {
-      const visible = cells ? cells[index] === true : true;
-      if (this.fogShown[index] === visible) continue;
-      this.fogShown[index] = visible;
+      // Without memory (local mock, campaign) everything out of sight is simply dimmed.
+      const level = !cells || cells[index] ? IN_SIGHT : !explored || explored[index] ? EXPLORED : UNSEEN;
+      if (this.fogShown[index] === level) continue;
+      this.fogShown[index] = level;
+      const tint = FOG_TINTS[level];
       for (const image of this.tileImages[index] ?? []) {
-        if (visible) image.clearTint();
-        else image.setTint(FOG_TINT);
+        if (tint === null || tint === undefined) image.clearTint();
+        else image.setTint(tint);
       }
     }
   }
@@ -645,11 +662,17 @@ export class MainScene extends Phaser.Scene {
     for (const [id, visual] of this.unitVisuals) {
       if (visible.has(id)) continue;
       this.tweens.killTweensOf(visual.container);
-      visual.container.destroy();
       this.unitVisuals.delete(id);
+      // Ships leaving sight (or destroyed) fade out; a later view may bring them back as a new visual.
+      this.tweens.add({ targets: visual.container, alpha: 0, duration: FADE_MS, onComplete: () => visual.container.destroy() });
     }
     for (const squad of this.snapshot.squads.filter((candidate) => candidate.visible)) {
+      const fresh = !this.unitVisuals.has(squad.id);
       const visual = this.unitVisuals.get(squad.id) ?? this.createUnit(squad);
+      if (fresh && squad.owner === 'red') {
+        visual.container.setAlpha(0);
+        this.tweens.add({ targets: visual.container, alpha: 1, duration: FADE_MS });
+      }
       visual.selection.setVisible(squad.selected);
       visual.label.setVisible(squad.selected);
       if (squad.healthPercent < visual.healthPercent) {
@@ -748,6 +771,44 @@ export class MainScene extends Phaser.Scene {
     return visual;
   }
 
+  private seatPreview: { key: string; seats: Map<string, GridPoint> } | null = null;
+  /** Cell of the last group order: hovering it shows the seats given, not a fresh preview. */
+  private orderedCell: GridPoint | null = null;
+
+  /** One tile outline per ship: where a group order will seat it (hover) or has seated it (order). */
+  private drawFormationSeats(graphics: Phaser.GameObjects.Graphics) {
+    const group = this.snapshot.squads.filter((squad) => squad.selected && squad.owner === 'blue' && squad.healthPercent > 0);
+    if (group.length < 2) return;
+    const aiming = (this.snapshot.activeAction === null || this.snapshot.activeAction === 'move') && this.hoverPoint;
+    const center = aiming ? { x: Math.round(this.hoverPoint!.x), y: Math.round(this.hoverPoint!.y) } : null;
+    if (this.orderedCell && (center?.x !== this.orderedCell.x || center?.y !== this.orderedCell.y)) this.orderedCell = null;
+    const preview = !!center && !this.orderedCell && center.x >= 0 && center.y >= 0 && center.x < sectorMap.width && center.y < sectorMap.height
+      && sectorSurface.walkable[center.y * sectorMap.width + center.x] === true;
+    if (preview) {
+      const formation = this.snapshot.formation ?? DEFAULT_FORMATION;
+      const key = `${formation}:${center!.x},${center!.y}:${group.map((ship) => `${ship.id}@${Math.round(ship.gridX)},${Math.round(ship.gridY)}`).join(';')}`;
+      if (this.seatPreview?.key !== key) {
+        this.seatPreview = { key, seats: formationSeats(group.map((ship) => ({ id: ship.id, x: ship.gridX, y: ship.gridY })), center!, formation) };
+      }
+    }
+    const halfWidth = TILE_WIDTH / 2 * 0.62;
+    const halfHeight = TILE_HALF_HEIGHT * 0.62;
+    for (const ship of group) {
+      const seat = preview ? this.seatPreview?.seats.get(ship.id) : ship.destination;
+      if (!seat) continue;
+      const point = cellToIso(seat.x, seat.y);
+      const hue = preview ? color.blueLight : color.blue;
+      const outline = [
+        new Phaser.Math.Vector2(point.x, point.y - halfHeight), new Phaser.Math.Vector2(point.x + halfWidth, point.y),
+        new Phaser.Math.Vector2(point.x, point.y + halfHeight), new Phaser.Math.Vector2(point.x - halfWidth, point.y),
+      ];
+      graphics.fillStyle(hue, preview ? 0.1 : 0.16);
+      graphics.fillPoints(outline, true);
+      graphics.lineStyle(1.5, hue, preview ? 0.55 : 0.8);
+      graphics.strokePoints(outline, true);
+    }
+  }
+
   private drawRoute() {
     const graphics = this.route;
     if (!graphics) return;
@@ -774,6 +835,7 @@ export class MainScene extends Phaser.Scene {
       graphics.lineBetween(blocked.x - 10, blocked.y - 7, blocked.x + 10, blocked.y + 7);
       graphics.lineBetween(blocked.x + 10, blocked.y - 7, blocked.x - 10, blocked.y + 7);
     }
+    this.drawFormationSeats(graphics);
     if (path.length < 2) return;
     const hue = preview.length > 1 ? color.blueLight : color.blue;
     graphics.lineStyle(3, hue, 0.9);
@@ -910,6 +972,7 @@ export class MainScene extends Phaser.Scene {
       }
       if ((this.snapshot.activeAction === null || this.snapshot.activeAction === 'move') && this.snapshot.selectedSquadIds.length) {
         this.onMoveSelected(cell.x, cell.y);
+        this.orderedCell = { x: Math.round(cell.x), y: Math.round(cell.y) };
       }
     });
     this.input.on(Phaser.Input.Events.POINTER_MOVE, (pointer: Phaser.Input.Pointer) => {

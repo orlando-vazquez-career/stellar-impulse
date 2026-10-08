@@ -5,6 +5,7 @@ import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
 import { freshDefaultVisualPreferences, type ControlAction, type VisualPreferences } from './preferences';
+import { AudioControls } from './AudioControls';
 import './settings.css';
 
 type SettingsCategory = 'audio' | 'controls' | 'language' | 'accessibility';
@@ -12,15 +13,12 @@ type SettingsCategory = 'audio' | 'controls' | 'language' | 'accessibility';
 const controlActions: ControlAction[] = ['move', 'attack', 'hold', 'capture', 'cancel', 'camera'];
 const keyOptions = ['M', 'H', 'C', 'Q', 'E', 'R', 'F', 'Space', 'Esc']; // WASD is reserved for the camera.
 
-function RangeSetting({ label, value, disabled, onChange }: { label: string; value: number; disabled?: boolean; onChange(value: number): void }) {
-  return <label className="vi-setting-range"><span><strong>{label}</strong><output>{value}%</output></span><input type="range" min="0" max="100" step="5" value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} /></label>;
-}
-
 function ToggleSetting({ title, detail, checked, onChange }: { title: string; detail: string; checked: boolean; onChange(checked: boolean): void }) {
   return <label className="vi-setting-toggle"><span><strong>{title}</strong><small>{detail}</small></span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /></label>;
 }
 
-export function SettingsScreen({ preferences, onBack, onSave }: { preferences: VisualPreferences; onBack(): void; onSave(preferences: VisualPreferences): void }) {
+/** `onPreviewAudio` plays the draft mix live; leaving without saving makes the app restore the saved one. */
+export function SettingsScreen({ preferences, onBack, onSave, onPreviewAudio }: { preferences: VisualPreferences; onBack(): void; onSave(preferences: VisualPreferences): void; onPreviewAudio?(audio: VisualPreferences['audio']): void }) {
   const { locale, setLocale, t } = useI18n();
   const sound = useSpaceSound();
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -29,6 +27,7 @@ export function SettingsScreen({ preferences, onBack, onSave }: { preferences: V
     audio: { ...preferences.audio }, controls: { ...preferences.controls }, accessibility: { ...preferences.accessibility },
   }));
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     if (!canvas.current) return;
@@ -52,9 +51,14 @@ export function SettingsScreen({ preferences, onBack, onSave }: { preferences: V
     };
   }, [preferences.accessibility.reducedMotion]);
 
-  const soundEnabled = !draft.audio.muted && draft.audio.master > 0 && draft.audio.effects > 0;
-  const hover = () => { if (soundEnabled) sound.playHover({ pitch: 560 }); };
-  const select = () => { if (soundEnabled) sound.playSelect(); };
+  // Menu sounds already follow the live Interface volume.
+  const hover = () => sound.playHover({ pitch: 560 });
+  const select = () => sound.playSelect();
+  const changeAudio = (audio: VisualPreferences['audio']) => {
+    setDraft({ ...draft, audio });
+    onPreviewAudio?.(audio);
+    markDirty();
+  };
 
   const categories: Array<{ id: SettingsCategory; label: string; glyph: string }> = [
     { id: 'audio', label: t('audio'), glyph: '◖' },
@@ -66,15 +70,18 @@ export function SettingsScreen({ preferences, onBack, onSave }: { preferences: V
     move: t('move'), attack: t('attack'), hold: t('hold'), capture: t('capture'), cancel: t('cancel'), camera: t('resetCamera'),
   };
 
-  const markDirty = () => setSaved(false);
+  const markDirty = () => { setSaved(false); setDirty(true); };
   const save = () => {
-    if (soundEnabled) sound.playEnter({ pitch: 392 });
+    sound.playEnter({ pitch: 392 });
     onSave(draft);
     setSaved(true);
+    setDirty(false);
   };
   const restore = () => {
     select();
-    setDraft(freshDefaultVisualPreferences());
+    const defaults = freshDefaultVisualPreferences();
+    setDraft(defaults);
+    onPreviewAudio?.(defaults.audio);
     markDirty();
   };
 
@@ -96,10 +103,8 @@ export function SettingsScreen({ preferences, onBack, onSave }: { preferences: V
           {category === 'audio' && <>
             <header><span>01</span><div><h2 id="settings-audio">{t('audio')}</h2><p>{t('audioDescription')}</p></div></header>
             <div className="vi-settings-panel__body vi-audio-settings">
-              <RangeSetting label={t('masterVolume')} value={draft.audio.master} disabled={draft.audio.muted} onChange={(master) => { setDraft({ ...draft, audio: { ...draft.audio, master } }); markDirty(); }} />
-              <RangeSetting label={t('effectsVolume')} value={draft.audio.effects} disabled={draft.audio.muted} onChange={(effects) => { setDraft({ ...draft, audio: { ...draft.audio, effects } }); markDirty(); }} />
-              <RangeSetting label={t('musicVolume')} value={draft.audio.music} disabled={draft.audio.muted} onChange={(music) => { setDraft({ ...draft, audio: { ...draft.audio, music } }); markDirty(); }} />
-              <ToggleSetting title={t('muteAll')} detail={t('audioPending')} checked={draft.audio.muted} onChange={(muted) => { setDraft({ ...draft, audio: { ...draft.audio, muted } }); markDirty(); }} />
+              <AudioControls value={draft.audio} onChange={changeAudio} />
+              {dirty && <p className="vi-audio-unsaved">{t('unsavedAudio')}</p>}
             </div>
           </>}
 

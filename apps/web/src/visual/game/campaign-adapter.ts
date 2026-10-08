@@ -1,5 +1,7 @@
 import { FLEET_CAP } from '@impulso/sim';
 import { decodeBattlefieldMask, type BattlefieldOwnSquad, type BattlefieldView } from '@impulso/state';
+import { readStoredFormation, storeFormation } from './formation';
+import { rememberView, type FogMemory } from './server-adapter';
 import type { MultiplayerSession, MultiplayerSnapshot } from '../../multiplayer/session';
 import type {
   CoreState, GameplayEvent, GameplayPresentationAdapter, GameplayViewModel, PresentationIntent, SquadOwner, SquadViewModel,
@@ -38,7 +40,7 @@ function blank(session: MultiplayerSnapshot): GameplayViewModel {
   const result = winner === null || winner === undefined ? null : winner === phase?.playerId ? 'victory' : 'defeat';
   return {
     tick: 0, sector: session.phase?.sector ?? 1, elapsedSeconds: 0,
-    selectedSquadId: null, selectedSquadIds: [], activeAction: null, moveOrder: null,
+    selectedSquadId: null, selectedSquadIds: [], activeAction: null, moveOrder: null, formation: readStoredFormation(),
     resources: { metal: 0, metalRate: 0, energy: 0, energyRate: 0, fleet: 0, fleetCap: FLEET_CAP },
     squads: [], core: { state: 'locked', progress: 0, opensInSeconds: 0 },
     enemiesVisible: true, clockRunning: false, nodes: [], production: null, canProduce: false,
@@ -88,6 +90,7 @@ function eventsBetween(previous: BattlefieldView | null, next: BattlefieldView):
 export function createCampaignGameplayAdapter(session: MultiplayerSession): GameplayPresentationAdapter {
   let snapshot = blank(session.getSnapshot());
   let latest: BattlefieldView | null = null;
+  const memory: FogMemory = { explored: null, nodes: new Map() };
   let lastSector = session.getSnapshot().phase?.sector;
   let localNotice: string | null = null;
   let destroyed = false;
@@ -104,7 +107,13 @@ export function createCampaignGameplayAdapter(session: MultiplayerSession): Game
     const ownerOf = (player: string): SquadOwner => player === me ? 'blue' : 'red';
     const ownIds = new Set(view.squads.filter((squad) => squad.ownerId === me && squad.hp > 0).map((squad) => squad.id));
     const changedSector = source.phase?.sector !== lastSector;
-    if (changedSector) { lastSector = source.phase?.sector; localNotice = null; }
+    if (changedSector) {
+      lastSector = source.phase?.sector; localNotice = null;
+      memory.explored = null; memory.nodes.clear();
+    }
+    const visible = decodeBattlefieldMask(view.visible);
+    rememberView(memory, { ...view, visibleCells: visible.flatMap((seen, index) => seen
+      ? [{ x: index % view.width, y: Math.floor(index / view.width) }] : []) });
     const selectedIds = changedSector ? [] : snapshot.selectedSquadIds.filter((id) => ownIds.has(id));
     const counts = new Map<string, number>();
     const squads: SquadViewModel[] = view.squads.filter((squad) => squad.hp > 0).map((squad) => {
@@ -116,6 +125,7 @@ export function createCampaignGameplayAdapter(session: MultiplayerSession): Game
         id: squad.id, callSign: `INT-${count}`, owner: ownerOf(squad.ownerId), unitType: squad.kind,
         gridX: squad.x, gridY: squad.y, healthPercent: Math.round(squad.hp / squad.maxHp * 100),
         attackCooldown: squad.attackCooldown, lastShot: squad.lastShot,
+        destination: privateSquad?.target ? { ...privateSquad.target } : null,
         attackTargetId: privateSquad?.attackTargetId ?? null, selected: selectedIds.includes(squad.id), visible: true,
         composition: { interceptors: 1, frigates: 0 },
         status: privateSquad?.attackTargetId ? 'attacking' : privateSquad?.target || privateSquad?.route?.length ? 'moving' : 'idle',
@@ -130,7 +140,7 @@ export function createCampaignGameplayAdapter(session: MultiplayerSession): Game
       });
     }
     const leader = view.squads.find((squad) => squad.id === selectedIds[0] && squad.ownerId === me) as BattlefieldOwnSquad | undefined;
-    const route = leader ? [...(leader.target ? [leader.target] : []), ...(leader.route ?? [])] : [];
+    const route = leader?.route ?? [];
     const winner = source.phase?.phase === 'results' || source.phase?.phase === 'closed' ? source.phase.result?.winner : null;
     const result = winner === null || winner === undefined ? null : winner === me ? 'victory' : 'defeat';
     const previousResult = snapshot.result;
@@ -146,12 +156,11 @@ export function createCampaignGameplayAdapter(session: MultiplayerSession): Game
       resources: { metal: view.players[me].metal ?? 0,
         metalRate: view.nodes.filter((node) => node.kind === 'metal' && node.ownerId === me).length + 0.5,
         energy: 0, energyRate: 0, fleet: ownIds.size, fleetCap: FLEET_CAP },
-      squads, nodes: view.nodes.map((node) => ({ id: node.id, kind: node.kind, x: node.x, y: node.y,
-        owner: node.ownerId === null ? null : ownerOf(node.ownerId) })),
+      squads, nodes: [...memory.nodes.values()].map((node) => ({ ...node })),
       core: { state: coreState(view),
         progress: Math.round(Math.max(view.core.progress.p1, view.core.progress.p2) / view.rules.coreCaptureTicks * 100),
         opensInSeconds: Math.max(0, Math.ceil((view.rules.coreOpenTick - view.tick) / view.rules.tickRate)) },
-      visibleCells: decodeBattlefieldMask(view.visible), connection: connection(source), clockRunning: canCommand(source),
+      visibleCells: visible, exploredCells: decodeBattlefieldMask(view.explored), connection: connection(source), clockRunning: canCommand(source),
       canProduce: false, production: null, notice: phaseNotice(source) ?? localNotice, result,
     };
     if (latest !== view) {
@@ -199,6 +208,11 @@ export function createCampaignGameplayAdapter(session: MultiplayerSession): Game
         snapshot = { ...snapshot, selectedSquadIds: selectedIds, selectedSquadId: selectedIds[0] ?? null, activeAction: null };
         rebuild(); return;
       }
+      if (intent.type === 'set-formation') {
+        storeFormation(intent.formation);
+        snapshot = { ...snapshot, formation: intent.formation };
+        emit(); return;
+      }
       if (intent.type === 'produce') { localNotice = 'La producción de naves aún no está disponible en multijugador.'; rebuild(); return; }
       if (!canCommand(session.getSnapshot())) return;
       if (intent.type === 'set-action') {
@@ -213,7 +227,9 @@ export function createCampaignGameplayAdapter(session: MultiplayerSession): Game
         const destination = openCell(intent.x, intent.y);
         if (!destination) { localNotice = 'No se puede volar a ese punto.'; rebuild(); return; }
         const ids = selected().filter((squad) => intent.type === 'move-selected' || squad.id === intent.squadId).map((squad) => squad.id);
-        if (ids.length) session.command({ type: 'move_group', squadIds: ids, ...destination });
+        if (ids.length) session.command(ids.length > 1
+          ? { type: 'move_formation', squadIds: ids, ...destination, formation: snapshot.formation ?? readStoredFormation() }
+          : { type: 'move_group', squadIds: ids, ...destination });
       } else if (intent.type === 'attack-selected' || intent.type === 'attack-squad') {
         const ids = selected().filter((squad) => intent.type === 'attack-selected' || squad.id === intent.squadId).map((squad) => squad.id);
         if (ids.length) session.command({ type: 'attack_group', squadIds: ids, targetId: intent.targetId });

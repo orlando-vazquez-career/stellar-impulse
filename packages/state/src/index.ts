@@ -1,6 +1,6 @@
 import { AUGMENTS_BY_ID, DURATION_MODES, effectsFor, effectiveFleetCap, effectiveBaseDamage, visionSources, isConcealed, statsForUnit, baseUpgradeCost, metalIncomeRate, captureDuration, type Augment } from '@impulso/sim';
 import { baseArmor, baseDefense, type ExtraModule, type ModuleKind, type ModuleSpec } from '@impulso/sim';
-import { distance, statsFor, moveInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
+import { distance, statsFor, marchInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
 import { weaponView, type WeaponView } from './weapons.js';
 export { UNIT_STATS, damageAgainst, findPath } from '@impulso/sim';
 export type { UnitKind } from '@impulso/sim';
@@ -115,7 +115,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
       const publicUnit = {
         id: unit.id, ownerId: unit.ownerId, kind: unit.kind,
         x: unit.x, y: unit.y, hp: disguised?unit.hp/unit.maxHp*maxHp:unit.hp, maxHp, damage: stats.damage,
-        stats, moveTicks: moveInterval(world, unit.ownerId, unit.kind),
+        stats, moveTicks: marchInterval(world, unit),
         ...weaponView(unit, stats, world.tick, visible),
       };
       return unit.ownerId === playerId
