@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { LoginScreen } from '../../login/LoginScreen';
-import { AuthRequestError, loginAccount, type AccountUser } from '../../auth/client';
-import { readPilotAlias, writePilotAlias } from '../../login/pilot-alias';
+import { accountErrorKey, loginAccount, registerAccount, updateDisplayName, type AccountUser } from '../../auth/client';
+import { accountAlias, readPilotAlias, writePilotAlias } from '../../login/pilot-alias';
 import { useI18n } from '../i18n';
 
 export interface AccessScreenProps {
@@ -21,20 +21,32 @@ export function AccessScreen({ onContinue, onCreateTraining, onJoinRoom, onSigne
   const [chainStatus, setChainStatus] = useState('Stellar Testnet');
   const [chainBusy, setChainBusy] = useState(false);
 
-  async function handleLogin(email: string, password: string) {
+  /** Login and registration end alike: the account's alias (or the one typed here) becomes the pilot's. */
+  async function signIn(action: 'login' | 'register', request: () => Promise<AccountUser>) {
     setBusy(true);
     setNotice('');
     try {
-      const user = await loginAccount(email, password);
-      const commander = alias.trim() || user.email.split('@')[0]!.slice(0, 24);
+      const user = await request();
+      const commander = accountAlias(user, alias);
       writePilotAlias(commander);
       onSignedIn(user, commander);
     } catch (error) {
-      setNotice(error instanceof AuthRequestError && (error.status === 400 || error.status === 401)
-        ? t('accountInvalid') : t('accountUnavailable'));
+      setNotice(t(accountErrorKey(error, action)));
       throw error;
     } finally { setBusy(false); }
   }
+
+  // An account without an alias keeps the one typed here, so it follows the player to other devices.
+  // Failing to save it never blocks the sign-in.
+  const handleLogin = (email: string, password: string) => signIn('login', async () => {
+    const user = await loginAccount(email, password);
+    const typed = alias.trim();
+    if (user.displayName || !typed) return user;
+    return updateDisplayName(typed).catch((error: unknown) => { console.error(error); return user; });
+  });
+
+  const handleRegister = (email: string, password: string) =>
+    signIn('register', () => registerAccount(email, password, alias));
 
   async function handleConnectWallet() {
     setChainBusy(true);
@@ -55,6 +67,7 @@ export function AccessScreen({ onContinue, onCreateTraining, onJoinRoom, onSigne
       busy={busy || sessionBusy}
       notice={notice || sessionNotice}
       onLogin={handleLogin}
+      onRegister={handleRegister}
       onAliasChange={setAlias}
       onContinueGuest={onContinue}
       onCreateTraining={onCreateTraining ?? onContinue}
