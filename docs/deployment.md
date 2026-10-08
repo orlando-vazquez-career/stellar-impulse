@@ -29,7 +29,10 @@ Configure one replica and these service variables:
 | `RAILPACK_NODE_VERSION` | `24.19.0` |
 
 Mount a persistent Railway volume at `/data` before creating accounts. The file
-contains salted password hashes, never plaintext passwords. Keep the volume
+contains salted password hashes, never plaintext passwords. The server keeps the
+previous version next to it as `/data/users.json.bak` and loads it if the main
+file is unreadable; back up both files together. `/health` reports
+`persistent: true` when `AUTH_DATA_FILE` is set. Keep the volume
 attached during redeployments. Match state and session tokens are held in memory;
 restarting the server ends matches and requires users to sign in again.
 

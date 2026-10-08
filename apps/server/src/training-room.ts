@@ -1,6 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { Room, ServerError, type Client } from '@colyseus/core';
-import { AuthService } from './auth';
+import type { AuthService } from './auth';
+import { savedReward } from './rewards';
 import { setAugmentPool, emptyProgress, profileFor, type MatchReward } from '@impulso/sim';
 import { parseCommand } from '@impulso/input';
 import { createSectorWorld, createMatchWorld, initializeAugments, applyCommand, runTrainingRival, stepWorld, effectiveFleetCap, pickAugment, rerollAugments, chooseAiAugment, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId, type World } from '@impulso/sim';
@@ -10,7 +11,7 @@ import { viewFor, type MatchLobbyView } from '@impulso/state';
 const DEFAULT_MAP: TrainingMapId = 'espiral';
 
 export class TrainingRoom extends Room {
-  protected auth = new AuthService();
+  protected auth!: AuthService;
   private accountIds=new Map<PlayerId,string>();
   private rewards=new Map<PlayerId,MatchReward>();
   maxClients = 2;
@@ -178,7 +179,7 @@ export function rewardModeFor(player:PlayerId,aiRival:boolean,difficulty:RivalDi
 export function trainingReward(auth:AuthService,accountId:string|undefined,matchId:string,world:World,player:PlayerId,mode:RivalDifficulty|'pvp'|null):MatchReward {
   if(!accountId)return {xpGained:0,beforeXp:0,profile:profileFor(emptyProgress()),challenges:[],unlocked:[],guest:true};
   if(!mode){const profile=auth.profile(accountId);return {xpGained:0,beforeXp:profile.xp,profile,challenges:[],unlocked:[],practice:true};}
-  return auth.awardMatch(accountId,matchId,world,player,mode);
+  return savedReward(auth,accountId,()=>auth.awardMatch(accountId,matchId,world,player,mode));
 }
 export function trainingRoomWith(auth:AuthService):typeof TrainingRoom {
   return class extends TrainingRoom {protected auth=auth;};

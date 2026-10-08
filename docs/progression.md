@@ -19,4 +19,6 @@ sigue en la sala solo si ya se completó al menos un sector, y nada a quien se f
 anulada no paga. Los sectores de campaña todavía no registran estadísticas por partida, así que
 no cumplen desafíos.
 
+Cada cuenta recuerda los últimos 100 resultados (XP, desafíos y cartas desbloqueadas, sin una copia del perfil) para responder igual si una sala vuelve a informar el mismo resultado. Si el servidor no puede guardar, el resultado llega con `saveFailed: true` y el perfil queda como estaba.
+
 Los datos antiguos de cuentas siguen siendo válidos. XP, desafíos y premios se guardan en el mismo archivo del sistema de cuentas, mediante sustitución atómica. El cliente no puede enviar XP, pools desbloqueados ni resultados. El perfil es privado y exige una sesión válida.

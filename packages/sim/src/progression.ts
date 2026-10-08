@@ -40,11 +40,28 @@ export function recordMatchTick(world:World,previous:World):void {
   for(const shot of shots.values())record.players[shot.player].bestSplash=Math.max(record.players[shot.player].bestSplash,shot.count);
   for(const p of ['p1','p2'] as const) if(world.squads.filter(s=>s.ownerId===p&&s.hp>0&&!s.isDecoy).length>=effectiveFleetCap(world,p))record.players[p].fullFleet=true;
 }
-export interface AccountProgress { xp:number; completed:ChallengeId[]; best:Partial<Record<ChallengeId,number>>; awards:Record<string,MatchReward> }
+/** What an account remembers of a result: enough to answer a repeated report, without a profile copy. */
+export interface AwardRecord { xpGained:number;beforeXp:number;challenges:ChallengeId[];unlocked:string[] }
+export interface AccountProgress { xp:number; completed:ChallengeId[]; best:Partial<Record<ChallengeId,number>>; awards:Record<string,AwardRecord> }
 export interface ProgressProfile { xp:number;level:number;levelXp:number;nextLevelXp:number;completed:ChallengeId[];best:Partial<Record<ChallengeId,number>>;unlocked:string[] }
-/** `practice`: an account played without a real rival (no AI, no second account), so nothing was saved. */
-export interface MatchReward { xpGained:number;beforeXp:number;profile:ProgressProfile;challenges:ChallengeId[];unlocked:string[];guest?:boolean;practice?:boolean }
+/**
+ * `practice`: an account played without a real rival (no AI, no second account), so nothing was saved.
+ * `saveFailed`: the server could not write the account file; the profile shown is the one before the match.
+ */
+export interface MatchReward { xpGained:number;beforeXp:number;profile:ProgressProfile;challenges:ChallengeId[];unlocked:string[];guest?:boolean;practice?:boolean;saveFailed?:boolean }
 export function emptyProgress():AccountProgress{return {xp:0,completed:[],best:{},awards:{}};}
+/** Rooms report a result once; the newest 100 ids are plenty to absorb a repeated report. */
+const AWARD_MEMORY=100;
+function remember(awards:Record<string,AwardRecord>,id:string,reward:MatchReward):Record<string,AwardRecord> {
+  const next={...awards,[id]:{xpGained:reward.xpGained,beforeXp:reward.beforeXp,challenges:reward.challenges,unlocked:reward.unlocked}};
+  const ids=Object.keys(next);
+  for(const old of ids.slice(0,Math.max(0,ids.length-AWARD_MEMORY)))delete next[old];
+  return next;
+}
+function recalled(progress:AccountProgress,id:string):MatchReward|undefined {
+  const stored=progress.awards[id];
+  return stored&&{xpGained:stored.xpGained,beforeXp:stored.beforeXp,profile:profileFor(progress),challenges:stored.challenges,unlocked:stored.unlocked};
+}
 export function unlockedPool(progress:Pick<AccountProgress,'xp'|'completed'>|null):string[] {
   if(!progress)return [...INITIAL_AUGMENTS];
   const level=1+Math.floor(progress.xp/300);
@@ -69,20 +86,20 @@ export interface CampaignOutcome { winner:PlayerId|null; reason:'core'|'draw'|'f
  * Whoever left and annulled campaigns get nothing. Battlefield sectors keep no match record, so no challenges.
  */
 export function rewardForCampaign(progress:AccountProgress,campaignId:string,outcome:CampaignOutcome,completedSectors:number,player:PlayerId):{progress:AccountProgress;reward:MatchReward} {
-  if(progress.awards[campaignId])return {progress,reward:progress.awards[campaignId]!};
+  const repeated=recalled(progress,campaignId);if(repeated)return {progress,reward:repeated};
   const won=outcome.winner===player;
   const xpGained=outcome.reason==='core'?(won?125:40):outcome.reason==='draw'?40:outcome.reason==='forfeit'&&won&&completedSectors>0?40:0;
   if(xpGained===0)return {progress,reward:{xpGained:0,beforeXp:progress.xp,profile:profileFor(progress),challenges:[],unlocked:[]}};
   const previous=unlockedPool(progress);
-  const next:AccountProgress={xp:progress.xp+xpGained,completed:[...progress.completed],best:{...progress.best},awards:{...progress.awards}};
+  const next:AccountProgress={xp:progress.xp+xpGained,completed:[...progress.completed],best:{...progress.best},awards:progress.awards};
   const reward:MatchReward={xpGained,beforeXp:progress.xp,profile:profileFor(next),challenges:[],unlocked:unlockedPool(next).filter(id=>!previous.includes(id))};
-  next.awards[campaignId]=reward;
+  next.awards=remember(progress.awards,campaignId,reward);
   return {progress:next,reward};
 }
 /** Challenge bonuses are a fixed 50 XP; difficulty/mode scale the match-performance XP. */
 export function rewardForMatch(progress:AccountProgress,matchId:string,world:World,player:PlayerId,difficulty:RivalDifficulty|'pvp'):{progress:AccountProgress;reward:MatchReward} {
   if(world.winner===null)throw Error('Match has no official result');
-  if(progress.awards[matchId])return {progress,reward:progress.awards[matchId]!};
+  const repeated=recalled(progress,matchId);if(repeated)return {progress,reward:repeated};
   const previous=unlockedPool(progress),stats=world.matchRecord?.players[player] ?? emptyMatchRecord().players[player];
   const base=(world.winner===player?100:40)+Math.min(50,stats.nodes*10)+(world.winner===player?25:0);
   const factor=(difficulty==='easy'?0.25:1)*(world.duration==='skirmish'?0.6:1);
@@ -95,8 +112,8 @@ export function rewardForMatch(progress:AccountProgress,matchId:string,world:Wor
     }
   }
   const xpGained=Math.floor(base*factor)+challenges.length*50;
-  const next:AccountProgress={xp:progress.xp+xpGained,completed,best,awards:{...progress.awards}};
+  const next:AccountProgress={xp:progress.xp+xpGained,completed,best,awards:progress.awards};
   const reward:MatchReward={xpGained,beforeXp:progress.xp,profile:profileFor(next),challenges,unlocked:unlockedPool(next).filter(id=>!previous.includes(id))};
-  next.awards[matchId]=reward;
+  next.awards=remember(progress.awards,matchId,reward);
   return {progress:next,reward};
 }

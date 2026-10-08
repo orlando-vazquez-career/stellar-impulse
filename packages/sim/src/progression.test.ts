@@ -73,3 +73,29 @@ describe('campaign progression',()=>{
     expect(again.reward).toEqual(first.reward);
   });
 });
+describe('stored awards',()=>{
+  it('keeps a compact record per match instead of a profile snapshot',()=>{
+    const {progress}=rewardForCampaign(emptyProgress(),'campaign:ROOM',{winner:'p1',reason:'core'},3,'p1');
+    expect(progress.awards['campaign:ROOM']).toEqual({xpGained:125,beforeXp:0,challenges:[],unlocked:[]});
+  });
+  it('stores training results the same way',()=>{
+    const {progress}=rewardForMatch(emptyProgress(),'room',finished(),'p1','medium');
+    expect(Object.keys(progress.awards.room!).sort()).toEqual(['beforeXp','challenges','unlocked','xpGained']);
+  });
+  it('still answers a repeated result with the full reward',()=>{
+    const first=rewardForCampaign(emptyProgress(),'campaign:ROOM',{winner:'p1',reason:'core'},3,'p1');
+    const again=rewardForCampaign(first.progress,'campaign:ROOM',{winner:'p1',reason:'core'},3,'p1');
+    expect(again.reward.profile.xp).toBe(125);
+    expect(again.reward.profile.level).toBe(1);
+  });
+  it('remembers only the latest 100 results',()=>{
+    let progress=emptyProgress();
+    for(let i=0;i<105;i++)progress=rewardForCampaign(progress,`campaign:${i}`,{winner:null,reason:'draw'},3,'p1').progress;
+    const keys=Object.keys(progress.awards);
+    expect(keys).toHaveLength(100);
+    expect(keys).not.toContain('campaign:4');
+    expect(keys).toContain('campaign:5');
+    expect(keys).toContain('campaign:104');
+    expect(progress.xp).toBe(105*40);
+  });
+});
