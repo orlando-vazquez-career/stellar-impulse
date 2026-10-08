@@ -3,8 +3,9 @@ import { Client, type Room } from '@colyseus/sdk';
 import { FLEET_CAP, BASE_DEFENSE_RANGE, findTiledPath } from '@impulso/sim';
 import { type PlayerView, type UnitKind } from '@impulso/state';
 import { sectorSurface, type TrainingMapId } from '../map/sector-map';
+import { formationSeats, readStoredFormation, storeFormation } from './formation';
 import type {
-  CoreState, GameplayEvent, GameplayPresentationAdapter, GameplayViewModel, PresentationIntent, SquadOwner, SquadViewModel,
+  CoreState, GameplayEvent, GameplayPresentationAdapter, GameplayViewModel, NodeViewModel, PresentationIntent, SquadOwner, SquadViewModel,
 } from './model';
 
 /** The client renders at this rate and eases ships toward the last authoritative cell. */
@@ -45,7 +46,7 @@ export const REJECTION_TEXT: Record<string, string> = {
 function blankSnapshot(): GameplayViewModel {
   return {
     tick: 0, sector: 1, elapsedSeconds: 0,
-    selectedSquadId: null, selectedSquadIds: [], activeAction: null, moveOrder: null,
+    selectedSquadId: null, selectedSquadIds: [], activeAction: null, moveOrder: null, formation: readStoredFormation(),
     resources: { metal: 0, metalRate: 0, energy: 0, energyRate: 0, fleet: 0, fleetCap: FLEET_CAP },
     squads: [], core: { state: 'locked', progress: 0, opensInSeconds: 0 },
     enemiesVisible: true, clockRunning: true,
@@ -70,6 +71,36 @@ export function nearestOpenCell(x: number, y: number): Point | null {
 }
 
 const UNDER_ATTACK_COOLDOWN_MS = 10_000;
+
+/** What the player remembers between views: explored terrain and the last seen state of each node. */
+export interface FogMemory {
+  explored: boolean[] | null;
+  nodes: Map<string, NodeViewModel>;
+}
+
+/**
+ * Fold a new server view into the player's memory and say whether new terrain was explored.
+ * Built only from what the server already sent, so remembering never reveals anything new.
+ */
+export function rememberView(memory: FogMemory, view: Pick<PlayerView, 'width' | 'height' | 'playerId' | 'visibleCells' | 'nodes'>): boolean {
+  let grew = false;
+  if (!memory.explored || memory.explored.length !== view.width * view.height) {
+    memory.explored = Array<boolean>(view.width * view.height).fill(false);
+    grew = true;
+  }
+  for (const cell of view.visibleCells) {
+    const index = cell.y * view.width + cell.x;
+    if (!memory.explored[index]) { memory.explored[index] = true; grew = true; }
+  }
+  const ownerOf = (ownerId: string | null): SquadOwner | null => ownerId === null ? null : ownerId === view.playerId ? 'blue' : 'red';
+  const seenNow = new Set(view.nodes.map((node) => node.id));
+  for (const node of view.nodes) {
+    memory.nodes.set(node.id, { id: node.id, kind: node.kind, x: node.x, y: node.y, owner: ownerOf(node.ownerId),
+      ...(node.radius !== undefined ? { radius: node.radius } : {}), stale: false });
+  }
+  for (const [id, node] of memory.nodes) if (!seenNow.has(id) && !node.stale) memory.nodes.set(id, { ...node, stale: true });
+  return grew;
+}
 
 /** Compare two consecutive server views and name what changed for the player. */
 export function diffViews(previous: PlayerView | null, next: PlayerView): GameplayEvent[] {
@@ -165,6 +196,8 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
   let lastAttackAlert = -Infinity;
   /** Destination shown the moment the player clicks, until the server view carries the order. */
   let pendingOrder: { squadId: string; destination: Point; at: number } | null = null;
+  /** Formation seats shown the moment the player clicks, until the server view carries them. */
+  let pendingSeats = new Map<string, Point>();
 
   const send = (command: Record<string, unknown>) => {
     if (!room || snapshot.result) return;
@@ -187,6 +220,10 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     }
     return fog.cells;
   };
+  // Player memory for this match: explored terrain and the last seen owner of each node.
+  const memory: FogMemory = { explored: null, nodes: new Map() };
+  /** Copy of the explored cells handed to the view; replaced only when new terrain is seen. */
+  let explored: boolean[] | null = null;
   /** Rebuild the view model from the last server view plus the eased on-screen positions. */
   const rebuild = () => {
     const view = latest;
@@ -210,6 +247,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         healthPercent: Math.round(squad.hp / squad.maxHp * 100),
         attackCooldown: squad.attackCooldown, lastShot: squad.lastShot,
         attackTargetId: own ? squad.attackTargetId ?? null : null,
+        ...(own ? { destination: squad.target ? { ...squad.target } : pendingSeats.get(squad.id) ?? null } : {}),
         selected: selectedIds.includes(squad.id), visible: true,
         composition: {
           interceptors: squad.kind === 'interceptor' ? 1 : 0, frigates: squad.kind === 'frigate' ? 1 : 0,
@@ -232,6 +270,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     const waypoints = leader ? [...(leader.target ? [leader.target] : []), ...(leader.route ?? [])] : [];
     const leaderAt = leader ? shown.get(leader.id) ?? leader : null;
     if (pendingOrder && (waypoints.length || performance.now() - pendingOrder.at > 1500 || pendingOrder.squadId !== leader?.id)) pendingOrder = null;
+    if (!pendingOrder) pendingSeats = new Map();
     const ownedMetal = view.nodes.filter((node) => node.kind === 'metal' && node.ownerId === me).length;
     const own = view.players[me];
     snapshot = {
@@ -253,13 +292,17 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       },
       satellites: view.satellites?.map((fall) => ({ id: fall.id, x: fall.x, y: fall.y, radius: fall.radius, warnTick: fall.warnTick, impactTick: fall.impactTick })),
       squads, unitStats: view.unitStats, augments:view.augments, chart:view.chart, productionForbidden:view.productionForbidden,
-      nodes: view.nodes.map((node) => ({
-        id: node.id, kind: node.kind, x: node.x, y: node.y,
-        owner: node.ownerId === null ? null : ownerOf(node.ownerId),
-        ...(node.radius !== undefined ? { radius: node.radius } : {}),
-        ...nodeCapture(node, view.rules.nodeCaptureTicks, ownerOf),
-        ...(node.activeAt !== undefined ? { stabilizingSeconds: Math.ceil((node.activeAt - view.tick) / TICKS_PER_SECOND) } : {}),
-      })),
+      nodes: [
+        ...view.nodes.map((node) => ({
+          id: node.id, kind: node.kind, x: node.x, y: node.y,
+          owner: node.ownerId === null ? null : ownerOf(node.ownerId),
+          ...(node.radius !== undefined ? { radius: node.radius } : {}),
+          ...nodeCapture(node, view.rules.nodeCaptureTicks, ownerOf),
+          ...(node.activeAt !== undefined ? { stabilizingSeconds: Math.ceil((node.activeAt - view.tick) / TICKS_PER_SECOND) } : {}),
+        })),
+        // Nodes out of sight keep the owner the player last saw, marked as stale.
+        ...[...memory.nodes.values()].filter((node) => node.stale).map((node) => ({ ...node })),
+      ],
       core: {
         state: coreState(view),
         progress: Math.round((view.coreFraction ?? Math.max(view.core.progress.p1, view.core.progress.p2) / view.rules.coreCaptureTicks) * 100),
@@ -280,6 +323,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       result: view.winner === null ? null : view.winner === me ? 'victory' : 'defeat',
       reward: view.reward,
       visibleCells: fogOf(view),
+      exploredCells: explored,
     };
     emit();
   };
@@ -349,6 +393,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     }
     const previous = latest;
     latest = view;
+    if (rememberView(memory, view)) explored = [...memory.explored!];
     const units = [...view.squads, ...view.guardians].filter((unit) => unit.hp > 0);
     const present = new Set(units.map((unit) => unit.id));
     for (const id of shown.keys()) if (!present.has(id)) { shown.delete(id); trails.delete(id); }
@@ -466,6 +511,12 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         if (!latest) emit();
         return;
       }
+      if (intent.type === 'set-formation') {
+        storeFormation(intent.formation);
+        snapshot = { ...snapshot, formation: intent.formation };
+        emit();
+        return;
+      }
       if (intent.type === 'set-action') {
         if (intent.action === 'hold') {
           for (const squad of selectedOwn()) send({ type: 'stance', squadId: squad.id, stance: 'guard' });
@@ -484,13 +535,17 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         const { x, y } = cell;
         const movers = intent.type === 'move-squad'
           ? selectedOwn().filter((squad) => squad.id === intent.squadId) : selectedOwn();
-        // The server spreads ships that share a destination around it.
-        for (const squad of movers) send({ type: 'move', squadId: squad.id, x, y });
+        const servers = movers.flatMap((squad) => latest?.squads.find((candidate) => candidate.id === squad.id) ?? []);
+        // A group flies as one formation: every ship gets its own seat, facing the march.
+        const formation = snapshot.formation ?? readStoredFormation();
+        pendingSeats = movers.length > 1 ? formationSeats(servers, { x, y }, formation) : new Map();
+        if (movers.length > 1) send({ type: 'move_formation', squadIds: movers.map((squad) => squad.id), x, y, formation });
+        else for (const squad of movers) send({ type: 'move', squadId: squad.id, x, y });
         if (movers.length && snapshot.selectedSquadId) pendingOrder = { squadId: snapshot.selectedSquadId, destination: { x, y }, at: performance.now() };
         for (const squad of movers) {
           const server = latest?.squads.find((candidate) => candidate.id === squad.id);
           if (!server) continue;
-          const next = nextCell({ x: server.x, y: server.y }, { x, y });
+          const next = nextCell({ x: server.x, y: server.y }, pendingSeats.get(squad.id) ?? { x, y });
           if (!next) continue;
           const at = shown.get(squad.id) ?? { x: server.x, y: server.y };
           const trail = trails.get(squad.id) ?? newTrail(at, (latest?.rules.tickRate ?? 10) / (server.moveTicks ?? latest?.rules.moveEveryTicks ?? 6));

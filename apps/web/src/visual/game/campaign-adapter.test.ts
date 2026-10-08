@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createBattlefieldWorld, BATTLEFIELD_MAP } from '@impulso/sim';
 import { battlefieldViewFor, type CampaignPhaseView } from '@impulso/state';
 import type { CommandIntent, MultiplayerSession, MultiplayerSnapshot } from '../../multiplayer/session';
+import { decodeBattlefieldMask } from '@impulso/state';
 import { createCampaignGameplayAdapter } from './campaign-adapter';
 
 function initial(): MultiplayerSnapshot {
@@ -123,4 +124,32 @@ describe('campaign gameplay presentation', () => {
     expect(adapter.getSnapshot().clockRunning).toBe(false);
     adapter.destroy();
   });
+});
+
+
+it('sends formation choices to the server for the whole multiplayer selection', () => {
+  const source = initial();
+  const first = source.view!.squads.find((s) => s.ownerId === 'p1')!;
+  source.view!.squads.push({ ...first, id: 'p1-extra', x: first.x + 1 });
+  const { session, commands } = controller(source);
+  const adapter = createCampaignGameplayAdapter(session);
+  adapter.dispatch({ type: 'select-squads', squadIds: [first.id, 'p1-extra'] });
+  adapter.dispatch({ type: 'set-formation', formation: 'wedge' });
+  adapter.dispatch({ type: 'move-selected', x: first.x, y: first.y });
+  expect(commands).toEqual([{ type: 'move_formation', squadIds: [first.id, 'p1-extra'], x: first.x, y: first.y, formation: 'wedge' }]);
+  expect(adapter.getSnapshot().exploredCells).toEqual(decodeBattlefieldMask(source.view!.explored));
+  adapter.destroy();
+});
+
+it('remembers nodes without learning their hidden owner and resets them between sectors', () => {
+  const source = initial();
+  const node = { id: 'remembered', kind: 'metal' as const, guardianId: 'g', x: 5, y: 5, ownerId: 'p2' as const, progress: { p1: 0, p2: 0 } };
+  source.view!.nodes = [node];
+  const { session, update } = controller(source);
+  const adapter = createCampaignGameplayAdapter(session);
+  update({ view: { ...source.view!, nodes: [] } });
+  expect(adapter.getSnapshot().nodes).toEqual([expect.objectContaining({ id: 'remembered', owner: 'red', stale: true })]);
+  update({ phase: { ...source.phase!, sector: 2 }, view: { ...source.view!, nodes: [] } });
+  expect(adapter.getSnapshot().nodes).toEqual([]);
+  adapter.destroy();
 });

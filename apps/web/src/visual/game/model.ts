@@ -2,7 +2,7 @@ import type { AugmentView } from '@impulso/state';
 export type SquadOwner = 'blue' | 'red' | 'neutral';
 import type { ShipStats } from '@impulso/sim';
 import type { UnitKind } from '@impulso/state';
-import type { BaseUpgradeKind, BaseUpgrades, ExtraModule, ModuleKind, ModuleSpec } from '@impulso/sim';
+import type { BaseUpgradeKind, BaseUpgrades, ExtraModule, FormationKind, ModuleKind, ModuleSpec } from '@impulso/sim';
 export type SquadType = UnitKind;
 
 export interface SquadViewModel {
@@ -20,6 +20,8 @@ export interface SquadViewModel {
   gridY: number;
   healthPercent: number;
   attackTargetId?: string | null;
+  /** Own ships only: the cell the ship is flying to (its formation seat on a group order). */
+  destination?: { x: number; y: number } | null;
   selected: boolean;
   visible: boolean;
   composition: { interceptors: number; frigates: number; bombers?: number; explorers?: number };
@@ -66,6 +68,8 @@ export interface NodeViewModel {
   x: number;
   y: number;
   owner: SquadOwner | null;
+  /** Out of sight: `owner` is the last one the player saw, which may have changed since. */
+  stale?: boolean;
   /** Seconds until a freshly captured node starts producing. */
   stabilizingSeconds?: number;
   /** Cells around the node that count as its capture area. */
@@ -102,6 +106,8 @@ export interface GameplayViewModel {
   selectedSquadIds: string[];
   activeAction: GameplayAction;
   moveOrder: MoveOrder | null;
+  /** Shape a group order takes. Only server-backed matches march in formation. */
+  formation?: FormationKind;
   resources: {
     metal: number;
     metalRate: number;
@@ -137,6 +143,8 @@ export interface GameplayViewModel {
   connection: ConnectionState;
   /** Row-major cells inside the player's vision; null when there is no fog (local mock). */
   visibleCells: boolean[] | null;
+  /** Row-major cells seen at least once this match (always includes visibleCells); null without fog memory. */
+  exploredCells?: boolean[] | null;
 }
 
 /** Things that happened between two server views, for sounds and announcements. */
@@ -151,6 +159,7 @@ export type PresentationIntent =
   | { type: 'set-action'; action: GameplayAction }
   | { type: 'move-squad'; squadId: string; x: number; y: number }
   | { type: 'move-selected'; x: number; y: number }
+  | { type: 'set-formation'; formation: FormationKind }
   | { type: 'attack-squad'; squadId: string; targetId: string }
   | { type: 'attack-selected'; targetId: string }
   | { type: 'set-core-state'; state: CoreState }
