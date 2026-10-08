@@ -27,6 +27,9 @@ corrección de nombre de sala y salida del lobby incluso durante una caída de r
 Las pruebas de transporte cubren
 tercer jugador, privacidad, pausa, reconexión automática y ausencia de órdenes reenviadas.
 La suite mantiene login, entrenamiento, mapa, cámara, hangar y ajustes.
+`tests/e2e/account.spec.ts` crea una cuenta desde la pantalla de acceso, sale, vuelve a
+entrar con el campo de alias vacío y desde otro contexto de navegador, y recupera el alias
+de la cuenta; también comprueba los mensajes de alias no válido y correo ya registrado.
 Los tres sectores con aumentos arrastrados se prueban en el servidor
 (`apps/server/src/campaign-flow.test.ts`), no en el navegador.
 Estas pruebas no certifican accesibilidad completa ni balance.
@@ -40,7 +43,8 @@ contenedor de [desarrollo](development.md):
 `DATABASE_URL_TEST=postgresql://impulso:impulso@127.0.0.1:55432/impulso pnpm exec vitest run apps/server/src/postgres-store.test.ts`.
 Cubre reinicio y login, XP, desafíos y mejores marcas de una partida, emblemas de campaña,
 resultados repetidos desde otro proceso, correo duplicado entre procesos, dos resultados
-simultáneos e importación del archivo anterior.
+simultáneos, alias de comandante (registro, cambio y reinicio) e importación del archivo
+anterior con su alias.
 
 ## Aceptación futura del MVP
 
