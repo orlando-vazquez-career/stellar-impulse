@@ -21,12 +21,13 @@ async function signIn(page: Page, request: APIRequestContext, name: string) {
 /** A real server order on the new engine: the base builds an Explorador and the fleet grows. */
 async function produceExplorer(page: Page, fleet: string) {
   await page.locator('.vi-production').getByRole('button', { name: /Explorador/ }).click();
-  await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-sequence', '1');
+  // Two software-rendered pages share the CI runner: the ack can take several seconds to paint.
+  await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-sequence', '1', { timeout: 20000 });
   await expect(page.locator('.vi-resources')).toContainText(fleet, { timeout: 20000 });
 }
 
 test('two accounts play the campaign on Espiral and recover the same match after reload', async ({ browser, request }) => {
-  test.setTimeout(150_000);
+  test.setTimeout(240_000);
   const hostContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const guestContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const host = await hostContext.newPage();
@@ -72,8 +73,8 @@ test('two accounts play the campaign on Espiral and recover the same match after
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-room-id', roomId, { timeout: 20000 });
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-player-id', 'p2');
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-connection', 'online');
-    await expect(guest.locator('.vi-resources')).toContainText('3/12');
-    await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-sequence', '1');
+    await expect(guest.locator('.vi-resources')).toContainText('3/12', { timeout: 20000 });
+    await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-sequence', '1', { timeout: 20000 });
     await expect(host.locator('.vi-gameplay')).toHaveAttribute('data-room-id', roomId);
     await host.getByRole('button', { name: 'Salir de partida', exact: true }).click();
     await expect(guest.getByRole('dialog', { name: 'Victoria', exact: true })).toBeVisible({ timeout: 15000 });
