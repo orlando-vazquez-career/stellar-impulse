@@ -195,6 +195,8 @@ export interface CaptureObjective extends Position {
   id: string;
   guardianId: string;
   progress: Record<PlayerId, number>;
+  /** Cells around the objective that count as its capture area; the rules' `captureRadius` when absent. */
+  radius?: number;
 }
 export interface ResourceNode extends CaptureObjective {
   kind: 'metal' | 'capture';
@@ -291,9 +293,10 @@ export function createSectorWorld(map: TrainingMapId = 'sector-01'): World {
   return createWorldOn(TRAINING_MAPS[map]);
 }
 export function createWorldOn(sector: SectorLeido): World {
-  const node = (input: { id: string; kind: 'metal' | 'capture'; x: number; y: number }): ResourceNode => ({
+  const node = (input: { id: string; kind: 'metal' | 'capture'; x: number; y: number; radius?: number }): ResourceNode => ({
     id: input.id, kind: input.kind, x: input.x, y: input.y,
     guardianId: `${input.id}-guardian`, ownerId: null, progress: { p1: 0, p2: 0 },
+    ...(input.radius !== undefined ? { radius: input.radius } : {}),
   });
   const metals = sector.metals.map((cell, index) => node({ id: `metal-${index + 1}`, kind: 'metal', x: cell.x, y: cell.y }));
   // p2 mirrors p1 through the map centre, so both fleets face the same terrain.
@@ -332,7 +335,7 @@ export function createWorldOn(sector: SectorLeido): World {
     ],
     nodes: [
       ...metals,
-      ...sector.captures.map((cell, index) => node({ id: `capture-${index + 1}`, kind: 'capture', x: cell.x, y: cell.y })),
+      ...sector.captures.map((cell, index) => node({ id: `capture-${index + 1}`, kind: 'capture', x: cell.x, y: cell.y, radius: cell.radius })),
     ],
     core: { id: 'core', x: sector.core.x, y: sector.core.y, guardianId: 'core-guardian', open: false, progress: { p1: 0, p2: 0 } },
     winner: null,

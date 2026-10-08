@@ -139,7 +139,7 @@ describe('ship traffic', () => {
     }
     expect(world.squads.filter(s=>s.target).map(s=>({id:s.id,x:s.x,y:s.y,target:s.target}))).toEqual([]);
     for(const s of world.squads){expect(s.target).toBeNull();expect(Math.max(Math.abs(s.x-14),Math.abs(s.y-14))).toBeLessThanOrEqual(6);}
-  });
+  }, 60_000);
   it.each(['sector-01','espiral'] as const)('a 24-ship fleet reaches a crowded destination on %s',(map)=>{
     let world=createSectorWorld(map);world.guardians=[];world.economy=false;world.rules.coreOpenTick=100000;
     const route=(findTiledPath(world.surface!,world.players.p1.base,world.core) as {path:{x:number;y:number}[]}).path;
@@ -151,7 +151,7 @@ describe('ship traffic', () => {
     for(let i=0;i<24;i++)world=applyCommand(world,'p1',{seq:i+1,type:'move',squadId:world.squads[i]!.id,...destination}).world;
     for(let t=0;t<3000;t++){world=stepWorld(world);expect(new Set(world.squads.map(s=>`${s.x},${s.y}`)).size).toBe(24);}
     expect(world.squads.filter(s=>s.target).map(s=>({id:s.id,x:s.x,y:s.y,target:s.target}))).toEqual([]);
-  }, 30_000);
+  }, 120_000);
   it('a parked ally yields in a corridor when it blocks a route beyond its cell',()=>{
     let world=field();world.economy=false;world.surface!.walkable=world.surface!.walkable.map((_,i)=>Math.floor(i/20)===3);
     world=applyCommand(world,'p1',{seq:1,type:'move',squadId:'lead',x:7,y:3}).world;

@@ -95,7 +95,8 @@ export function rememberView(memory: FogMemory, view: Pick<PlayerView, 'width' |
   const ownerOf = (ownerId: string | null): SquadOwner | null => ownerId === null ? null : ownerId === view.playerId ? 'blue' : 'red';
   const seenNow = new Set(view.nodes.map((node) => node.id));
   for (const node of view.nodes) {
-    memory.nodes.set(node.id, { id: node.id, kind: node.kind, x: node.x, y: node.y, owner: ownerOf(node.ownerId), stale: false });
+    memory.nodes.set(node.id, { id: node.id, kind: node.kind, x: node.x, y: node.y, owner: ownerOf(node.ownerId),
+      ...(node.radius !== undefined ? { radius: node.radius } : {}), stale: false });
   }
   for (const [id, node] of memory.nodes) if (!seenNow.has(id) && !node.stale) memory.nodes.set(id, { ...node, stale: true });
   return grew;
@@ -143,6 +144,15 @@ export function diffViews(previous: PlayerView | null, next: PlayerView): Gamepl
   const hurt = baseHit || [...after.values()].some((squad) => squad.ownerId === me && squad.hp < (before.get(squad.id)?.hp ?? squad.hp));
   if (hurt) events.push({ kind: 'under-attack' });
   return events;
+}
+
+/** The side taking a node from its owner: whoever is further along among those that do not hold it. */
+export function nodeCapture(node: PlayerView['nodes'][number], captureTicks: number,
+  ownerOf: (ownerId: string) => SquadOwner): { capture?: { by: SquadOwner; fraction: number } } {
+  const leading = (['p1', 'p2'] as const).filter((id) => id !== node.ownerId)
+    .map((id) => ({ by: ownerOf(id), fraction: Math.min(1, node.fraction?.[id] ?? node.progress[id] / captureTicks) }))
+    .filter((side) => side.fraction > 0).sort((a, b) => b.fraction - a.fraction)[0];
+  return leading ? { capture: leading } : {};
 }
 
 function coreState(view: PlayerView): CoreState {
@@ -286,6 +296,8 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         ...view.nodes.map((node) => ({
           id: node.id, kind: node.kind, x: node.x, y: node.y,
           owner: node.ownerId === null ? null : ownerOf(node.ownerId),
+          ...(node.radius !== undefined ? { radius: node.radius } : {}),
+          ...nodeCapture(node, view.rules.nodeCaptureTicks, ownerOf),
           ...(node.activeAt !== undefined ? { stabilizingSeconds: Math.ceil((node.activeAt - view.tick) / TICKS_PER_SECOND) } : {}),
         })),
         // Nodes out of sight keep the owner the player last saw, marked as stale.

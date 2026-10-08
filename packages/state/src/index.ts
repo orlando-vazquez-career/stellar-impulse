@@ -53,7 +53,8 @@ export interface PlayerView {
   players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; baseUpgrades?: { damage: number; capacity: number }; production?: { kind: UnitKind; remainingTicks: number } | null }>;
   squads: VisibleSquad[];
   guardians: Guardian[];
-  nodes: ResourceNode[];
+  /** `fraction`: each side's capture progress from 0 to 1, with its own capture time. */
+  nodes: (ResourceNode & { fraction?: Record<PlayerId, number> })[];
   core: World['core'];
   visibleCells: Position[];
   winner: PlayerId | null;
@@ -131,6 +132,9 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     nodes: world.nodes.filter(visible).map((node) => ({
       id: node.id, kind: node.kind, guardianId: node.guardianId, x: node.x, y: node.y,
       ownerId: node.ownerId, progress: { p1: node.progress.p1, p2: node.progress.p2 },
+      fraction: { p1: node.progress.p1 / captureDuration(world, 'p1', world.rules.nodeCaptureTicks, false),
+        p2: node.progress.p2 / captureDuration(world, 'p2', world.rules.nodeCaptureTicks, false) },
+      ...(node.radius !== undefined ? { radius: node.radius } : {}),
       ...(node.activeAt !== undefined && node.activeAt > world.tick ? { activeAt: node.activeAt } : {}),
     })),
     // The central objective timer and capture score are public rules.

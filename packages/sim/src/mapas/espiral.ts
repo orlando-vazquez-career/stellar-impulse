@@ -8,6 +8,7 @@ const WALKABLE_TERRAIN = new Set(['empty', 'nebula', 'boost', 'slow']);
 const GAMEPLAY_MARKER_KINDS = new Set(['spawn', 'pilar', 'recurso', 'pronexo']);
 const FLIP_MASK = 0x1fffffff;
 const MAX_SIDE = 128;
+const MAX_CAPTURE_RADIUS = 8;
 
 interface Mark {
   kind: string;
@@ -32,7 +33,7 @@ export function leerEspiral(source: unknown): SectorLeido {
   };
   const core = cellOf(pilar);
   const metals = marks.filter((mark) => mark.kind === 'recurso').sort(byMark).map(cellOf);
-  const captures = marks.filter((mark) => mark.kind === 'pronexo').sort(byMark).map(cellOf);
+  const captures = marks.filter((mark) => mark.kind === 'pronexo').sort(byMark).map(captureOf);
   if (metals.length === 0 || captures.length === 0) throw new Error('Missing map objectives');
   const goals = [bases.p1, bases.p2, core, ...metals, ...captures];
   const obstaculos = readObstacles(map, tileSize, width, height);
@@ -61,6 +62,14 @@ export function leerEspiral(source: unknown): SectorLeido {
 }
 
 export const ESPIRAL = leerEspiral(mapa);
+
+/** A pronexo may carry `radio`: the cells around it that count as its capture area. */
+function captureOf(mark: Mark): { x: number; y: number; radius?: number } {
+  const radius = mark.props.radio;
+  if (radius === undefined) return cellOf(mark);
+  if (typeof radius !== 'number' || !Number.isSafeInteger(radius) || radius < 1 || radius > MAX_CAPTURE_RADIUS) throw new Error('Invalid map marker');
+  return { ...cellOf(mark), radius };
+}
 
 function readTerrain(map: Record<string, unknown>, cells: number): string[] {
   const lookup = terrainByGid(map.tilesets);

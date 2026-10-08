@@ -72,6 +72,10 @@ export interface NodeViewModel {
   stale?: boolean;
   /** Seconds until a freshly captured node starts producing. */
   stabilizingSeconds?: number;
+  /** Cells around the node that count as its capture area. */
+  radius?: number;
+  /** The side taking the node from its owner, and how far along it is (0 to 1). */
+  capture?: { by: SquadOwner; fraction: number };
 }
 
 /** A satellite on its way down: warned from `warnTick`, it hits the cell on `impactTick`. */
