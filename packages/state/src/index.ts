@@ -35,8 +35,6 @@ export interface PlayerView {
   width: number;
   height: number;
   obstacles: Position[];
-  walkable?: boolean[];
-  level?: number[];
   rules: Rules;
   unitStats?: Record<UnitKind, ShipStats>;
   augments?: AugmentView;
@@ -106,7 +104,6 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     productionForbidden:effectsFor(world,playerId).flatMap((e)=>e.hook==='no-production'?[e.kind]:[]),
     schemaVersion: 1, mode: 'training', tick: world.tick, playerId, duration: world.duration, suddenDeath: world.suddenDeath,
     width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })),
-    ...(world.surface ? { walkable: [...world.surface.walkable], level: [...world.surface.level] } : {}),
     rules: { ...world.rules }, players,
     unitStats: Object.fromEntries(['explorer', 'interceptor', 'frigate', 'bomber'].map((kind) => [kind, statsFor(world, playerId, kind as UnitKind)])) as Record<UnitKind, ShipStats>,
     squads: world.squads.filter((unit) => unit.ownerId === playerId || (unit.hp > 0 && visible(unit) && !isConcealed(world,unit))).map((unit) => {

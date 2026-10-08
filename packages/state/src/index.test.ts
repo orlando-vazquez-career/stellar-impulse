@@ -83,3 +83,14 @@ describe('campaign view fields', () => {
     expect(viewFor(world, 'p2').augments!.offer).toMatchObject({ rerolls: 0, rerollLimit: 1 });
   });
 });
+
+describe('view size', () => {
+  // Rooms send this view to every player ten times a second. The client draws the terrain from
+  // its own copy of the map, so repeating it only floods slow clients until the heartbeat drops them.
+  it('leaves the static terrain out of the view a room sends every tick', () => {
+    const view = viewFor(createMatchWorld('espiral', 'skirmish', 7), 'p1');
+    expect(view).not.toHaveProperty('walkable');
+    expect(view).not.toHaveProperty('level');
+    expect(JSON.stringify(view).length).toBeLessThan(16_000);
+  });
+});
