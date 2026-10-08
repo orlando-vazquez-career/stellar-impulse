@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import type { Room } from '@colyseus/sdk';
 import type { PlayerView } from '@impulso/state';
-import { createServerGameplayAdapter, diffViews, nearestOpenCell, rememberView, type FogMemory } from './server-adapter';
+import { createServerGameplayAdapter, diffViews, nearestOpenCell, rememberView, type FogMemory, type MatchTransport, type TransportEvents } from './server-adapter';
 import { selectMap } from '../map/sector-map';
 
 const ship = (id: string, ownerId: 'p1' | 'p2', x: number, y: number, hp = 100) =>
@@ -96,4 +96,85 @@ it('sends every selected ship in a 26-ship formation to the server', () => {
       type: 'move_formation', squadIds: ships.map((unit) => unit.id), x: 3, y: 11,
     })]);
   } finally { adapter.destroy(); selectMap('espiral'); }
+});
+
+describe('campaign transport', () => {
+  function fakeTransport() {
+    let events: TransportEvents | null = null;
+    let closed = 0;
+    let sector = 1;
+    let final: ReturnType<NonNullable<MatchTransport['outcome']>> = null;
+    const sent: unknown[][] = [];
+    const transport: MatchTransport = {
+      open(next) { events = next; return () => { events = null; closed += 1; }; },
+      command: (command) => sent.push(['command', command]),
+      augmentPick: (choice, id) => sent.push(['pick', choice, id]),
+      augmentReroll: (choice) => sent.push(['reroll', choice]),
+      sector: () => sector,
+      outcome: () => final,
+    };
+    return {
+      transport, sent, events: () => events!, closed: () => closed,
+      setSector(value: number) { sector = value; }, setOutcome(value: typeof final) { final = value; },
+    };
+  }
+  beforeEach(() => selectMap('sector-01'));
+  afterEach(() => selectMap('espiral'));
+
+  it('sends orders and augment choices through the transport, which owns the sequence', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    try {
+      fake.events().view(view({ squads: [ship('p1-a', 'p1', 3, 3)] }));
+      adapter.dispatch({ type: 'select-squads', squadIds: ['p1-a'] });
+      adapter.dispatch({ type: 'move-selected', x: 5, y: 3 });
+      adapter.dispatch({ type: 'augment-pick', choice: 0, id: 's-optica' });
+      adapter.dispatch({ type: 'augment-reroll', choice: 0 });
+      expect(fake.sent).toEqual([
+        ['command', { type: 'move', squadId: 'p1-a', x: 5, y: 3 }],
+        ['pick', 0, 's-optica'],
+        ['reroll', 0],
+      ]);
+    } finally { adapter.destroy(); }
+  });
+
+  it('ignores a sector winner and shows only the campaign outcome with its reward', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    try {
+      fake.events().view(view({ winner: 'p2' }));
+      expect(adapter.getSnapshot().result).toBeNull();
+      const reward = { xpGained: 40, beforeXp: 0, challenges: [], unlocked: [], profile: { xp: 40, level: 1, levelXp: 40, nextLevelXp: 300, completed: [], best: {}, unlocked: [], merits: [] } };
+      fake.setOutcome({ result: 'defeat', reward });
+      fake.events().refresh();
+      expect(adapter.getSnapshot()).toMatchObject({ result: 'defeat', reward });
+    } finally { adapter.destroy(); }
+  });
+
+  it('starts over when the next sector world arrives', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    const events: string[] = [];
+    adapter.subscribeEvents!((event) => events.push(event.kind));
+    try {
+      fake.events().view(view({ tick: 900, squads: [ship('p1-a', 'p1', 3, 3)], visibleCells: [{ x: 3, y: 3 }] }));
+      adapter.dispatch({ type: 'select-squads', squadIds: ['p1-a'] });
+      expect(adapter.getSnapshot().exploredCells?.[3 * 29 + 3]).toBe(true);
+      fake.setSector(2);
+      fake.events().view(view({ tick: 0, squads: [ship('p1-a', 'p1', 20, 20)], visibleCells: [{ x: 20, y: 20 }] }));
+      const snapshot = adapter.getSnapshot();
+      expect(snapshot.sector).toBe(2);
+      expect(snapshot.selectedSquadIds).toEqual([]);
+      expect(snapshot.exploredCells?.[3 * 29 + 3]).toBe(false);
+      expect(events.filter((kind) => kind === 'match-start')).toHaveLength(2);
+    } finally { adapter.destroy(); }
+  });
+
+  it('only stops listening on destroy and never leaves the session room', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    adapter.destroy();
+    expect(fake.closed()).toBe(1);
+    expect(fake.sent).toEqual([]);
+  });
 });
