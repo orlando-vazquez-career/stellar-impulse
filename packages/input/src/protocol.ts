@@ -43,6 +43,13 @@ function plainFields(value: unknown): Record<string, unknown> | null {
 const onlyKeys = (fields: Record<string, unknown>, allowed: string[]): boolean =>
   Object.keys(fields).every((key) => allowed.includes(key));
 
+/** A commander name, trimmed: 1 to 24 letters, digits, spaces, `_`, `.` or `-`. Rooms and accounts share the rule. */
+export function parseDisplayName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const name = value.trim();
+  return NAME.test(name) ? name : null;
+}
+
 function openVersionedEnvelope(value: unknown, expectedVersion: number): EnvelopeResult {
   const fields = plainFields(value);
   if (!fields || !onlyKeys(fields, ['protocolVersion', 'body']) || !('body' in fields)) return { ok: false, reason: 'invalid_envelope' };
@@ -70,9 +77,8 @@ function parseVersionedJoinOptions(value: unknown, expectedVersion: number): Joi
   if (fields.protocolVersion !== expectedVersion) return { ok: false, reason: 'unsupported_version' };
   if (!onlyKeys(fields, ['protocolVersion', 'name'])) return { ok: false, reason: 'invalid_join' };
   if (fields.name === undefined) return { ok: true, name: DEFAULT_NAME };
-  if (typeof fields.name !== 'string') return { ok: false, reason: 'invalid_join' };
-  const name = fields.name.trim();
-  return NAME.test(name) ? { ok: true, name } : { ok: false, reason: 'invalid_join' };
+  const name = parseDisplayName(fields.name);
+  return name === null ? { ok: false, reason: 'invalid_join' } : { ok: true, name };
 }
 
 export function parseJoinOptions(value: unknown): JoinResult {

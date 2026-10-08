@@ -50,17 +50,25 @@ export class PostgresAccountStore implements AccountStore {
         awards,
         ...(merits.length ? { merits } : {}),
       };
-      return { id: account.id, email: account.email, salt: account.salt, passwordHash: account.passwordHash, progress };
+      return {
+        id: account.id, email: account.email, salt: account.salt, passwordHash: account.passwordHash,
+        ...(account.displayName === null ? {} : { displayName: account.displayName }), progress,
+      };
     });
   }
 
   async createAccount(user: StoredUser): Promise<void> {
     try {
-      await this.db.account.create({ data: { id: user.id, email: user.email, salt: user.salt, passwordHash: user.passwordHash } });
+      await this.db.account.create({ data: { id: user.id, email: user.email, salt: user.salt, passwordHash: user.passwordHash, displayName: user.displayName ?? null } });
     } catch (error) {
       if (duplicate(error)) throw new AuthError(409, 'email_in_use');
       throw error;
     }
+  }
+
+  /** Writes only the profile columns, so it never races the XP another process adds. */
+  async saveProfile(user: StoredUser): Promise<void> {
+    await this.db.account.update({ where: { id: user.id }, data: { displayName: user.displayName ?? null } });
   }
 
   /** XP is added in the database, so results saved by different processes still sum up. */
@@ -102,7 +110,10 @@ export class PostgresAccountStore implements AccountStore {
     await this.db.$transaction(async (tx) => {
       for (const user of users) {
         const progress = user.progress;
-        await tx.account.create({ data: { id: user.id, email: user.email, salt: user.salt, passwordHash: user.passwordHash, xp: progress?.xp ?? 0 } });
+        await tx.account.create({ data: {
+          id: user.id, email: user.email, salt: user.salt, passwordHash: user.passwordHash,
+          displayName: user.displayName ?? null, xp: progress?.xp ?? 0,
+        } });
         if (!progress) continue;
         const achievements = [
           ...progress.completed.map((key) => ({ key, kind: 'challenge' as const })),

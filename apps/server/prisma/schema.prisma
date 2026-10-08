@@ -15,6 +15,8 @@ model Account {
   email          String          @unique
   salt           String
   passwordHash   String          @map("password_hash")
+  /// Commander alias the player chose; null until set. It follows the account to any device.
+  displayName    String?         @map("display_name")
   xp             Int             @default(0)
   createdAt      DateTime        @default(now()) @map("created_at")
   achievements   Achievement[]

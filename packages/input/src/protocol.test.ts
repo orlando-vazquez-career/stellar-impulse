@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   BATTLEFIELD_PROTOCOL_VERSION, CAMPAIGN_PROTOCOL_VERSION, openBattlefieldEnvelope, openCampaignEnvelope, openEnvelope,
-  parseAugmentPick, parseAugmentReroll, parseBattlefieldJoinOptions, parseCampaignJoinOptions, parseJoinOptions, parseReady, PROTOCOL_VERSION,
+  parseAugmentPick, parseAugmentReroll, parseBattlefieldJoinOptions, parseCampaignJoinOptions, parseDisplayName, parseJoinOptions,
+  parseReady, PROTOCOL_VERSION,
 } from './protocol.js';
 
 describe('campaign message envelope', () => {
@@ -90,6 +91,19 @@ describe('join options', () => {
     }
     expect(parseJoinOptions({ protocolVersion: PROTOCOL_VERSION, name: 'A', admin: true }))
       .toEqual({ ok: false, reason: 'invalid_join' });
+  });
+});
+
+describe('commander display name', () => {
+  it('trims and accepts 1 to 24 letters, digits, spaces, dots, hyphens or underscores', () => {
+    expect(parseDisplayName('  Ñandú 07  ')).toBe('Ñandú 07');
+    expect(parseDisplayName('Vega_2.alfa-b')).toBe('Vega_2.alfa-b');
+    expect(parseDisplayName('x'.repeat(24))).toBe('x'.repeat(24));
+  });
+  it('rejects what a room would also reject as a name', () => {
+    for (const value of ['', '   ', 'x'.repeat(25), '<script>', 'ana@example.com', 7, null, undefined, {}]) {
+      expect(parseDisplayName(value)).toBeNull();
+    }
   });
 });
 
