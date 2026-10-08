@@ -5,7 +5,7 @@ import { setAudioMix } from './audio-mix';
 import { AccessScreen } from './access/AccessScreen';
 import { clearSession, logoutAccount, restoreAccount, sessionToken, type AccountUser } from '../auth/client';
 import { createMultiplayerSession, type MultiplayerSession } from '../multiplayer/session';
-import { readPilotAlias } from '../login/pilot-alias';
+import { accountAlias, readPilotAlias, writePilotAlias } from '../login/pilot-alias';
 import { GameplayScreen } from './game/GameplayScreen';
 import { HangarScreen } from './hangar/HangarScreen';
 import { LanguageProvider, useI18n } from './i18n';
@@ -53,7 +53,10 @@ function VisualPrototypeContent() {
     void restoreAccount().then(async (user) => {
       if (!active || !user) return;
       setAccount(user);
-      setAlias(readPilotAlias() || user.email.split('@')[0]!.slice(0, 24));
+      // The account's alias wins over the one this device remembers.
+      const commander = accountAlias(user, readPilotAlias());
+      if (user.displayName) writePilotAlias(commander);
+      setAlias(commander);
       const restored = await connection.restore();
       if (!active) return;
       setMultiplayerMatch(restored);

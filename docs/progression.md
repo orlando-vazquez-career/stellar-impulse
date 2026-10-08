@@ -21,7 +21,7 @@ cosméticos); por ahora solo se guardan en la cuenta.
 
 ## Dónde se guarda
 
-Con `DATABASE_URL`, en Postgres: `accounts` (XP), `achievements` (desafíos y emblemas, con
+Con `DATABASE_URL`, en Postgres: `accounts` (XP y alias de comandante), `achievements` (desafíos y emblemas, con
 la partida que los otorgó), `challenge_bests` y `match_awards` (un registro por resultado
 oficial; su clave impide sumar dos veces el mismo). Sin `DATABASE_URL`, en el archivo de
 cuentas.

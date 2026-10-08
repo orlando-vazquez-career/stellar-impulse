@@ -21,6 +21,25 @@ it('recovers the accounts from the backup when the main file is unreadable', asy
   expect(restarted.login('ana@example.com', 'secret-1234').user.email).toBe('ana@example.com');
 });
 
+it('keeps the commander alias in the account file across restarts', async () => {
+  const file = join(tempDir(), 'users.json');
+  const { user } = await new AuthService(file).register('ana@example.com', 'secret-1234', 'Ana');
+  expect(user.displayName).toBe('Ana');
+  expect(new AuthService(file).login('ana@example.com', 'secret-1234').user).toEqual(user);
+  await new AuthService(file).updateDisplayName(user.id, 'Nova');
+  expect(new AuthService(file).login('ana@example.com', 'secret-1234').user).toEqual({ ...user, displayName: 'Nova' });
+});
+
+it('keeps the previous alias when the account file cannot be written', async () => {
+  const dir = tempDir();
+  const auth = new AuthService(join(dir, 'data', 'users.json'));
+  const { token, user } = await auth.register('vega@example.com', 'secret-1234', 'Vega');
+  rmSync(join(dir, 'data'), { recursive: true });
+  writeFileSync(join(dir, 'data'), 'a file where the data folder should be');
+  await expect(auth.updateDisplayName(user.id, 'Nova')).rejects.toThrow();
+  expect(auth.getUser(token)?.displayName).toBe('Vega');
+});
+
 it('refuses to start with no accounts when neither file can be read', async () => {
   const file = join(tempDir(), 'users.json');
   writeFileSync(file, 'garbage');

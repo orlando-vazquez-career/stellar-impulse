@@ -14,16 +14,22 @@ const server = createGameServer({ authDataFile: null, campaign: { countdownMs: 1
 beforeAll(async () => { await server.listen(PORT, '127.0.0.1'); });
 afterAll(async () => { await server.gracefullyShutdown(false); });
 
-async function register(email: string, password = 'secret-1234') {
+async function register(email: string, password = 'secret-1234', extra: Record<string, unknown> = {}) {
   const response = await fetch(`${URL}/auth/register`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, ...extra }),
   });
   const body = response.status === 201
-    ? await response.json() as { token: string; user: { id: string; email: string } }
+    ? await response.json() as { token: string; user: { id: string; email: string; displayName: string | null } }
     : null;
   return { response, body };
 }
+
+const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
+const putProfile = (token: string | null, body: unknown) => fetch(`${URL}/auth/profile`, {
+  method: 'PUT', headers: { 'content-type': 'application/json', ...(token ? bearer(token) : {}) },
+  body: JSON.stringify(body),
+});
 
 describe('account and multiplayer admission', () => {
   it('keeps password hashes on disk and accepts the account after a restart', async () => {
@@ -67,6 +73,52 @@ describe('account and multiplayer admission', () => {
     const logout = await fetch(`${URL}/auth/logout`, { method: 'POST', headers: { authorization: `Bearer ${loggedIn.token}` } });
     expect(logout.status).toBe(204);
     expect((await fetch(`${URL}/auth/me`, { headers: { authorization: `Bearer ${loggedIn.token}` } })).status).toBe(401);
+  });
+
+  it('registers with a commander alias and returns it on login, /auth/me and /auth/profile', async () => {
+    const { response, body } = await register('alias@example.com', 'secret-1234', { displayName: '  Ñandú 07 ' });
+    expect(response.status).toBe(201);
+    expect(body?.user.displayName).toBe('Ñandú 07');
+    const login = await fetch(`${URL}/auth/login`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'alias@example.com', password: 'secret-1234' }),
+    });
+    const session = await login.json() as { token: string; user: unknown };
+    expect(session.user).toEqual(body?.user);
+    expect(await (await fetch(`${URL}/auth/me`, { headers: bearer(session.token) })).json()).toEqual({ user: body?.user });
+    expect(await (await fetch(`${URL}/auth/profile`, { headers: bearer(session.token) })).json())
+      .toMatchObject({ displayName: 'Ñandú 07', xp: 0, level: 1 });
+  });
+
+  it('refuses an invalid alias at registration and creates no account', async () => {
+    for (const displayName of ['<script>', '   ', 'x'.repeat(25), 7, null]) {
+      const { response } = await register('bad-alias@example.com', 'secret-1234', { displayName });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: 'invalid_display_name' });
+    }
+    const { response, body } = await register('bad-alias@example.com');
+    expect(response.status).toBe(201);
+    expect(body?.user.displayName).toBeNull();
+  });
+
+  it('changes the alias with PUT /auth/profile only for a valid alias and a live session', async () => {
+    const { body } = await register('rename@example.com');
+    const token = body!.token;
+    const renamed = await putProfile(token, { displayName: ' Vega ' });
+    expect(renamed.status).toBe(200);
+    expect(await renamed.json()).toEqual({ user: { ...body!.user, displayName: 'Vega' } });
+
+    const invalid = await putProfile(token, { displayName: '<b>Nova</b>' });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toEqual({ error: 'invalid_display_name' });
+    expect((await putProfile(token, {})).status).toBe(400);
+    const anonymous = await putProfile(null, { displayName: 'Nova' });
+    expect(anonymous.status).toBe(401);
+    expect(await anonymous.json()).toEqual({ error: 'authentication_required' });
+    expect((await putProfile('x'.repeat(43), { displayName: 'Nova' })).status).toBe(401);
+
+    expect(await (await fetch(`${URL}/auth/me`, { headers: bearer(token) })).json())
+      .toEqual({ user: { ...body!.user, displayName: 'Vega' } });
   });
 
   it('requires an account and lets two different users play via a shareable code', async () => {

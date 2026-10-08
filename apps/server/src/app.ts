@@ -39,8 +39,8 @@ export function createGameServer(options: GameServerOptions = {}) {
     ? (process.env.AUTH_DATA_FILE ?? './data/users.json') : options.authDataFile);
   const passwordCheck = tokenBucket(options.authLimit ?? DEFAULT_AUTH_LIMIT);
   const limited = () => Response.json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': '1' } });
-  const credentials = (body: unknown) => body && typeof body === 'object' && !Array.isArray(body)
-    ? body as { email?: unknown; password?: unknown } : {};
+  const fields = (body: unknown) => body && typeof body === 'object' && !Array.isArray(body)
+    ? body as { email?: unknown; password?: unknown; displayName?: unknown } : {};
   const respond = async (action: () => unknown, status = 200): Promise<Response> => {
     try { return Response.json(await action(), { status }); }
     catch (error) {
@@ -76,18 +76,25 @@ export function createGameServer(options: GameServerOptions = {}) {
       })),
       register: createEndpoint('/auth/register', { method: 'POST' }, async (ctx) => {
         if (!passwordCheck()) return limited();
-        const { email, password } = credentials(ctx.body);
-        return respond(() => auth.register(email, password), 201);
+        const { email, password, displayName } = fields(ctx.body);
+        return respond(() => auth.register(email, password, displayName), 201);
       }),
       login: createEndpoint('/auth/login', { method: 'POST' }, async (ctx) => {
         if (!passwordCheck()) return limited();
-        const { email, password } = credentials(ctx.body);
+        const { email, password } = fields(ctx.body);
         return respond(() => auth.login(email, password));
       }),
       me: createEndpoint('/auth/me', { method: 'GET' }, async (ctx) =>
         respond(() => ({ user: authenticated(ctx.request?.headers.get('authorization') ?? null).user }))),
-      profile: createEndpoint('/auth/profile', {method:'GET'}, async(ctx)=>respond(()=>
-        auth.profile(authenticated(ctx.request?.headers.get('authorization') ?? null).user.id))),
+      // The progression profile plus the account's alias; the alias is not part of progression.
+      profile: createEndpoint('/auth/profile', { method: 'GET' }, async (ctx) => respond(() => {
+        const { user } = authenticated(ctx.request?.headers.get('authorization') ?? null);
+        return { ...auth.profile(user.id), displayName: user.displayName };
+      })),
+      updateProfile: createEndpoint('/auth/profile', { method: 'PUT' }, async (ctx) => respond(async () => {
+        const { user } = authenticated(ctx.request?.headers.get('authorization') ?? null);
+        return { user: await auth.updateDisplayName(user.id, fields(ctx.body).displayName) };
+      })),
       logout: createEndpoint('/auth/logout', { method: 'POST' }, async (ctx) => {
         try {
           const { token } = authenticated(ctx.request?.headers.get('authorization') ?? null);
