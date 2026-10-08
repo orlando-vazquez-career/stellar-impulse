@@ -11,7 +11,7 @@ export const COSMETICS_TESTNET = Object.freeze({
   simulationSource: "GBKNU5OIKQ4F6GYBSHLFYFXBVJ57BU5G7MSRP2UKWM3R5WSKB6Z3M5GQ",
 });
 
-export type CosmeticSlot = "livery" | "trail" | "emblem";
+export type CosmeticSlot = "livery" | "trail" | "emblem" | "announcer" | "music";
 export type CosmeticFamily = "merit" | "veteran" | "collection";
 
 export interface DemoCosmetic {
