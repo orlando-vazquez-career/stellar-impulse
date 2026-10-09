@@ -1,5 +1,5 @@
 import { Address, nativeToScVal } from "@stellar/stellar-sdk";
-import { ChainError, validatePublicAddress } from "./index.js";
+import { ChainError, STELLAR_TESTNET, validatePublicAddress } from "./index.js";
 import {
   defaultServer, readContract, submitContractCall, validU32,
   type CallOptions, type TransactionSigner,
@@ -125,4 +125,17 @@ export async function cancelListing(
     new Address(address).toScVal(), u32(listingId),
   ], signer, options, "No se pudo cancelar el anuncio.");
   return { transactionHash: result.transactionHash };
+}
+
+/** The address's XLM balance in stroops; 0 for an account testnet has never seen. */
+export async function xlmBalance(address: string, options: Omit<CallOptions, "contractId"> = {}): Promise<bigint> {
+  const owner = new Address(validatePublicAddress(address)).toScVal();
+  try {
+    const raw = await readContract(STELLAR_TESTNET.nativeAssetContract, "balance", [owner], options);
+    if (typeof raw !== "bigint") throw new ChainError("INVALID_RESPONSE", "Saldo invalido.");
+    return raw;
+  } catch (error) {
+    if (error instanceof ChainError && error.code === "RPC_UNAVAILABLE") throw error;
+    return 0n;
+  }
 }

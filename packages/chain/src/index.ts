@@ -6,6 +6,8 @@ export const STELLAR_TESTNET = Object.freeze({
   rpcUrl: "https://soroban-testnet.stellar.org",
   horizonUrl: "https://horizon-testnet.stellar.org",
   explorerUrl: "https://stellar.expert/explorer/testnet",
+  /** Stellar Asset Contract of native XLM on testnet: payments in the contracts go through it. */
+  nativeAssetContract: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
 });
 
 export type ChainErrorCode =
