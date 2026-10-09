@@ -254,11 +254,17 @@ test.describe('visual interface foundation', () => {
     await page.keyboard.down('s');
     await expect.poll(() => camera.getAttribute('y')).not.toBe(initialY);
     await page.keyboard.up('Shift');
-    // Pan velocity eases out after input is released; allow it to settle before sampling.
-    await page.waitForTimeout(2200);
-    const settledY = Number(await camera.getAttribute('y'));
-    await page.waitForTimeout(500);
-    expect(Math.abs(Number(await camera.getAttribute('y')) - settledY)).toBeLessThan(0.2);
+    // Pan velocity eases out after input is released; wait for sustained stability
+    // so slower CI frames don't make this assertion depend on a fixed delay.
+    let previousY = Number(await camera.getAttribute('y'));
+    let stableWindows = 0;
+    await expect.poll(async () => {
+      await page.waitForTimeout(500);
+      const currentY = Number(await camera.getAttribute('y'));
+      stableWindows = Math.abs(currentY - previousY) < 0.2 ? stableWindows + 1 : 0;
+      previousY = currentY;
+      return stableWindows;
+    }, { timeout: 10000, intervals: [50] }).toBeGreaterThanOrEqual(3);
     await page.keyboard.up('s');
   });
 
