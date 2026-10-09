@@ -1,0 +1,16 @@
+{
+  "classId": 5,
+  "key": "voz-comandante",
+  "slot": "Announcer",
+  "family": "Collection",
+  "name": {
+    "es": "Voz de Comandante",
+    "en": "Commander Voice"
+  },
+  "description": {
+    "es": "Paquete de voces del anunciador con tono de mando militar.",
+    "en": "Announcer voice pack with a military command tone."
+  },
+  "image": "/cosmetics/img/voz-comandante.svg",
+  "cosmeticOnly": true
+}

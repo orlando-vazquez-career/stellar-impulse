@@ -399,8 +399,14 @@ test.describe('visual interface foundation', () => {
     await page.getByRole('button', { name: /Polar MK-II/ }).click();
     await expect(page.getByRole('button', { name: /Polar MK-II/ })).toContainText('Equipado');
     await page.getByRole('button', { name: 'Comentarista', exact: true }).click();
+    const analystImage = page.getByRole('button', { name: /Voz de Analista/ }).locator('img');
+    await expect(analystImage).toHaveAttribute('src', '/cosmetics/img/voz-analista.svg');
+    await expect.poll(() => analystImage.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth === 512)).toBe(true);
     await page.getByRole('button', { name: /Voz de Analista/ }).click();
     await page.getByRole('button', { name: 'Música', exact: true }).click();
+    const musicImage = page.getByRole('button', { name: /Gravity's Final Path/ }).locator('img');
+    await expect(musicImage).toHaveAttribute('src', '/cosmetics/img/musica-gravity-final-path.svg');
+    await expect.poll(() => musicImage.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth === 512)).toBe(true);
     await page.getByRole('button', { name: /Gravity's Final Path/ }).click();
     await page.getByRole('button', { name: 'Guardar configuración' }).click();
     await expect(page.getByText('Configuración guardada localmente')).toBeVisible();

@@ -3,6 +3,19 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 export type Locale = 'es' | 'en';
 
 const es = {
+  tutorialLabel: 'Primera práctica',
+  tutorialSelectTitle: 'Selecciona tu flota',
+  tutorialSelectBody: 'Haz clic en una nave aliada o arrastra un rectángulo sobre varias.',
+  tutorialMoveTitle: 'Ponla en marcha',
+  tutorialMoveBody: 'Con naves seleccionadas, haz clic derecho en una casilla libre para moverlas.',
+  tutorialProduceTitle: 'Construye una nave',
+  tutorialProduceBody: 'En el Hangar, abajo a la derecha, elige una nave que puedas pagar. Espera a que salga de la base.',
+  tutorialCaptureTitle: 'Toma un nodo de Metal',
+  tutorialCaptureBody: 'Lleva naves de combate hasta un nodo, elimina su guardián y permanece allí para capturarlo. Los Exploradores no capturan.',
+  tutorialRefineryTitle: 'Invierte en la Refinería',
+  tutorialRefineryBody: 'Abre Módulos junto al Hangar y construye la Refinería cuando tengas Metal. Al terminar, tus nodos producirán más.',
+  tutorialSkipStep: 'Saltar paso',
+  tutorialSkipAll: 'Omitir tutorial',
   attackRange:'Alcance de ataque',cells:'casillas',effectiveAgainst:'Eficiente contra',weakAgainst:'Débil contra',noWeapons:'No ataca ni captura; reconoce el mapa',guardiansCore:'guardianes y núcleo',
   suddenDeath: 'Muerte súbita: capturar el núcleo da la victoria inmediata',
   profile: 'Perfil',
@@ -254,6 +267,19 @@ const es = {
 type MessageKey = keyof typeof es;
 
 const en: Record<MessageKey, string> = {
+  tutorialLabel: 'First practice',
+  tutorialSelectTitle: 'Select your fleet',
+  tutorialSelectBody: 'Click an allied ship or drag a rectangle around several ships.',
+  tutorialMoveTitle: 'Get moving',
+  tutorialMoveBody: 'With ships selected, right-click a free cell to move them.',
+  tutorialProduceTitle: 'Build a ship',
+  tutorialProduceBody: 'In the Hangar at the bottom right, choose a ship you can afford. Wait for it to launch from your base.',
+  tutorialCaptureTitle: 'Take a Metal node',
+  tutorialCaptureBody: 'Move combat ships to a node, defeat its guardian and stay there to capture it. Explorers cannot capture.',
+  tutorialRefineryTitle: 'Invest in the Refinery',
+  tutorialRefineryBody: 'Open Modules next to the Hangar and build the Refinery when you have enough Metal. Once completed, your nodes produce more.',
+  tutorialSkipStep: 'Skip step',
+  tutorialSkipAll: 'Skip tutorial',
   attackRange:'Attack range',cells:'cells',effectiveAgainst:'Effective against',weakAgainst:'Weak against',noWeapons:'No weapons or capture; scouts the map',guardiansCore:'guardians and core',
   suddenDeath: 'Sudden death: capture the core to win immediately',
   profile: 'Profile',

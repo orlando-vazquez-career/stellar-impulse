@@ -580,7 +580,8 @@
   background: rgba(4, 10, 16, 0.7);
 }
 
-.vi-cosmetic-grid > button > i {
+.vi-cosmetic-grid > button > i,
+.vi-cosmetic-grid > button > .vi-cosmetic-image {
   width: 40px;
   height: 40px;
   border: 2px solid rgba(113, 229, 220, 0.6);

@@ -11,6 +11,7 @@ export interface CosmeticItem {
   name: Record<Locale, string>;
   description: Record<Locale, string>;
   tone: string;
+  image?: string | null;
   unlocked: boolean;
   musicFile?: string;
   announcer?: AnnouncerProfile;
@@ -34,4 +35,11 @@ export const cosmeticCatalog: CosmeticItem[] = [
 
 export function itemsForCategory(category: HangarCategory) {
   return cosmeticCatalog.filter((item) => item.category === category);
+}
+
+const ILLUSTRATED_KEYS = new Set(['aurora-andina', 'pulso-violeta', 'primera-victoria', 'exploracion',
+  'voz-comandante', 'voz-analista', 'musica-iron-vanguard', 'musica-gravity-final-path']);
+
+export function imageForCosmetic(item: Pick<CosmeticItem, 'id' | 'image'>): string | null {
+  return item.image ?? (ILLUSTRATED_KEYS.has(item.id) ? `/cosmetics/img/${item.id}.svg` : null);
 }
