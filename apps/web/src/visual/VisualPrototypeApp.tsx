@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MusicPlayer, getMusicPlayer } from './music';
 import { setAudioMix } from './audio-mix';
 import { AccessScreen } from './access/AccessScreen';
-import { clearSession, ensureGuestSession, logoutAccount, restoreAccount, sessionToken, type AccountUser } from '../auth/client';
+import { clearSession, logoutAccount, restoreAccount, sessionToken, type AccountUser } from '../auth/client';
 import { createMultiplayerSession, type MultiplayerSession } from '../multiplayer/session';
 import { accountAlias, readPilotAlias, writePilotAlias } from '../login/pilot-alias';
 import { GameplayScreen } from './game/GameplayScreen';
@@ -86,15 +86,13 @@ function VisualPrototypeContent() {
   async function openMultiplayer(mode: LobbyMode, code = '') {
     setLobbyMode(mode);
     setJoinCode(code.trim().toUpperCase());
-    setMultiplayerMatch(true);
     if (!sessionToken()) {
-      try {
-        const guestUser = await ensureGuestSession(alias);
-        setAccount(guestUser);
-      } catch (err) {
-        console.warn('Could not ensure guest session', err);
-      }
+      setPendingMultiplayer(mode);
+      setSessionNotice('multiplayerRequiresAccount');
+      setScreen('access');
+      return;
     }
+    setMultiplayerMatch(true);
     setScreen('multiplayer');
   }
 
@@ -167,18 +165,18 @@ function VisualPrototypeContent() {
       onSignedIn={(user, value) => { setAccount(user); setAlias(value); setSessionNotice(''); setScreen(pendingMultiplayer ? 'multiplayer' : 'command'); setPendingMultiplayer(null); }}
       onContinue={(value) => {
         setAlias(value);
+        setAccount(null);
         setPendingMultiplayer(null);
         setSessionNotice('');
         setMultiplayerMatch(false);
-        void ensureGuestSession(value).then(setAccount).catch(() => {});
         setScreen('command');
       }}
       onCreateTraining={(value) => {
         setAlias(value);
+        setAccount(null);
         setPendingMultiplayer(null);
         setSessionNotice('');
         setMultiplayerMatch(false);
-        void ensureGuestSession(value).then(setAccount).catch(() => {});
         setLobbyMode('create');
         setScreen('lobby');
       }}

@@ -874,6 +874,12 @@
   margin-top: 4px;
 }
 
+.vi-hangar__content--embedded .vi-collection > nav button {
+  padding: 6px 4px;
+  font-size: clamp(10.5px, 0.72vw, 11.5px);
+  letter-spacing: 0.6px;
+}
+
 .vi-settings__content--embedded .vi-settings__workspace {
   margin-top: clamp(6px, 0.9vh, 12px);
   max-height: clamp(380px, 52vh, 480px);
