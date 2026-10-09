@@ -28,6 +28,24 @@ Configure one replica and these service variables:
 | `AUTH_DATA_FILE` | `/data/users.json` |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (reference to the project's Postgres service) |
 | `RAILPACK_NODE_VERSION` | `24.19.0` |
+| `RAILPACK_DEPLOY_APT_PACKAGES` | `openssl libatomic1` |
+
+`RAILPACK_DEPLOY_APT_PACKAGES` replaces the runtime packages Railpack would
+install, it does not add to them. Prisma needs `openssl`, and the pnpm 11 binary
+that starts the server needs `libatomic1`, which Railpack installs by default.
+Keep both in the list. Without `libatomic1` the container exits before the
+server starts (`pnpm: error while loading shared libraries: libatomic.so.1`) and
+restarts in a loop. Railway's edge then answers every request with 502
+`Application failed to respond`, without CORS headers, and the browser reports
+login and registration failures as CORS errors. This happened from 8 to
+9 October 2026, after `openssl` was added for Prisma.
+
+Pending review: Railway marked those deployments as successful about eight
+seconds after the container started, although the server never listened. The
+service configuration in Railway showed no health check path, while
+`railway.json` defines `/health`. The service also sets `RAILPACK_BUILD_CMD`
+and `RAILPACK_START_CMD` in the dashboard. Check which source Railway applies
+before relying on the health check to stop a broken deployment.
 
 ### Accounts in Postgres
 
