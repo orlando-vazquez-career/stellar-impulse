@@ -4,7 +4,7 @@ import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
-import { cosmeticCatalog, imageForCosmetic, itemsForCategory, type HangarCategory } from './catalog';
+import { cosmeticCatalog, hangarCategories, imageForCosmetic, itemsForCategory, type HangarCategory } from './catalog';
 import { loadCosmeticLoadout, saveCosmeticLoadout, type CosmeticLoadout } from './loadout';
 import './hangar.css';
 
@@ -44,6 +44,8 @@ export function HangarScreen({ onBack }: { onBack(): void }) {
       hull: cosmeticCatalog.find((item) => item.id === loadout.hull)!,
       trail: cosmeticCatalog.find((item) => item.id === loadout.trail)!,
       insignia: cosmeticCatalog.find((item) => item.id === loadout.insignia)!,
+      voice: cosmeticCatalog.find((item) => item.id === loadout.voice)!,
+      music: cosmeticCatalog.find((item) => item.id === loadout.music)!,
     }),
     [loadout],
   );
@@ -52,6 +54,8 @@ export function HangarScreen({ onBack }: { onBack(): void }) {
     hull: t('hullFinish'),
     trail: t('engineTrail'),
     insignia: t('insignia'),
+    voice: t('announcerPack'),
+    music: t('musicTrack'),
   };
 
   const previewStyle = {
@@ -133,7 +137,7 @@ export function HangarScreen({ onBack }: { onBack(): void }) {
             <div className="vi-loadout-summary">
               <strong>{t('currentLoadout')}</strong>
               <div>
-                {(['hull', 'trail', 'insignia'] as HangarCategory[]).map((slot) => (
+                {hangarCategories.map((slot) => (
                   <span key={slot}>
                     <small>{categoryLabels[slot]}</small>
                     <b>{equippedItems[slot].name[locale]}</b>
@@ -153,7 +157,7 @@ export function HangarScreen({ onBack }: { onBack(): void }) {
               <small>{t('cosmeticOnly')}</small>
             </header>
             <nav aria-label={t('collection')}>
-              {(['hull', 'trail', 'insignia'] as HangarCategory[]).map((item) => (
+              {hangarCategories.map((item) => (
                 <button
                   key={item}
                   className={category === item ? 'is-active' : ''}

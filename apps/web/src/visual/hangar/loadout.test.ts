@@ -16,8 +16,18 @@ describe('cosmetic loadout', () => {
   });
 
   it('persists unlocked selections', () => {
-    saveCosmeticLoadout({ hull: 'polar', trail: 'solar', insignia: 'orbit' });
-    expect(loadCosmeticLoadout()).toEqual({ hull: 'polar', trail: 'solar', insignia: 'orbit' });
+    saveCosmeticLoadout({ ...defaultCosmeticLoadout, hull: 'polar', trail: 'solar', insignia: 'orbit', voice: 'voz-analista', music: 'musica-gravity-final-path' });
+    expect(loadCosmeticLoadout()).toEqual({ ...defaultCosmeticLoadout, hull: 'polar', trail: 'solar', insignia: 'orbit', voice: 'voz-analista', music: 'musica-gravity-final-path' });
+  });
+
+  it('migrates older loadouts without losing the visual selection', () => {
+    localStorage.setItem('impulso.cosmetic-loadout', JSON.stringify({ hull: 'polar', trail: 'solar', insignia: 'orbit' }));
+    expect(loadCosmeticLoadout()).toEqual({ ...defaultCosmeticLoadout, hull: 'polar', trail: 'solar', insignia: 'orbit' });
+  });
+
+  it('rejects wrong-category and external audio values', () => {
+    localStorage.setItem('impulso.cosmetic-loadout', JSON.stringify({ voice: 'musica-iron-vanguard', music: 'https://example.com/music.mp3' }));
+    expect(loadCosmeticLoadout()).toEqual(defaultCosmeticLoadout);
   });
 
   it('rejects locked or unknown stored items', () => {
