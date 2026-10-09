@@ -5,7 +5,7 @@
   "contractVersion": 4,
   "wasmSha256": "f049f33ff6c800f7263260b2ef9399aecff490e1c90e658bd4a771d15f8603a4",
   "deployTx": "afcf66e21b1338c86c2f7191b12d6e82f33c7609f6660171b52c8728c6bf02c3",
-  "commit": "58c9be9166d480c7c5d6cd33e2914f5e12dedeff",
+  "commit": "6a18b1e",
   "deployedAt": "2026-10-09T03:22:16.970Z",
   "paymentToken": {
     "asset": "native XLM",
