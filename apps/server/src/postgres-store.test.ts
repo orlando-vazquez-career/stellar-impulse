@@ -6,6 +6,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { createMatchWorld } from '@impulso/sim';
+import { Keypair } from '@stellar/stellar-sdk';
+import { keypairSigner, signWalletChallenge } from '@impulso/chain';
 import { AuthService } from './auth.js';
 import { openPostgresAuth, PostgresAccountStore } from './postgres-store.js';
 
@@ -80,6 +82,23 @@ describe.skipIf(!url)('accounts in Postgres', () => {
     const restarted = await open();
     expect(restarted.auth.login('hugo@example.com', 'secret-1234').user).toEqual({ ...user, displayName: 'Nova' });
     expect(restarted.auth.profile(user.id).xp).toBe(175);
+  });
+
+  it('keeps the linked wallet and refuses one already linked by another server', async () => {
+    const first = await open();
+    const ana = (await first.auth.register('ana-wallet@example.com', 'secret-1234')).user;
+    const wallet = Keypair.random();
+    const link = async (auth: AuthService, userId: string) => auth.linkWallet(userId,
+      await signWalletChallenge(auth.walletChallenge(userId, wallet.publicKey()), wallet.publicKey(), keypairSigner(wallet)));
+    await link(first.auth, ana.id);
+    const second = await open();
+    expect(second.auth.login('ana-wallet@example.com', 'secret-1234').user.walletAddress).toBe(wallet.publicKey());
+    // A server that has not seen the link yet still cannot give the wallet to another account.
+    const third = await open();
+    await first.auth.unlinkWallet(ana.id);
+    await link(first.auth, ana.id);
+    const beto = (await third.auth.register('beto-wallet@example.com', 'secret-1234')).user;
+    await expect(link(third.auth, beto.id)).rejects.toMatchObject({ code: 'wallet_in_use' });
   });
 
   it('refuses an email another server registered first', async () => {

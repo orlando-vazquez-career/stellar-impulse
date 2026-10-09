@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createGameServer } from '../../../server/src/app';
+import { createMatchWorld } from '@impulso/sim';
 import { AuthService } from '../../../server/src/auth';
 import { createMultiplayerSession, type MultiplayerSession, type MultiplayerSnapshot } from './session';
 
@@ -9,6 +10,7 @@ const auth = new AuthService();
 const tokens = await Promise.all(['ana', 'beto', 'carla']
   .map(async (name) => (await auth.register(`${name}-session@example.com`, 'secret-1234')).token));
 const server = createGameServer({ auth, campaign: {
+  createSector: (_sector, seed) => createMatchWorld('sector-01', 'skirmish', seed),
   countdownMs: 100, reconnectWindowMs: 3_000, resumeCountdownMs: 150,
 } });
 const sessions: MultiplayerSession[] = [];
@@ -48,11 +50,11 @@ async function openSector(...players: MultiplayerSession[]) {
   await Promise.all(players.map((player) => waitFor(player, (value) => value.view?.augments?.started === true)));
 }
 const guard = (squadId: string) => ({ type: 'stance', squadId, stance: 'guard' });
-/** Sector 01 keeps these sockets fast; the default campaign map is Espiral. */
+/** The server injects a small fixture; clients use the same default as the campaign lobby. */
 async function pair(storage?: StorageMemory) {
   const host = session(storage);
   const guest = session();
-  await host.create('Ana', tokens[0]!, 'sector-01');
+  await host.create('Ana', tokens[0]!);
   await waitFor(host, (snapshot) => snapshot.phase?.phase === 'lobby');
   await guest.join(host.getSnapshot().roomId!.toLowerCase(), 'Beto', tokens[1]!);
   await waitFor(guest, (snapshot) => snapshot.phase?.phase === 'lobby');
@@ -67,7 +69,7 @@ describe('shared multiplayer session over real transport', () => {
   it('retains admission, phase and private match views before the gameplay adapter mounts', async () => {
     const { host, guest } = await pair();
     const first = host.getSnapshot();
-    expect(first).toMatchObject({ connection: 'online', phase: { playerId: 'p1', phase: 'sector', renderMap: 'sector-01' } });
+    expect(first).toMatchObject({ connection: 'online', phase: { playerId: 'p1', phase: 'sector', renderMap: 'espiral' } });
     expect(guest.getSnapshot().phase?.playerId).toBe('p2');
     expect(first.view).toMatchObject({ protocolVersion: 3, mode: 'training', playerId: 'p1' });
     expect(first.view?.players.p2).not.toHaveProperty('lastSequence');
@@ -171,7 +173,7 @@ describe('shared multiplayer session over real transport', () => {
   it('sends augment rerolls and picks only for the offer on screen', async () => {
     const host = session();
     const guest = session();
-    await host.create('Ana', tokens[0]!, 'sector-01');
+    await host.create('Ana', tokens[0]!);
     await waitFor(host, (snapshot) => snapshot.phase?.phase === 'lobby');
     await guest.join(host.getSnapshot().roomId!, 'Beto', tokens[1]!);
     await waitFor(guest, (snapshot) => snapshot.phase?.phase === 'lobby');

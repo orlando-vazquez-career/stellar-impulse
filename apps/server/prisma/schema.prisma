@@ -17,6 +17,8 @@ model Account {
   passwordHash   String          @map("password_hash")
   /// Commander alias the player chose; null until set. It follows the account to any device.
   displayName    String?         @map("display_name")
+  /// Stellar address the player proved with a signed challenge; merit rewards are minted to it.
+  walletAddress  String?         @unique @map("wallet_address")
   xp             Int             @default(0)
   createdAt      DateTime        @default(now()) @map("created_at")
   achievements   Achievement[]

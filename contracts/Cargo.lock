@@ -954,6 +954,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "impulso-marketplace"
+version = "0.1.0"
+dependencies = [
+ "impulso-cosmetics",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

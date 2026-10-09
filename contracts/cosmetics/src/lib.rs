@@ -50,7 +50,8 @@ pub enum Error {
     InvalidConfiguration = 16,
 }
 
-/// Equipment slot shown in the hangar.
+/// Equipment slot shown in the hangar. Announcer voice packs and music packs are owned like any
+/// other piece; none of them changes combat rules.
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
@@ -58,6 +59,8 @@ pub enum Slot {
     Livery = 0,
     Trail = 1,
     Emblem = 2,
+    Announcer = 3,
+    Music = 4,
 }
 
 /// Brief v0.3 families: merit (earned, never sold), veteran (not transferable),
@@ -416,7 +419,7 @@ impl Cosmetics {
     }
 
     pub fn version() -> u32 {
-        3
+        4
     }
 
     // ----- Administration -----------------------------------------------------

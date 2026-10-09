@@ -1,0 +1,19 @@
+[package]
+name = "impulso-marketplace"
+description = "Non-custodial marketplace for Stellar Impulse cosmetics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+# Tests settle real sales against the real cosmetics contract.
+impulso-cosmetics = { path = "../cosmetics" }

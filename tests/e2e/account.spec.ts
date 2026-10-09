@@ -1,7 +1,8 @@
+import { TEST_SERVER_URL } from './server-url';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 
-const SERVER = 'http://127.0.0.1:2567';
+const SERVER = TEST_SERVER_URL;
 const welcome = (alias: string) => ({ name: `Comandante ${alias}, el sector espera.` });
 
 async function signIn(page: Page, email: string, password: string) {

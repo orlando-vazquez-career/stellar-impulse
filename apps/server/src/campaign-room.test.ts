@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Client, type Room } from '@colyseus/sdk';
 import { CAMPAIGN_PROTOCOL_VERSION } from '@impulso/input';
+import { createMatchWorld } from '@impulso/sim';
 import { createGameServer } from './app.js';
 import { AuthService } from './auth.js';
 
@@ -12,13 +13,13 @@ const tokens = {
   Beto: (await auth.register('beto-campaign@example.com', 'secret-1234')).token,
   Caro: (await auth.register('caro-campaign@example.com', 'secret-1234')).token,
 };
-/** Sector 01 keeps these sockets fast; the default campaign map is Espiral. */
-const joinOptions = (name: keyof typeof tokens) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name], map: 'sector-01' });
+/** A small server-owned fixture keeps socket tests fast; admission uses the playable map. */
+const joinOptions = (name: keyof typeof tokens) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name], map: 'espiral' });
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
 
 const server = createGameServer({
   auth,
-  campaign: { countdownMs: 150, transitionMs: 300, resultsMs: 300, resumeCountdownMs: 150, reconnectWindowMs: 3_000 },
+  campaign: { createSector: (_sector, seed) => createMatchWorld('sector-01', 'skirmish', seed), countdownMs: 150, transitionMs: 300, resultsMs: 300, resumeCountdownMs: 150, reconnectWindowMs: 3_000 },
 });
 beforeAll(async () => { await server.listen(PORT, '127.0.0.1'); });
 afterAll(async () => { await server.gracefullyShutdown(false); });
@@ -66,6 +67,11 @@ async function pickOpenings(a: Room, b: Room, viewA: any, viewB: any) {
 }
 
 describe('campaign room', () => {
+  it.each(['sector-01', 'battlefield'])('refuses the retired %s map at admission', async (map) => {
+    await expect(new Client(URL).create('campaign', { ...joinOptions('Ana'), map }))
+      .rejects.toThrow(/invalid_join/);
+  });
+
   it('refuses clients speaking another protocol version before seating them', async () => {
     await expect(new Client(URL).create('campaign', { protocolVersion: 2 }))
       .rejects.toThrow(/unsupported_version/);
@@ -106,7 +112,7 @@ describe('campaign room', () => {
   it('starts sector 1 on the match engine with a private view and a silver opening offer per player', async () => {
     const { a, b, phase, viewA, viewB } = await startCampaign();
     try {
-      expect(phase).toMatchObject({ protocolVersion: 3, playerId: 'p1', sector: 1, sectors: 3, renderMap: 'sector-01' });
+      expect(phase).toMatchObject({ protocolVersion: 3, playerId: 'p1', sector: 1, sectors: 3, renderMap: 'espiral' });
       expect(viewA).toMatchObject({ protocolVersion: 3, mode: 'training', playerId: 'p1' });
       expect(viewB).toMatchObject({ protocolVersion: 3, mode: 'training', playerId: 'p2' });
       expect(viewA.augments.offer.tier).toBe('silver');
