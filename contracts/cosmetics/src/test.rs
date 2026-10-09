@@ -312,7 +312,7 @@ fn metadata_and_version() {
         String::from_str(&s.env, "Impulso Cosmetics")
     );
     assert_eq!(s.client.symbol(), String::from_str(&s.env, "IMPC"));
-    assert_eq!(s.client.version(), 3);
+    assert_eq!(s.client.version(), 4);
 }
 
 #[test]
@@ -437,4 +437,49 @@ fn grant_on_an_exhausted_class_keeps_the_reward_unclaimed() {
         Err(Ok(Error::SupplyExhausted.into()))
     );
     assert!(!s.client.is_reward_claimed(&reward(&s.env, 2)));
+}
+
+#[test]
+fn announcer_and_music_packs_are_sold_and_traded_like_skins() {
+    let s = setup();
+    let uri = |v: &str| String::from_str(&s.env, v);
+    s.client.create_class(
+        &20,
+        &Slot::Announcer,
+        &Family::Collection,
+        &true,
+        &0,
+        &PRICE,
+        &uri("/cosmetics/voz-comandante.json"),
+    );
+    s.client.create_class(
+        &30,
+        &Slot::Music,
+        &Family::Collection,
+        &true,
+        &0,
+        &PRICE,
+        &uri("/cosmetics/banda-iron-vanguard.json"),
+    );
+    assert_eq!(s.client.get_class(&20).slot, Slot::Announcer);
+    assert_eq!(s.client.get_class(&30).slot, Slot::Music);
+
+    let voice = s.client.buy(&s.player, &20);
+    let music = s.client.buy(&s.player, &30);
+    assert!(s.client.has_class(&s.player, &20));
+    assert!(s.client.has_class(&s.player, &30));
+    assert_eq!(s.token.balance(&s.treasury), 2 * PRICE);
+
+    // Collection packs can be listed on a marketplace like any skin.
+    let market = Address::generate(&s.env);
+    let buyer = Address::generate(&s.env);
+    s.client.approve(
+        &s.player,
+        &market,
+        &music,
+        &(s.env.ledger().sequence() + 100),
+    );
+    s.client.transfer_from(&market, &s.player, &buyer, &music);
+    assert_eq!(s.client.owner_of(&music), buyer);
+    assert_eq!(s.client.owner_of(&voice), s.player);
 }

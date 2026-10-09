@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MusicPlayer } from './music';
 import { defaultCosmeticLoadout, saveCosmeticLoadout } from './hangar/loadout';
+import { writeOwnedClasses } from './hangar/ownership';
 
 const iron = '/audio/music/Iron_Vanguard.mp3';
 const gravity = '/audio/music/Gravity_s_Final_Path.mp3';
@@ -19,7 +20,9 @@ describe('equipped match music', () => {
   beforeEach(() => {
     vi.useFakeTimers(); sources.length = 0; decode.mockReset().mockImplementation(async (data: { path: string }) => data); fetchAudio.mockClear();
     const storage = new Map<string, string>();
-    vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) });
+    vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) });
+    // The premium voice and track are NFT pieces: this wallet holds both.
+    writeOwnedClasses('GTESTWALLET', [5, 6]);
     vi.stubGlobal('window', { location: { href: 'http://localhost/' } });
     vi.stubGlobal('fetch', fetchAudio);
     vi.stubGlobal('AudioContext', class {

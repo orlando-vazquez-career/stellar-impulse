@@ -113,21 +113,24 @@ Tomada por Orlando, responsable de D05.
 | Permisos de emisión | `admin` configura clases y precios. `minter` es la cuenta del servidor y la única que otorga premios. `treasury` solo recibe pagos. Las tres direcciones son distintas y cada cambio de rol se hace en dos pasos (`propose_role` y `accept_role`). La clave del `minter` vive solo en el servidor, como variable de entorno; nunca en el cliente ni en el repositorio. |
 | Autenticación | SEP-10 completo. El servidor de juego publica `/.well-known/stellar.toml` con `WEB_AUTH_ENDPOINT` y `SIGNING_KEY`, y genera el desafío con `buildChallengeTx` del módulo `webauth` de `@stellar/stellar-sdk`. El jugador firma con Freighter (`signTransaction`). El servidor valida con `readChallengeTx` y `verifyChallengeTxSigners` y entrega un token de sesión ligado a esa dirección. La clave que firma los desafíos es propia y distinta de los tres roles del contrato. Una dirección conectada sin desafío firmado nunca es una identidad. Se implementa en la tarjeta O07 (3–5 oct). |
 | Token de pago de prueba | XLM nativo, a través de su Stellar Asset Contract en testnet (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`). No requiere trustline y los fondos salen de Friendbot. Los precios se expresan en stroops (1 XLM = 10.000.000). |
-| Despliegue | Contrato v3 desplegado en testnet el 29 de septiembre de 2026 (tarjeta O04). Ver [Registro de despliegue](#registro-de-despliegue). |
+| Despliegue | Cosméticos v4 y mercado desplegados en testnet el 9 de octubre de 2026 (el v3 del 29 de septiembre queda en desuso). Ver [Registro de despliegue](#registro-de-despliegue). |
 
 ## Registro de despliegue
 
-| Campo | Valor |
-| --- | --- |
-| Red | Stellar Testnet (`Test SDF Network ; September 2015`) |
-| Contrato | [`CCLRN6UTKQ7NLZTDSBDSPCEKQ5JBVEUYQUDF3FDBCXMWJ6E7HXYNHEKD`](https://stellar.expert/explorer/testnet/contract/CCLRN6UTKQ7NLZTDSBDSPCEKQ5JBVEUYQUDF3FDBCXMWJ6E7HXYNHEKD) |
-| Versión | `version() = 3` |
-| WASM SHA-256 | `bbc8102924c36d3f24e6bbf6c084084affc4ebe48cf9fa86c089b130019e175a` (14.143 bytes) |
-| Commit | `8444322` |
-| Fecha | 29 de septiembre de 2026 |
-| Token de pago | XLM nativo vía SAC `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
+| Campo | Cosméticos | Mercado |
+| --- | --- | --- |
+| Red | Stellar Testnet (`Test SDF Network ; September 2015`) | Igual |
+| Contrato | [`CBKQMFOSP2RFRXL6KQH3VTLVOKJCUU6K3XJLRNEUJHJJM7AZT2JSLA6L`](https://stellar.expert/explorer/testnet/contract/CBKQMFOSP2RFRXL6KQH3VTLVOKJCUU6K3XJLRNEUJHJJM7AZT2JSLA6L) | [`CDB77C2EVQFHI6DNOK7Q7FZNJ6OMRRONMS5EI5BLIKV3UMENYE7NQ53C`](https://stellar.expert/explorer/testnet/contract/CDB77C2EVQFHI6DNOK7Q7FZNJ6OMRRONMS5EI5BLIKV3UMENYE7NQ53C) |
+| Versión | `version() = 4` | `version() = 1` |
+| WASM SHA-256 | `f049f33ff6c800f7263260b2ef9399aecff490e1c90e658bd4a771d15f8603a4` (14.294 bytes) | `d753d8b942aec25dba3e21caf05fa89a489a0bc309fcec0289cfe8e5d2fd75b0` (10.849 bytes) |
+| Commit | `6a18b1e` | `6a18b1e` |
+| Fecha | 9 de octubre de 2026 | 9 de octubre de 2026 |
+| Token de pago | XLM nativo vía SAC `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` | Igual; comisión de 500 puntos básicos (5 %) para el `treasury` |
 
-Catálogo de la demo creado en el despliegue (metadatos en `apps/web/public/cosmetics/`):
+Los dos hashes se reproducen compilando la rama con `stellar contract build --locked`.
+
+Catálogo creado en el despliegue (metadatos en `apps/web/public/cosmetics/`). Cada categoría
+del hangar conserva piezas gratis fuera de la cadena, así nadie necesita wallet para jugar:
 
 | Clase | Pieza | Ranura | Familia | Precio |
 | --- | --- | --- | --- | --- |
@@ -135,12 +138,15 @@ Catálogo de la demo creado en el despliegue (metadatos en `apps/web/public/cosm
 | 2 | Pulso violeta | Estela | Colección | 3 XLM |
 | 3 | Primera Victoria | Emblema | Mérito | Solo premio |
 | 4 | Exploración | Emblema | Mérito | Solo premio |
+| 5 | Voz de Analista | Comentarista | Colección | 4 XLM |
+| 6 | Gravity's Final Path | Música | Colección | 2 XLM |
 
-Prueba en red (`--smoke`): una cuenta de jugador compró Pulso violeta (el treasury
-recibió 3 XLM), el minter otorgó Primera Victoria, un segundo `grant` con el mismo
-`reward_id` fue rechazado y una cuenta sin rol no pudo otorgar premios.
-El registro completo, con las direcciones públicas de los roles, está en
-`contracts/deployments/testnet.json`.
+Prueba en red (`--smoke`): una cuenta de jugador compró Pulso violeta, el minter otorgó
+Primera Victoria, un segundo `grant` con el mismo `reward_id` fue rechazado, y el jugador
+vendió Pulso violeta a otra cuenta en el mercado por 2 XLM: el `treasury` recibió exactamente
+0,1 XLM (5 %) y la pieza cambió de dueño en la misma transacción. Publicar un anuncio cuesta
+unos 0,26 XLM de comisión de red (incluye el alquiler del almacenamiento). El registro completo,
+con las direcciones públicas de los roles, está en `contracts/deployments/testnet.json`.
 
 Redespliegue (por ejemplo, tras un reinicio de testnet), con Stellar CLI 28.0.0:
 
@@ -149,27 +155,63 @@ pnpm contracts:build
 pnpm contracts:deploy:testnet -- --smoke
 ```
 
-El script crea o reutiliza las identidades `impulso-admin`, `impulso-minter` y
-`impulso-treasury` en el almacén de claves local de Stellar CLI (fondeadas con Friendbot),
-despliega un contrato nuevo, crea las cuatro clases y reescribe el registro. Las claves
-secretas nunca se escriben en el repositorio. Para producción, la clave del `minter`
-se entrega al servidor como variable de entorno.
+El script crea o reutiliza las identidades `impulso-admin`, `impulso-minter`,
+`impulso-treasury`, `impulso-player` e `impulso-buyer` en el almacén de claves local de
+Stellar CLI (fondeadas con Friendbot), despliega los dos contratos, crea las seis clases y
+reescribe el registro. Reintenta los cortes de red de testnet, nunca los errores del contrato.
+Las claves secretas nunca se escriben en el repositorio. El servidor recibe la clave del
+`minter` como variable de entorno (`STELLAR_MINTER_SECRET`).
 
-## Cliente TypeScript de cosméticos
+## Mercado entre jugadores
 
-`@impulso/chain` expone el contrato desplegado para el cliente y el servidor:
+`contracts/marketplace` no custodia: una pieza listada sigue en la wallet del vendedor hasta
+que se vende. `list` registra el precio y, en la misma transacción y con una sola firma,
+aprueba al mercado en el contrato de cosméticos hasta un ledger límite (máximo 30 días; el
+juego usa 7). `buy` es atómico: cobra al comprador, paga al vendedor el precio menos la
+comisión y a la tesorería la comisión (redondeada a favor del vendedor), y mueve la pieza con
+`transfer_from`. `max_price` protege al comprador si el precio cambió. `cancel` retira el
+anuncio y la aprobación. Las piezas de mérito no se pueden listar porque el contrato de
+cosméticos no permite aprobarlas. Los errores del mercado empiezan en 101 para no confundirse
+con los de cosméticos (1-16). Detalle, decisiones y plan de prueba con Freighter:
+[blockchain-marketplace.md](blockchain-marketplace.md).
+
+## Wallet vinculada a la cuenta
+
+La identidad del juego sigue siendo la cuenta (correo y contraseña). La wallet se vincula a la
+cuenta con un desafío SEP-10 (`buildChallengeTx`, `readChallengeTx`, `verifyChallengeTxSigners`):
+el servidor lo firma con una clave propia, Freighter lo firma y el servidor lo verifica. Un
+desafío vence a los cinco minutos, vale una vez y solo para la cuenta que lo pidió; una wallet
+no puede estar vinculada a dos cuentas. Firmar el desafío no mueve fondos. Rutas:
+`POST /wallet/challenge`, `POST /wallet/link`, `DELETE /wallet`. Esto reemplaza el inicio de
+sesión por wallet previsto en D05: la cuenta ya existía y la wallet solo dice a dónde van los
+premios y qué piezas puede equipar el jugador.
+
+## Premios en la cadena
+
+Al guardar una campaña con emblemas nuevos, y al vincular una wallet, el servidor revisa los
+méritos de la cuenta y otorga con el `minter` los que la wallet todavía no tiene. El
+`reward_id` es `sha256("impulso:<contrato>:<cuenta>:<mérito>")`, fijo por cuenta y mérito, así
+que un reintento o un reinicio nunca paga dos veces. Las concesiones van en fila (una sola
+cuenta firma). Sin `STELLAR_MINTER_SECRET` los premios en la cadena se apagan y el juego sigue.
+
+## Cliente TypeScript
+
+`@impulso/chain` expone los contratos desplegados para el cliente y el servidor:
 
 | Función | Uso |
 | --- | --- |
-| `ownedCosmetics(dirección)` | Piezas de una dirección (`tokens_of` + `class_of`), para el hangar. Solo lectura, sin wallet |
+| `ownedCosmetics(dirección)` | Piezas de una dirección, para el hangar. Solo lectura, sin wallet |
 | `ownsCosmeticClass(dirección, clase)` | Verificación de equipamiento (`has_class`) |
-| `buyCosmetic(dirección, clase)` | Compra primaria: prepara, pide la firma en Freighter, envía y espera confirmación |
-| `DEMO_COSMETICS`, `COSMETICS_TESTNET` | Catálogo de la demo e id del contrato, verificados contra `contracts/deployments/testnet.json` en tests |
+| `buyCosmetic(dirección, clase)` | Compra primaria firmada en Freighter |
+| `marketListings()`, `listCosmetic`, `buyListing`, `cancelListing` | Mercado: leer anuncios, publicar, comprar y cancelar |
+| `xlmBalance(dirección)` | Saldo de XLM en testnet |
+| `createWalletChallenge`, `signWalletChallenge`, `verifyWalletChallenge` | Vínculo SEP-10 (servidor, cliente, servidor) |
+| `grantReward`, `meritRewardId`, `isRewardClaimed` | Premios firmados por el `minter` (solo servidor) |
+| `COSMETICS_TESTNET`, `MARKETPLACE_TESTNET`, `DEMO_COSMETICS` | Ids y catálogo, verificados contra `contracts/deployments/testnet.json` en tests |
 
-Las lecturas se hacen por simulación y nunca firman ni envían. Validado en testnet el
-29 de septiembre de 2026: lectura del inventario del jugador de prueba y una compra de
-Aurora Andina (token 3, tx `1338ea91…1607`) firmada con la cuenta de prueba en lugar de
-Freighter. La firma con la extensión real sigue pendiente de prueba manual.
+Las lecturas se hacen por simulación y nunca firman ni envían. Los rechazos de un contrato
+llegan como `ChainError("CONTRACT_REJECTED")` con el número de error y una frase para el jugador.
+`signWalletChallenge` comprueba que lo que pide firmar sea un desafío de acceso y nunca un pago.
 
 ## Plan del contrato de cosméticos para el MVP
 

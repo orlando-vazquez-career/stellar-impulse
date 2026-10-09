@@ -1,3 +1,4 @@
+import { TEST_SERVER_URL } from './server-url';
 import { randomUUID } from 'node:crypto';
 import { expect, test, type Page, type APIRequestContext } from '@playwright/test';
 import { chooseOpening } from './helpers';
@@ -5,10 +6,10 @@ import { chooseOpening } from './helpers';
 async function signIn(page: Page, request: APIRequestContext, name: string) {
   const email = `multiplayer-${randomUUID()}@example.com`;
   const password = `Pilot-${randomUUID()}`;
-  const response = await request.post('http://127.0.0.1:2567/auth/register', { data: { email, password } });
+  const response = await request.post(`${TEST_SERVER_URL}/auth/register`, { data: { email, password } });
   expect(response.status()).toBe(201);
   const { token } = await response.json() as { token: string };
-  await request.post('http://127.0.0.1:2567/auth/logout', { headers: { Authorization: `Bearer ${token}` } });
+  await request.post(`${TEST_SERVER_URL}/auth/logout`, { headers: { Authorization: `Bearer ${token}` } });
   await page.goto('/');
   await page.getByLabel('Identificador de comandante').fill(name);
   await page.getByLabel('Correo electrónico').fill(email);
@@ -36,6 +37,8 @@ test('two accounts play the campaign on Espiral and recover the same match after
     await signIn(host, request, 'Vega');
     await signIn(guest, request, 'Nova');
     await host.getByRole('button', { name: /Crear sala multijugador/ }).click();
+    await expect(host.getByRole('button', { name: /Espiral Estelar.*96×96/ })).toBeVisible();
+    await expect(host.locator('.vi-briefing')).not.toContainText('Sector 01');
     await host.getByRole('button', { name: 'Crear sala', exact: true }).click();
     const code = host.getByTestId('multiplayer-room-code');
     await expect(code).toHaveText(/^[A-F0-9]{12}$/);
@@ -48,6 +51,8 @@ test('two accounts play the campaign on Espiral and recover the same match after
     await guest.getByLabel('Código de sala').fill(roomId.toLowerCase());
     await guest.getByRole('button', { name: 'Unirse a sala', exact: true }).click();
     await expect(guest.getByTestId('multiplayer-room-code')).toHaveText(roomId);
+    await expect(guest.locator('.vi-briefing')).toContainText('Espiral Estelar');
+    await expect(guest.locator('.vi-briefing')).not.toContainText('Sector 01');
     await expect(host.locator('.vi-commanders')).toContainText('Nova');
     await expect(guest.locator('.vi-commanders')).toContainText('Vega');
     await expect(guest.locator('.vi-gameplay')).toHaveCount(0);
@@ -61,7 +66,7 @@ test('two accounts play the campaign on Espiral and recover the same match after
     }
     await expect(host.locator('.vi-gameplay')).toHaveAttribute('data-player-id', 'p1');
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-player-id', 'p2');
-    await expect(host.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'espiral-estelar.json');
+    for (const page of [host, guest]) await expect(page.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'espiral-estelar.json');
     // Sector 1 opens with a private augment offer; the clock starts when both have chosen.
     await Promise.all([chooseOpening(host), chooseOpening(guest)]);
     for (const page of [host, guest]) await expect(page.locator('.vi-resources')).toContainText('2/12');
@@ -74,6 +79,7 @@ test('two accounts play the campaign on Espiral and recover the same match after
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-player-id', 'p2');
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-connection', 'online');
     await expect(guest.locator('.vi-resources')).toContainText('3/12', { timeout: 20000 });
+    await expect(guest.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'espiral-estelar.json');
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-sequence', '1', { timeout: 20000 });
     await expect(host.locator('.vi-gameplay')).toHaveAttribute('data-room-id', roomId);
     await host.getByRole('button', { name: 'Salir de partida', exact: true }).click();
@@ -96,6 +102,13 @@ test('lets a commander correct an invalid room name before creating a room', asy
   await expect(name).toHaveAttribute('aria-invalid', 'true');
   await expect(page.getByRole('button', { name: 'Crear sala', exact: true })).toBeDisabled();
   await name.fill('Vega');
+  await expect(page.getByRole('button', { name: /Espiral Estelar.*96×96/ })).toBeVisible();
+  const outsideBeforeCreation = await page.locator('.vi-lobby-card').evaluateAll((cards) => cards.some((card) => {
+    const box = card.getBoundingClientRect();
+    return box.x < 0 || box.y < 0 || box.right > innerWidth || box.bottom > innerHeight;
+  }));
+  expect(outsideBeforeCreation).toBe(false);
+  await page.screenshot({ path: 'test-results/multiplayer-map-selection.png' });
   await page.getByRole('button', { name: 'Crear sala', exact: true }).click();
   await expect(page.getByTestId('multiplayer-room-code')).toHaveText(/^[A-F0-9]{12}$/);
   await expect(page.locator('.vi-commanders')).toContainText('Vega');

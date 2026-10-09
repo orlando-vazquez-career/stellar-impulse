@@ -1,3 +1,4 @@
+import { DEFAULT_CAMPAIGN_MAP } from '@impulso/input';
 import {
   applyCommand, challengeProgress, createMatchWorld, pickAugment, prepareCampaignSector, rerollAugments, stepWorld,
   type ChallengeId, type CommandRejection, type PlayerId, type World,
@@ -36,7 +37,7 @@ export const DEFAULT_CONFIG: Readonly<CampaignConfig> = Object.freeze({
   maxPausesPerPlayer: 2,
   sectorLimitTicks: 12 * 60 * 10,
   maxCampaignMs: 45 * 60_000,
-  createSector: (_sector: number, seed: number) => createMatchWorld('espiral', 'skirmish', seed),
+  createSector: (_sector: number, seed: number) => createMatchWorld(DEFAULT_CAMPAIGN_MAP, 'skirmish', seed),
 });
 
 export interface Seat { name: string; ready: boolean; connected: boolean; pausesUsed: number; droppedAt: number | null }

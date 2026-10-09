@@ -1,8 +1,11 @@
 const SERVER_URL = (import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567').replace(/\/$/, '');
 const TOKEN_KEY = 'impulso.auth-token';
 
-/** `displayName` is the commander alias kept in the account; null until the player picks one. */
-export interface AccountUser { id: string; email: string; displayName: string | null }
+/**
+ * `displayName` is the commander alias kept in the account; null until the player picks one.
+ * `walletAddress` is the Stellar wallet the player proved with Freighter; merit emblems go there.
+ */
+export interface AccountUser { id: string; email: string; displayName: string | null; walletAddress: string | null }
 
 /** `code` is the error the server named (`email_in_use`, `invalid_display_name`…), when it sent one. */
 export class AuthRequestError extends Error {
@@ -20,7 +23,8 @@ function toUser(value: unknown): AccountUser | null {
   if (typeof value !== 'object' || value === null || !('id' in value) || typeof value.id !== 'string'
     || !('email' in value) || typeof value.email !== 'string') return null;
   const displayName = 'displayName' in value && typeof value.displayName === 'string' ? value.displayName : null;
-  return { id: value.id, email: value.email, displayName };
+  const walletAddress = 'walletAddress' in value && typeof value.walletAddress === 'string' ? value.walletAddress : null;
+  return { id: value.id, email: value.email, displayName, walletAddress };
 }
 
 async function requestError(response: Response): Promise<AuthRequestError> {
@@ -99,4 +103,36 @@ export async function logoutAccount(): Promise<void> {
     });
     if (!response.ok && response.status !== 401) throw new AuthRequestError(response.status);
   } finally { clearSession(); }
+}
+
+/** A wallet challenge from the server: a transaction that can never execute, to be signed in Freighter. */
+export interface WalletChallengeResponse { transaction: string; serverAccountId: string; networkPassphrase: string }
+
+async function authorized(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = sessionToken();
+  if (!token) throw new AuthRequestError(401, 'authentication_required');
+  const response = await fetch(`${SERVER_URL}${path}`, {
+    ...init, cache: 'no-store',
+    headers: { Authorization: `Bearer ${token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
+  });
+  if (!response.ok) throw await requestError(response);
+  return response;
+}
+
+/** Step 1 of linking a wallet to the signed-in account. */
+export async function requestWalletChallenge(address: string): Promise<WalletChallengeResponse> {
+  const body = await (await authorized('/wallet/challenge', { method: 'POST', body: JSON.stringify({ address }) })).json() as Partial<WalletChallengeResponse>;
+  if (typeof body.transaction !== 'string' || typeof body.serverAccountId !== 'string' || typeof body.networkPassphrase !== 'string') {
+    throw new Error('Invalid wallet challenge');
+  }
+  return { transaction: body.transaction, serverAccountId: body.serverAccountId, networkPassphrase: body.networkPassphrase };
+}
+
+/** Step 2: the challenge signed in Freighter. Returns the account with its wallet. */
+export async function linkWalletAccount(signedTransaction: string): Promise<AccountUser> {
+  return userFrom(await authorized('/wallet/link', { method: 'POST', body: JSON.stringify({ transaction: signedTransaction }) }));
+}
+
+export async function unlinkWalletAccount(): Promise<AccountUser> {
+  return userFrom(await authorized('/wallet', { method: 'DELETE' }));
 }

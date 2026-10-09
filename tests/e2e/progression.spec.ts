@@ -1,8 +1,9 @@
+import { TEST_SERVER_URL } from './server-url';
 import {expect,test} from '@playwright/test';
 import {chooseOpening} from './helpers';
 test('shows an authenticated official match reward and the saved account profile',async({page,request})=>{
   test.setTimeout(120000);
-  const response=await request.post('http://127.0.0.1:2567/auth/register',{data:{email:`progress-${Date.now()}@example.com`,password:'test-password-123'}});
+  const response=await request.post(`${TEST_SERVER_URL}/auth/register`,{data:{email:`progress-${Date.now()}@example.com`,password:'test-password-123'}});
   expect(response.status()).toBe(201);
   const account=await response.json() as {token:string};
   await page.addInitScript(token=>sessionStorage.setItem('impulso.auth-token',token),account.token);
@@ -20,7 +21,7 @@ test('shows an authenticated official match reward and the saved account profile
   await expect(page.locator('.match-progress')).toBeVisible({timeout:10000});
   await expect(page.locator('.match-progress')).toContainText(/\+\d+ XP/);
   await page.screenshot({path:'test-results/match-progression.png'});
-  const profile=await request.get('http://127.0.0.1:2567/auth/profile',{headers:{Authorization:`Bearer ${account.token}`}});
+  const profile=await request.get(`${TEST_SERVER_URL}/auth/profile`,{headers:{Authorization:`Bearer ${account.token}`}});
   const saved=await profile.json() as {xp:number};expect(saved.xp).toBeGreaterThan(0);
   await page.getByRole('button',{name:'Salir',exact:true}).click();
   await page.getByRole('button',{name:'Perfil',exact:true}).click();

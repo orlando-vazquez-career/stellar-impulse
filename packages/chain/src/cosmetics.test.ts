@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { Account, nativeToScVal, rpc, xdr, type Transaction } from "@stellar/stellar-sdk";
 import { describe, expect, it } from "vitest";
 import {
-  buyCosmetic, COSMETICS_TESTNET, DEMO_COSMETICS, ownedCosmetics, ownsCosmeticClass,
+  buyCosmetic, COSMETICS_TESTNET, DEMO_COSMETICS, MARKETPLACE_TESTNET, ownedCosmetics, ownsCosmeticClass,
   type CosmeticsRpc, type TransactionSigner,
 } from "./index.js";
 
@@ -22,6 +22,7 @@ const success = (retval: xdr.ScVal) =>
 function fakeServer(overrides: Partial<CosmeticsRpc> = {}): CosmeticsRpc {
   return {
     getAccount: async (address) => new Account(address, "1"),
+    getLatestLedger: async () => ({ sequence: 1_000 }),
     simulateTransaction: async (tx) => {
       switch (methodOf(tx)) {
         case "tokens_of": return success(xdr.ScVal.scvVec([u32(9), u32(4)]));
@@ -86,9 +87,13 @@ describe("cosmetics purchase", () => {
 describe("demo catalog", () => {
   it("matches the public testnet deployment record", () => {
     const record = JSON.parse(readFileSync(new URL("../../../contracts/deployments/testnet.json", import.meta.url), "utf8")) as {
-      contractId: string; classes: { id: number; key: string; priceStroops: string }[];
+      contractId: string; contractVersion: number; classes: { id: number; key: string; priceStroops: string }[];
+      marketplace: { contractId: string; feeBps: number };
     };
     expect(COSMETICS_TESTNET.contractId).toBe(record.contractId);
+    expect(COSMETICS_TESTNET.contractVersion).toBe(record.contractVersion);
+    expect(MARKETPLACE_TESTNET.contractId).toBe(record.marketplace.contractId);
+    expect(MARKETPLACE_TESTNET.feeBps).toBe(record.marketplace.feeBps);
     expect(DEMO_COSMETICS.map((c) => [c.classId, c.key, String(c.priceStroops)]))
       .toEqual(record.classes.map((c) => [c.id, c.key, c.priceStroops]));
   });

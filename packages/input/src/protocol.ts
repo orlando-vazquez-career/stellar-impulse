@@ -1,3 +1,5 @@
+import { PLAYABLE_MAPS } from './playable-maps.js';
+
 /**
  * Versioned message envelopes. Campaign v3 runs the match engine (Espiral, augments, base);
  * the battlefield room keeps v2 and v1 remains available to legacy consumers.
@@ -22,7 +24,7 @@ export type AugmentRerollResult = { ok: true; choice: number } | { ok: false; re
 const DEFAULT_NAME = 'Comandante';
 const NAME = /^[\p{L}\p{N} _.-]{1,24}$/u;
 const AUGMENT_ID = /^[a-z]-[a-z0-9-]{1,40}$/;
-const MAPS: readonly CampaignMap[] = ['espiral', 'sector-01'];
+const MAPS: readonly CampaignMap[] = PLAYABLE_MAPS.map((map) => map.id);
 /** Campaign sectors offer one augment each: choice 0, 1 or 2. */
 const isChoice = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 2;
 

@@ -1,13 +1,14 @@
+import { TEST_SERVER_URL } from './server-url';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 
 test('signs in, restores the account, trains and revokes the session', async ({ page, request }) => {
   const email = `browser-${randomUUID()}@example.com`;
   const password = `Pilot-${randomUUID()}`;
-  const registered = await request.post('http://127.0.0.1:2567/auth/register', { data: { email, password } });
+  const registered = await request.post(`${TEST_SERVER_URL}/auth/register`, { data: { email, password } });
   expect(registered.status()).toBe(201);
   const initial = await registered.json() as { token: string };
-  await request.post('http://127.0.0.1:2567/auth/logout', { headers: { Authorization: `Bearer ${initial.token}` } });
+  await request.post(`${TEST_SERVER_URL}/auth/logout`, { headers: { Authorization: `Bearer ${initial.token}` } });
 
   await page.goto('/');
   await page.getByLabel('Identificador de comandante').fill('Pilot');
@@ -38,7 +39,7 @@ test('signs in, restores the account, trains and revokes the session', async ({ 
   await page.getByRole('button', { name: 'Cerrar sesión' }).click();
   await expect(page.getByRole('button', { name: /Iniciar sesión/ })).toBeEnabled();
   expect(await page.evaluate(() => sessionStorage.getItem('impulso.auth-token'))).toBeNull();
-  const revoked = await request.get('http://127.0.0.1:2567/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+  const revoked = await request.get(`${TEST_SERVER_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
   expect(revoked.status()).toBe(401);
   await page.reload();
   await expect(page.getByLabel('Correo electrónico')).toBeVisible();

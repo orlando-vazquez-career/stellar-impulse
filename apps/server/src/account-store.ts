@@ -10,6 +10,8 @@ export interface StoredUser {
   passwordHash: string;
   /** Commander alias shown in menus and rooms; absent until the player picks one. */
   displayName?: string;
+  /** Stellar address proven by a signed challenge; merit rewards are minted to it. */
+  walletAddress?: string;
   progress?: AccountProgress;
 }
 
@@ -31,6 +33,11 @@ export interface AccountStore {
   saveAward(user: StoredUser, award: SavedAward, all: readonly StoredUser[]): Promise<void>;
   /** Stores the profile fields of `user` (the commander alias). */
   saveProfile(user: StoredUser, all: readonly StoredUser[]): Promise<void>;
+  /**
+   * Stores (or clears) the linked wallet. Rejects with `AuthError(409, 'wallet_in_use')` when
+   * another account already holds the address.
+   */
+  saveWallet(user: StoredUser, all: readonly StoredUser[]): Promise<void>;
 }
 
 /** The JSON file used by development and E2E runs; no path keeps accounts in memory only. */
@@ -55,6 +62,8 @@ export class FileAccountStore implements AccountStore {
   async saveAward(_user: StoredUser, _award: SavedAward, all: readonly StoredUser[]): Promise<void> { this.persist(all); }
 
   async saveProfile(_user: StoredUser, all: readonly StoredUser[]): Promise<void> { this.persist(all); }
+
+  async saveWallet(_user: StoredUser, all: readonly StoredUser[]): Promise<void> { this.persist(all); }
 
   /** Flushes a temporary file to disk, keeps the previous version as `.bak` and swaps it in atomically. */
   private persist(all: readonly StoredUser[]): void {

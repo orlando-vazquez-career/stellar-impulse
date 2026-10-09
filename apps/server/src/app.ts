@@ -5,6 +5,7 @@ import { BattlefieldRoom } from './battlefield-room';
 import { campaignRoomWith } from './campaign-room';
 import type { CampaignConfig } from './campaign/machine';
 import { AuthError, AuthService, bearerToken } from './auth';
+import { ChainRewards } from './chain-rewards';
 
 export interface AuthLimit { burst: number; refillPerSecond: number }
 
@@ -15,6 +16,8 @@ export interface GameServerOptions {
   authDataFile?: string | null;
   /** Shared budget of password checks (login and registration). */
   authLimit?: AuthLimit;
+  /** On-chain merit emblems; defaults to `STELLAR_MINTER_SECRET` from the environment. */
+  chainRewards?: ChainRewards;
 }
 
 /** 20 testers can sign in at once; past that, a flood cannot keep hashing passwords on the game loop. */
@@ -37,10 +40,11 @@ function tokenBucket({ burst, refillPerSecond }: AuthLimit) {
 export function createGameServer(options: GameServerOptions = {}) {
   const auth = options.auth ?? new AuthService(options.authDataFile === undefined
     ? (process.env.AUTH_DATA_FILE ?? './data/users.json') : options.authDataFile);
+  auth.useChainRewards(options.chainRewards ?? ChainRewards.fromEnv());
   const passwordCheck = tokenBucket(options.authLimit ?? DEFAULT_AUTH_LIMIT);
   const limited = () => Response.json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': '1' } });
   const fields = (body: unknown) => body && typeof body === 'object' && !Array.isArray(body)
-    ? body as { email?: unknown; password?: unknown; displayName?: unknown } : {};
+    ? body as { email?: unknown; password?: unknown; displayName?: unknown; address?: unknown; transaction?: unknown } : {};
   const respond = async (action: () => unknown, status = 200): Promise<Response> => {
     try { return Response.json(await action(), { status }); }
     catch (error) {
@@ -94,6 +98,19 @@ export function createGameServer(options: GameServerOptions = {}) {
       updateProfile: createEndpoint('/auth/profile', { method: 'PUT' }, async (ctx) => respond(async () => {
         const { user } = authenticated(ctx.request?.headers.get('authorization') ?? null);
         return { user: await auth.updateDisplayName(user.id, fields(ctx.body).displayName) };
+      })),
+      // Wallet link: a SEP-10 challenge signed in Freighter proves the address belongs to the player.
+      walletChallenge: createEndpoint('/wallet/challenge', { method: 'POST' }, async (ctx) => respond(() => {
+        const { user } = authenticated(ctx.request?.headers.get('authorization') ?? null);
+        return auth.walletChallenge(user.id, fields(ctx.body).address);
+      })),
+      walletLink: createEndpoint('/wallet/link', { method: 'POST' }, async (ctx) => respond(async () => {
+        const { user } = authenticated(ctx.request?.headers.get('authorization') ?? null);
+        return { user: await auth.linkWallet(user.id, fields(ctx.body).transaction) };
+      })),
+      walletUnlink: createEndpoint('/wallet', { method: 'DELETE' }, async (ctx) => respond(async () => {
+        const { user } = authenticated(ctx.request?.headers.get('authorization') ?? null);
+        return { user: await auth.unlinkWallet(user.id) };
       })),
       logout: createEndpoint('/auth/logout', { method: 'POST' }, async (ctx) => {
         try {

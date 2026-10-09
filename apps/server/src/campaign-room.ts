@@ -1,7 +1,7 @@
 import { Room, ServerError, type Client } from '@colyseus/core';
 import { randomBytes, randomInt } from 'node:crypto';
 import {
-  CAMPAIGN_PROTOCOL_VERSION, openCampaignEnvelope, parseAugmentPick, parseAugmentReroll,
+  CAMPAIGN_PROTOCOL_VERSION, DEFAULT_CAMPAIGN_MAP, openCampaignEnvelope, parseAugmentPick, parseAugmentReroll,
   parseCampaignJoinOptions, parseCommand, parseReady, type CampaignMap,
 } from '@impulso/input';
 import { createMatchWorld, type MatchReward, type PlayerId } from '@impulso/sim';
@@ -29,12 +29,12 @@ export class CampaignRoom extends Room {
   private ticks = 0;
   private announcedEnd = false;
   /** Every sector of this campaign is played on this map. */
-  private map: CampaignMap = 'espiral';
+  private map: CampaignMap = DEFAULT_CAMPAIGN_MAP;
 
   onCreate(options?: unknown) {
     this.roomId = randomBytes(6).toString('hex').toUpperCase();
     const parsed = parseCampaignJoinOptions(options);
-    this.map = parsed.ok && parsed.map ? parsed.map : 'espiral';
+    this.map = parsed.ok && parsed.map ? parsed.map : DEFAULT_CAMPAIGN_MAP;
     const map = this.map;
     this.campaign = campaigns.createCampaign({
       createSector: (_sector, seed) => createMatchWorld(map, 'skirmish', seed),
