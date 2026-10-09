@@ -6,7 +6,7 @@ export const AUDIO_CHANNELS: readonly AudioChannel[] = ['music', 'effects', 'voi
 
 /** Linear gain 0–1 for one channel: master × channel, or silence while muted. */
 export function channelVolume(mix: AudioMix, channel: AudioChannel): number {
-  if (mix.muted) return 0;
+  if (mix.muted || (channel === 'music' && mix.musicMuted)) return 0;
   return (clampPercent(mix.master) / 100) * (clampPercent(mix[channel]) / 100);
 }
 

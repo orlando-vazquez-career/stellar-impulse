@@ -66,12 +66,37 @@ test.describe('visual interface foundation', () => {
     await expect(page.getByLabel('Campo táctico Phaser')).toBeVisible();
     await expect(page.locator('.vi-phaser canvas')).toBeVisible();
     await expect(page.getByLabel('HUD táctico')).toBeVisible();
-    await expect(page.getByText('Acciones', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Cancelar Esc' })).toBeDisabled();
+    await expect(page.locator('.vi-actions')).toHaveCount(0);
+    await expect(page.getByText('Acciones', { exact: true })).toHaveCount(0);
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'sector-01.tmj');
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-atlas-ready', 'true');
     await page.screenshot({ path: 'test-results/visual-sector.png' });
+  });
+
+  test('loads the complete ship and top-down structure art set', async ({ page }) => {
+    const assetStatuses = new Map<string, number>();
+    page.on('response', (response) => {
+      const pathname = new URL(response.url()).pathname;
+      if (pathname.startsWith('/assets/game/')) assetStatuses.set(pathname, response.status());
+    });
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
+
+    const factions = ['blue', 'red', 'neutral'];
+    const expected = [
+      ...['ax7', 'explorer', 'frigate', 'bomber'].flatMap((ship) => factions.map((faction) => `/assets/game/ships/${ship}-${faction}.png`)),
+      ...['command-base', 'nexus-core'].flatMap((structure) => factions.map((faction) => `/assets/game/structures/${structure}-top-${faction}.png`)),
+    ];
+    expect(assetStatuses.size).toBe(18);
+    expect(expected.map((path) => assetStatuses.get(path))).toEqual(expected.map(() => 200));
+    await page.screenshot({ path: 'test-results/structures-top-down.png' });
   });
 
   test('offers Espiral Estelar and Caos Estelar before launch', async ({ page }) => {
@@ -117,7 +142,7 @@ test.describe('visual interface foundation', () => {
     await expect(page.locator('.vi-resources')).toBeVisible();
 
     const layout = await page.evaluate(() => {
-      const selectors = ['.vi-resources', '.vi-sector-status', '.vi-top-controls', '.vi-minimap', '.vi-squad', '.vi-actions'];
+      const selectors = ['.vi-resources', '.vi-sector-status', '.vi-top-controls', '.vi-minimap', '.vi-squad'];
       const boxes = selectors.map((selector) => {
         const element = document.querySelector(selector);
         if (!element) throw new Error(`Missing ${selector}`);
@@ -148,6 +173,7 @@ test.describe('visual interface foundation', () => {
     expect(layout.outside).toEqual([]);
     expect(layout.overflow).toEqual([0, 0]);
     expect(layout.smallestText).toBeGreaterThanOrEqual(12);
+    await expect(page.locator('.vi-actions')).toHaveCount(0);
 
     const minimap = page.locator('.vi-minimap');
     await minimap.getByRole('button', { name: 'Plegar' }).click();
@@ -216,8 +242,9 @@ test.describe('visual interface foundation', () => {
     expect(consoleErrors).toEqual([]);
   });
 
-  test('pans the game camera with WASD without activating attack', async ({ page }) => {
+  test('stops a custom camera-pan chord when its modifier is released first', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
+    await page.addInitScript(() => localStorage.setItem('impulso.visual-preferences', JSON.stringify({ controls: { panDown: ['Shift+KeyS'] } })));
     await openApp(page, '/visual?adapter=mock');
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
@@ -231,18 +258,27 @@ test.describe('visual interface foundation', () => {
     await page.keyboard.down('a');
     await expect.poll(() => camera.getAttribute('x')).not.toBe(initialX);
     await page.keyboard.up('a');
-    await expect(page.getByRole('button', { name: 'Atacar Q' })).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-active-action', '');
     const afterA = await camera.getAttribute('x');
     await page.keyboard.down('d');
     await expect.poll(() => camera.getAttribute('x')).not.toBe(afterA);
     await page.keyboard.up('d');
     const initialY = await camera.getAttribute('y');
-    await page.keyboard.down('w');
-    await expect.poll(() => camera.getAttribute('y')).not.toBe(initialY);
-    await page.keyboard.up('w');
-    const afterW = await camera.getAttribute('y');
+    await page.keyboard.down('Shift');
     await page.keyboard.down('s');
-    await expect.poll(() => camera.getAttribute('y')).not.toBe(afterW);
+    await expect.poll(() => camera.getAttribute('y')).not.toBe(initialY);
+    await page.keyboard.up('Shift');
+    // Pan velocity eases out after input is released; wait for sustained stability
+    // so slower CI frames don't make this assertion depend on a fixed delay.
+    let previousY = Number(await camera.getAttribute('y'));
+    let stableWindows = 0;
+    await expect.poll(async () => {
+      await page.waitForTimeout(500);
+      const currentY = Number(await camera.getAttribute('y'));
+      stableWindows = Math.abs(currentY - previousY) < 0.2 ? stableWindows + 1 : 0;
+      previousY = currentY;
+      return stableWindows;
+    }, { timeout: 10000, intervals: [50] }).toBeGreaterThanOrEqual(3);
     await page.keyboard.up('s');
   });
 
@@ -267,7 +303,7 @@ test.describe('visual interface foundation', () => {
     const betaMarker = page.locator('.map-ally').nth(1);
     const startingX = await betaMarker.getAttribute('cx');
     const startingY = await betaMarker.getAttribute('cy');
-    await expect(page.getByRole('button', { name: 'Mover M' })).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-active-action', '');
     const blocked = await gamePoint(page, 9, 13);
     await page.mouse.click(blocked.x, blocked.y, { button: 'right' });
     await expect(page.locator('.map-move-route')).toHaveCount(0);
@@ -381,7 +417,10 @@ test.describe('visual interface foundation', () => {
     expect(panelBox.clearsFooter).toBe(true);
 
     await page.getByRole('button', { name: /Controles/ }).click();
-    await page.getByLabel('Mover').selectOption('Q');
+    const moveControls = page.getByRole('group', { name: 'Mover' });
+    await moveControls.getByRole('button', { name: 'Cambiar tecla M de Mover' }).click();
+    await page.keyboard.press('z');
+    await expect(moveControls.locator('kbd')).toContainText('Z');
     await page.getByRole('button', { name: /Accesibilidad/ }).click();
     await page.getByLabel(/Contraste reforzado/).check();
     await page.getByRole('button', { name: 'Guardar ajustes' }).click();
@@ -389,8 +428,22 @@ test.describe('visual interface foundation', () => {
     await expect(page.locator('.visual-app')).toHaveClass(/is-high-contrast/);
     await expect(page.getByText('Ajustes guardados localmente')).toBeVisible();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences') ?? '{}'));
-    expect(stored.controls.move).toBe('Q');
+    expect(stored.controls.move).toContain('KeyZ');
     expect(stored.accessibility.highContrast).toBe(true);
+  });
+
+  test('login music controls change and persist music only', async ({ page }) => {
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByRole('button', { name: 'Opciones de música' }).click();
+    await page.getByLabel('Volumen de música').fill('27');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences')!).audio.music)).toBe(27);
+    await page.getByLabel('Silenciar música').check();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences')!).audio.musicMuted)).toBe(true);
+    const otherChannels = await page.evaluate(() => {
+      const audio = JSON.parse(localStorage.getItem('impulso.visual-preferences')!).audio;
+      return [audio.effects, audio.voice, audio.interface];
+    });
+    expect(otherChannels).toEqual([85, 90, 60]);
   });
 
   test('previews and saves a cosmetic-only hangar loadout', async ({ page }) => {
@@ -402,6 +455,21 @@ test.describe('visual interface foundation', () => {
 
     await expect(page.getByRole('heading', { name: 'Define tu firma visual.' })).toBeVisible();
     await expect(page.getByText('Solo cosmético · Sin ventajas').first()).toBeVisible();
+    const shipRoster = page.getByRole('navigation', { name: 'Diseños de flota' });
+    await expect(shipRoster.getByRole('button')).toHaveCount(4);
+    const frigateOption = shipRoster.getByRole('button', { name: 'Fragata' });
+    await frigateOption.click();
+    await expect(frigateOption).toHaveAttribute('aria-pressed', 'true');
+    const shipPreview = page.getByRole('img', { name: 'Fragata' });
+    await expect(shipPreview).toHaveAttribute('src', /frigate-blue\.png$/);
+    await expect.poll(() => shipPreview.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const previewFitsStage = await shipPreview.evaluate((image) => {
+      const stage = image.closest('.vi-ship-stage')!.getBoundingClientRect();
+      const art = image.getBoundingClientRect();
+      return art.top >= stage.top && art.bottom <= stage.bottom && art.left >= stage.left && art.right <= stage.right;
+    });
+    expect(previewFitsStage).toBe(true);
+    await shipRoster.getByRole('button', { name: 'Interceptor' }).click();
     const previewBox = await page.locator('.vi-ship-preview').evaluate((element) => {
       const preview = element.getBoundingClientRect();
       const footer = document.querySelector('.vi-screen__footer')?.getBoundingClientRect();
@@ -446,5 +514,17 @@ test.describe('visual interface foundation', () => {
     await page.getByRole('button', { name: 'Música', exact: true }).click();
     await expect(page.getByRole('button', { name: /Iron Vanguard/ })).toContainText('Equipado');
     await page.screenshot({ path: 'test-results/hangar-audio.png' });
+    await page.setViewportSize({ width: 1024, height: 768 });
+    const compactRosterFits = await shipRoster.evaluate((roster) => {
+      const bounds = roster.getBoundingClientRect();
+      return Array.from(roster.querySelectorAll('button')).every((button) => {
+        const rect = button.getBoundingClientRect();
+        return rect.left >= bounds.left && rect.right <= bounds.right && rect.width >= 44;
+      });
+    });
+    const compactLayoutHasNoHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(compactRosterFits).toBe(true);
+    expect(compactLayoutHasNoHorizontalOverflow).toBe(true);
+    await page.screenshot({ path: 'test-results/hangar-1024.png', fullPage: true });
   });
 });

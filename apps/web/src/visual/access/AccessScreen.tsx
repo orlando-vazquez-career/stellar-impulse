@@ -11,9 +11,13 @@ export interface AccessScreenProps {
   onSignedIn: (user: AccountUser, alias: string) => void;
   sessionBusy?: boolean;
   sessionNotice?: string;
+  musicVolume: number;
+  musicMuted: boolean;
+  onMusicVolumeChange(volume: number): void;
+  onMusicMuteChange(muted: boolean): void;
 }
 
-export function AccessScreen({ onContinue, onCreateTraining, onJoinRoom, onSignedIn, sessionBusy = false, sessionNotice = '' }: AccessScreenProps) {
+export function AccessScreen({ onContinue, onCreateTraining, onJoinRoom, onSignedIn, sessionBusy = false, sessionNotice = '', musicVolume, musicMuted, onMusicVolumeChange, onMusicMuteChange }: AccessScreenProps) {
   const { t } = useI18n();
   const [alias, setAlias] = useState(readPilotAlias);
   const [busy, setBusy] = useState(false);
@@ -76,6 +80,10 @@ export function AccessScreen({ onContinue, onCreateTraining, onJoinRoom, onSigne
       chainStatus={chainStatus}
       chainBusy={chainBusy}
       onOpenAtlas={() => onContinue(alias.trim() || 'Vega')}
+      musicVolume={musicVolume}
+      musicMuted={musicMuted}
+      onMusicVolumeChange={onMusicVolumeChange}
+      onMusicMuteChange={onMusicMuteChange}
     />
   );
 }

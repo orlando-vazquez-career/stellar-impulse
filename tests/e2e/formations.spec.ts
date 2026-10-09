@@ -69,8 +69,7 @@ test('a selected group picks a formation and marches as one order', async ({ pag
 });
 
 
-test('a configured F action and live audio settings work during a match', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('impulso.visual-preferences', JSON.stringify({ controls: { attack: 'F' } })));
+test('action shortcuts and live audio settings work during a match', async ({ page }) => {
   await openApp(page);
   await page.getByLabel('Identificador de comandante').fill('Audio');
   await page.getByRole('button', { name: 'Continuar como invitado' }).click();
@@ -79,8 +78,8 @@ test('a configured F action and live audio settings work during a match', async 
   await page.getByLabel('Estoy listo para desplegar').check();
   await page.getByRole('button', { name: 'Iniciar operación' }).click();
   await chooseOpening(page);
-  await page.keyboard.press('f');
-  await expect(page.locator('.vi-actions').getByRole('button', { name: /Atacar/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('g');
+  await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-active-action', 'attack');
   await page.getByRole('button', { name: 'Sonido', exact: true }).click();
   await page.locator('#audio-effects-range').fill('17');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences')!).audio.effects)).toBe(17);

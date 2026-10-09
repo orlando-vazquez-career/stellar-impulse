@@ -10,6 +10,8 @@ describe('audio mix', () => {
     expect(channelVolume(mix({ master: 50, music: 50 }), 'music')).toBeCloseTo(0.25);
     expect(channelVolume(mix({ master: 100, voice: 30 }), 'voice')).toBeCloseTo(0.3);
     expect(channelVolume(mix({ muted: true }), 'effects')).toBe(0);
+    expect(channelVolume(mix({ master: 100, effects: 50, musicMuted: true }), 'music')).toBe(0);
+    expect(channelVolume(mix({ master: 100, effects: 50, musicMuted: true }), 'effects')).toBe(0.5);
     expect(channelVolume(mix({ master: 0 }), 'interface')).toBe(0);
   });
 
