@@ -66,7 +66,8 @@ test('two accounts play the campaign on Espiral and recover the same match after
     }
     await expect(host.locator('.vi-gameplay')).toHaveAttribute('data-player-id', 'p1');
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-player-id', 'p2');
-    for (const page of [host, guest]) await expect(page.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'espiral-estelar.json');
+    // The battlefield art loads before the map is announced; two clients share one CI runner.
+    for (const page of [host, guest]) await expect(page.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'espiral-estelar.json', { timeout: 20000 });
     // Sector 1 opens with a private augment offer; the clock starts when both have chosen.
     await Promise.all([chooseOpening(host), chooseOpening(guest)]);
     for (const page of [host, guest]) await expect(page.locator('.vi-resources')).toContainText('2/12');
@@ -79,7 +80,7 @@ test('two accounts play the campaign on Espiral and recover the same match after
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-player-id', 'p2');
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-connection', 'online');
     await expect(guest.locator('.vi-resources')).toContainText('3/12', { timeout: 20000 });
-    await expect(guest.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'espiral-estelar.json');
+    await expect(guest.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'espiral-estelar.json', { timeout: 20000 });
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-sequence', '1', { timeout: 20000 });
     await expect(host.locator('.vi-gameplay')).toHaveAttribute('data-room-id', roomId);
     await host.getByRole('button', { name: 'Salir de partida', exact: true }).click();
