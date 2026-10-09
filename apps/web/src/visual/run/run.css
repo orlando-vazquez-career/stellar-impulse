@@ -1,0 +1,440 @@
+/* Run de sectores: resultado sobre el mapa congelado, salto al hiperespacio y cierre de la run. */
+
+.vi-run-outcome,
+.vi-run-warp,
+.vi-run-complete {
+  --vi-run-space: #05070f;
+  --vi-run-stellar: #38d6f0;
+  --vi-run-electric: #2f6bff;
+  --vi-run-core: #f4fbff;
+  --vi-run-corrupt: #8a5cf0;
+  --vi-run-alert: #ff3b4d;
+  --vi-run-muted: #8190b8;
+  --vi-run-accent: var(--vi-run-stellar);
+  --vi-run-mono: 'Share Tech Mono', 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  color: var(--vi-run-core);
+}
+
+/* ------------------------------------------------------------------ GANASTE / DERROTA */
+
+.vi-run-outcome {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: rgb(5 7 15 / 78%);
+  animation: vi-run-fade-in 0.3s ease both;
+}
+
+.vi-run-outcome--won { cursor: pointer; }
+.vi-run-outcome--lost { --vi-run-accent: var(--vi-run-alert); }
+
+.vi-run-outcome::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--vi-run-space);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s linear;
+}
+
+.vi-run-outcome.is-leaving::after { opacity: 1; }
+
+.vi-run-confetti {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.vi-run-outcome__body {
+  position: relative;
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.vi-run-outcome__body > :not(.vi-run-band) { max-width: min(880px, 92vw); }
+
+.vi-run-band {
+  display: block;
+  width: 100%;
+  height: 1px;
+  background: var(--vi-run-accent);
+  transform: scaleX(0);
+  animation: vi-run-band 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.12s forwards;
+}
+
+.vi-run-band--top { transform-origin: left; }
+.vi-run-band--bottom { transform-origin: right; }
+
+.vi-run-title {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  gap: 0.04em;
+  font-family: var(--vi-display);
+  font-size: clamp(54px, 10.5vw, 148px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--vi-run-core);
+  text-shadow: 0 0 22px var(--vi-run-accent);
+  /* Un golpe por cada letra que aterriza. */
+  animation: vi-run-shake 70ms linear 670ms var(--vi-run-letters, 7);
+}
+
+.vi-run-outcome--lost .vi-run-title { color: var(--vi-run-alert); }
+
+.vi-run-title span {
+  display: inline-block;
+  opacity: 0;
+  /* Cada letra en su propia capa: el brillo se pinta una vez y solo se mueve. */
+  will-change: transform, opacity;
+  animation: vi-run-letter 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.vi-run-line {
+  margin: 0;
+  height: 1.3em;
+  /* El texto que se va escribiendo no obliga a repintar lo que tiene alrededor. */
+  contain: layout paint;
+  white-space: nowrap;
+  font: 14px/1.3 var(--vi-run-mono);
+  letter-spacing: 0.14em;
+  color: var(--vi-run-muted);
+}
+
+.vi-run-line--accent { color: var(--vi-run-accent); }
+.vi-run-line--corrupt { color: var(--vi-run-corrupt); }
+.vi-run-outcome--won .vi-run-ledger { color: var(--vi-run-corrupt); }
+
+.vi-run-heading {
+  margin: 14px 0 0;
+  font: 600 15px/1 var(--vi-display);
+  letter-spacing: 0.28em;
+  color: var(--vi-run-core);
+}
+
+.vi-run-fade {
+  opacity: 0;
+  animation: vi-run-fade-in 0.3s ease both;
+}
+
+.vi-run-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.vi-run-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--vi-run-chip, var(--vi-run-stellar));
+  background: rgb(5 7 15 / 62%);
+  color: var(--vi-run-chip, var(--vi-run-stellar));
+  font: 600 14px/1.1 var(--vi-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  animation: vi-run-chip 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.vi-run-chip i { font-style: normal; font-size: 16px; }
+.vi-run-chip--silver { --vi-run-chip: #c9d6e6; }
+.vi-run-chip--gold { --vi-run-chip: #f2c14e; }
+.vi-run-chip--prismatic { --vi-run-chip: #c79bff; }
+.vi-run-chip--empty { --vi-run-chip: var(--vi-run-muted); animation-delay: 450ms; }
+
+.vi-run-chips.is-lost .vi-run-chip { --vi-run-chip: var(--vi-run-muted); }
+
+.vi-run-chips.is-lost .vi-run-chip::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  height: 2px;
+  background: var(--vi-run-alert);
+  box-shadow: 0 0 8px var(--vi-run-alert);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: vi-run-band 0.26s cubic-bezier(0.33, 1, 0.68, 1) var(--vi-run-strike, 900ms) forwards;
+}
+
+.vi-run-countdown {
+  margin-top: 22px;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  font: 13px/1 var(--vi-run-mono);
+  letter-spacing: 0.16em;
+}
+
+.vi-run-countdown > i {
+  display: block;
+  width: min(340px, 70vw);
+  height: 4px;
+  background: #1c2a4d;
+}
+
+.vi-run-countdown b {
+  display: block;
+  height: 100%;
+  background: var(--vi-run-accent);
+  transform-origin: left;
+  animation: vi-run-drain 3.5s linear both;
+}
+
+.vi-run-countdown small { color: var(--vi-run-muted); opacity: 0.75; font-size: 11px; }
+
+.vi-run-actions {
+  margin-top: 22px;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.vi-run-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.vi-run-actions small { color: var(--vi-run-muted); font: 12px/1.3 var(--vi-run-mono); letter-spacing: 0.08em; }
+
+.vi-run-button {
+  min-height: 46px;
+  padding: 0 22px;
+  border: 1px solid var(--vi-run-muted);
+  background: rgb(11 16 32 / 88%);
+  color: var(--vi-run-core);
+  font: 700 16px/1 var(--vi-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.vi-run-button:hover { transform: translateY(-1px); border-color: var(--vi-run-core); }
+
+.vi-run-button--primary {
+  border-color: var(--vi-run-stellar);
+  background: var(--vi-run-stellar);
+  color: #04111d;
+  box-shadow: 0 0 18px rgb(56 214 240 / 35%);
+}
+
+/* ------------------------------------------------------------------ salto al hiperespacio */
+
+.vi-run-warp {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--vi-run-space);
+  cursor: pointer;
+  animation: vi-run-fade-in 0.25s ease both;
+}
+
+.vi-run-warp::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--vi-run-space);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.38s linear;
+}
+
+.vi-run-warp.is-leaving::after { opacity: 1; }
+
+.vi-run-warp__space {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* Acelera hacia el destello, tiembla y vuelve a su sitio. */
+  animation: vi-run-zoom 2.75s cubic-bezier(0.55, 0, 1, 0.45) both, vi-run-shake 76ms linear 1.3s 5;
+}
+
+.vi-run-warp__flash {
+  position: absolute;
+  inset: 0;
+  background: #dcfaff;
+  opacity: 0;
+  pointer-events: none;
+  animation: vi-run-flash 0.26s ease-out 1.3s both;
+}
+
+.vi-run-warp__card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  padding: 26px 16px 30px;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+  transform: translateY(-50%);
+}
+
+.vi-run-warp__card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgb(5 7 15 / 62%);
+  border-block: 1px solid rgb(56 214 240 / 28%);
+  transform: scaleX(0);
+  animation: vi-run-band 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.vi-run-warp__card h2 {
+  margin: 0;
+  font: 700 clamp(48px, 9vw, 120px)/1 var(--vi-display);
+  letter-spacing: 0.1em;
+  color: var(--vi-run-core);
+  text-shadow: 0 0 24px var(--vi-run-stellar);
+  will-change: transform, opacity;
+  animation: vi-run-arrive 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.18s both;
+}
+
+.vi-run-warp__card h3 {
+  margin: 0;
+  height: 1.1em;
+  contain: layout paint;
+  white-space: nowrap;
+  font: 600 clamp(22px, 3.6vw, 44px)/1.1 var(--vi-display);
+  letter-spacing: 0.2em;
+  color: var(--vi-run-stellar);
+}
+
+/* ------------------------------------------------------------------ run completa */
+
+.vi-run-complete {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  padding: 6vh 16px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 30%, #0e1a3a 0, var(--vi-run-space) 62%);
+  animation: vi-run-fade-in 0.4s ease both;
+}
+
+.vi-run-complete .vi-run-title { font-size: clamp(40px, 7.5vw, 104px); }
+
+.vi-run-history {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  width: min(560px, 92vw);
+}
+
+.vi-run-history li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  padding: 8px 14px;
+  border-left: 2px solid var(--vi-run-stellar);
+  background: rgb(11 16 32 / 70%);
+  font: 14px/1.2 var(--vi-run-mono);
+  letter-spacing: 0.12em;
+  color: var(--vi-run-stellar);
+  text-align: left;
+  opacity: 0;
+  animation: vi-run-row 0.3s ease both;
+}
+
+.vi-run-history strong { color: var(--vi-run-core); font-weight: 400; }
+.vi-run-history em { font-style: normal; color: var(--vi-run-muted); }
+
+.vi-run-signal {
+  margin-top: 18px;
+  opacity: 0;
+  animation: vi-run-fade-in 0.12s linear both, vi-run-shake 80ms linear 5;
+}
+
+.vi-run-signal p {
+  margin: 0 0 6px;
+  font: 13px/1.3 var(--vi-run-mono);
+  letter-spacing: 0.2em;
+  color: var(--vi-run-alert);
+}
+
+.vi-run-signal strong {
+  position: relative;
+  display: inline-block;
+  font: 700 clamp(34px, 6vw, 84px)/1 var(--vi-display);
+  letter-spacing: 0.12em;
+  color: var(--vi-run-alert);
+  text-shadow: 0 0 16px var(--vi-run-alert);
+  animation: vi-run-glitch 1.4s steps(1, end) infinite;
+}
+
+.vi-run-signal strong::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  color: var(--vi-run-stellar);
+  opacity: 0;
+  animation: vi-run-ghost 1.4s steps(1, end) infinite;
+}
+
+/* ------------------------------------------------------------------ animaciones */
+
+@keyframes vi-run-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes vi-run-band { to { transform: scaleX(1); } }
+@keyframes vi-run-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes vi-run-letter { from { opacity: 0; transform: translateY(-0.5em) scale(1.8); } to { opacity: 1; transform: none; } }
+@keyframes vi-run-chip { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: none; } }
+@keyframes vi-run-arrive { from { opacity: 0; transform: scale(1.6); } to { opacity: 1; transform: none; } }
+@keyframes vi-run-row { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: none; } }
+@keyframes vi-run-shake { 0%, 100% { translate: 0 0; } 25% { translate: -3px 2px; } 75% { translate: 3px -2px; } }
+@keyframes vi-run-flash { 0% { opacity: 0.9; } 100% { opacity: 0; } }
+@keyframes vi-run-zoom { 0% { scale: 1; } 47% { scale: 1.08; } 53% { scale: 1.08; } 100% { scale: 1; } }
+@keyframes vi-run-glitch {
+  0%, 100% { translate: 0 0; opacity: 1; }
+  12% { translate: -4px 0; opacity: 0.5; }
+  16% { translate: 0 0; opacity: 1; }
+  58% { translate: 3px 0; opacity: 0.5; }
+  62% { translate: 0 0; opacity: 1; }
+  84% { translate: -2px 0; opacity: 0.6; }
+  88% { translate: 0 0; opacity: 1; }
+}
+@keyframes vi-run-ghost {
+  0%, 100% { opacity: 0; }
+  12% { opacity: 0.8; translate: 6px 0; }
+  16% { opacity: 0; }
+  58% { opacity: 0.8; translate: -6px 0; }
+  62% { opacity: 0; }
+}
+
+.is-reduced-motion .vi-run-title,
+.is-reduced-motion .vi-run-warp__space,
+.is-reduced-motion .vi-run-signal,
+.is-reduced-motion .vi-run-signal strong,
+.is-reduced-motion .vi-run-signal strong::after {
+  animation-name: vi-run-fade-in;
+}
+
+.is-reduced-motion .vi-run-warp__flash,
+.is-reduced-motion .vi-run-confetti { display: none; }

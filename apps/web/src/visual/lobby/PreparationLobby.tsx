@@ -1,4 +1,4 @@
-import { DEFAULT_CAMPAIGN_MAP, PLAYABLE_MAPS } from '@impulso/input';
+import { DEFAULT_CAMPAIGN_MAP, PRACTICE_MAPS } from '@impulso/input';
 import type { DurationMode } from '@impulso/sim';
 import { useState, useRef, useEffect, type FormEvent } from 'react';
 import { useI18n } from '../i18n';
@@ -6,6 +6,7 @@ import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
+import { createAnomalyScene } from './anomaly-scene';
 import type { TrainingMapId } from '../map/sector-map';
 import './lobby.css';
 
@@ -17,11 +18,9 @@ const DIFFICULTIES: { value: RivalDifficulty; label: string; hint: string }[] = 
   { value: 'medium', label: 'Media', hint: 'Se expande rápido y pelea por todo.' },
   { value: 'hard', label: 'Difícil', hint: 'Toma dos nodos a la vez y asalta los tuyos.' },
 ];
-const UPCOMING_MAP = {
-  name: { es: '3.er mapa', en: '3rd map' },
-  description: { es: 'En preparación. El más épico del sector.', en: 'In preparation. The most epic in the sector.' },
-};
 type FleetSide = 'blue' | 'red';
+/** How much of the interference's sideways slip each lobby panel takes, so they do not move as one block. */
+const PANEL_SLIP = [0.5, 1, -0.7, 1.3, -1];
 
 export function PreparationLobby({
   alias,
@@ -45,17 +44,47 @@ export function PreparationLobby({
   const [duration, setDuration] = useState<DurationMode>('skirmish');
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
   const [map, setMap] = useState<TrainingMapId>(DEFAULT_CAMPAIGN_MAP);
-  const selectedMap = PLAYABLE_MAPS.find((option) => option.id === map) ?? PLAYABLE_MAPS[0];
+  const selectedMap = PRACTICE_MAPS.find((option) => option.id === map) ?? PRACTICE_MAPS[0];
   const [side, setSide] = useState<FleetSide>('blue');
   const [ready, setReady] = useState(false);
   const [joinCode, setJoinCode] = useState(initialJoinCode.toUpperCase());
   const [joinedCode, setJoinedCode] = useState(mode === 'create' ? 'ST-0427' : '');
   const joined = Boolean(joinedCode);
 
+  // Trascendencia Estelar takes over the backdrop: a black hole and a signal breaking into the lobby.
+  const anomaly = map === 'trascendencia';
+  const root = useRef<HTMLElement>(null);
+  const overlay = useRef<HTMLCanvasElement>(null);
+  const soundOn = useRef(sound.enabled);
+  soundOn.current = sound.enabled;
+
   useEffect(() => {
     const el = canvas.current;
     if (!el) return;
-    const scene = createCommandSpaceScene(el);
+    let calm = 0;
+    let panels: HTMLElement[] = [];
+    const scene = anomaly
+      ? createAnomalyScene(el, overlay.current, {
+        soundEnabled: () => soundOn.current,
+        // The panels split into colours for as long as the interference lasts.
+        onBurst: (seconds) => {
+          const main = root.current;
+          if (!main) return;
+          panels = [...main.querySelectorAll<HTMLElement>('.vi-lobby-card, .vi-lobby__heading, .vi-screen__header')];
+          main.classList.add('is-glitching');
+          window.clearTimeout(calm);
+          calm = window.setTimeout(() => main.classList.remove('is-glitching'), seconds * 1000);
+        },
+        // ...and move with the picture behind them, each by its own amount: only transforms, so nothing is repainted.
+        onWarp: (slip, pulse) => {
+          panels.forEach((panel, index) => {
+            const share = PANEL_SLIP[index % PANEL_SLIP.length]!;
+            panel.style.transform = slip === 0 && pulse === 0 ? ''
+              : `translate3d(${(slip * share).toFixed(2)}px, ${(pulse * 3 * share).toFixed(2)}px, 0) skewX(${(slip * share * 0.07).toFixed(3)}deg) scale(${(1 + pulse * 0.012).toFixed(4)})`;
+          });
+        },
+      })
+      : createCommandSpaceScene(el);
     scene.start();
 
     const onResize = () => scene.resize();
@@ -69,10 +98,13 @@ export function PreparationLobby({
     window.addEventListener('pointermove', onPointer);
     return () => {
       scene.stop();
+      window.clearTimeout(calm);
+      root.current?.classList.remove('is-glitching');
+      for (const panel of panels) panel.style.transform = '';
       window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onPointer);
     };
-  }, []);
+  }, [anomaly]);
 
   const joinRoom = (event: FormEvent) => {
     event.preventDefault();
@@ -88,8 +120,10 @@ export function PreparationLobby({
   }
 
   return (
-    <main className="vi-lobby vi-screen">
-      <canvas ref={canvas} className="vi-lobby-canvas" aria-hidden="true" />
+    <main ref={root} className={`vi-lobby vi-screen${anomaly ? ' is-anomaly' : ''}`}>
+      {/* A fresh canvas per backdrop: the two scenes never share drawing state. */}
+      <canvas key={anomaly ? 'anomaly' : 'space'} ref={canvas} className="vi-lobby-canvas" aria-hidden="true" />
+      {anomaly && <canvas ref={overlay} className="vi-lobby-overlay" aria-hidden="true" />}
       <header className="vi-screen__header">
         <Brand />
         <div className="vi-header-actions">
@@ -160,11 +194,11 @@ export function PreparationLobby({
             {mode === 'create' && (
               <fieldset className="vi-difficulty vi-map-select">
                 <legend>{t('map')}</legend>
-                {PLAYABLE_MAPS.map((option) => (
+                {PRACTICE_MAPS.map((option) => (
                   <button
                     key={option.id}
                     type="button"
-                    className={map === option.id ? 'is-selected' : ''}
+                    className={`${map === option.id ? 'is-selected' : ''}${option.id === 'trascendencia' ? ' is-anomaly-option' : ''}`}
                     aria-pressed={map === option.id}
                     onMouseEnter={() => hover(420)}
                     onClick={() => { sound.playSelect(); setMap(option.id); }}
@@ -173,10 +207,6 @@ export function PreparationLobby({
                     <small>{option.description[locale]}</small>
                   </button>
                 ))}
-                <button type="button" className="is-soon" disabled aria-disabled="true">
-                  <strong>{UPCOMING_MAP.name[locale]}</strong>
-                  <small>{UPCOMING_MAP.description[locale]}</small>
-                </button>
               </fieldset>
             )}
           </section>

@@ -22,6 +22,10 @@ export interface SquadViewModel {
   attackTargetId?: string | null;
   /** Own ships only: the cell the ship is flying to (its formation seat on a group order). */
   destination?: { x: number; y: number } | null;
+  /** A neutral turret: it never moves and fires at any ship within `range` cells. */
+  turret?: { range: number };
+  /** A destructible barrier: it only stands in the way, and its art comes from the map. */
+  barrier?: boolean;
   selected: boolean;
   visible: boolean;
   composition: { interceptors: number; frigates: number; bombers?: number; explorers?: number };
@@ -74,6 +78,8 @@ export interface NodeViewModel {
   stabilizingSeconds?: number;
   /** Cells around the node that count as its capture area. */
   radius?: number;
+  /** A capturable station: its owner buys ships there at once. */
+  station?: boolean;
   /** The side taking the node from its owner, and how far along it is (0 to 1). */
   capture?: { by: SquadOwner; fraction: number };
 }
@@ -89,6 +95,13 @@ export interface NebulaViewModel {
   phaseEndsAt: number;
   /** Cells of the route it takes (or will take next), home first. */
   path: { x: number; y: number }[];
+}
+
+/** A passage of the asteroid belt: clear, about to close or closed until `phaseEndsAt`. */
+export interface BeltViewModel {
+  id: string;
+  phase: 'open' | 'warning' | 'closed';
+  phaseEndsAt: number;
 }
 
 /** A satellite on its way down: warned from `warnTick`, it hits the cell on `impactTick`. */
@@ -138,6 +151,12 @@ export interface GameplayViewModel {
   satellites?: SatelliteViewModel[];
   /** Drifting purple clouds announced by the server; MainScene glides them from the map's own routes. */
   nebulas?: NebulaViewModel[];
+  /** Passages of the asteroid belt; their cells come from the map. */
+  belts?: BeltViewModel[];
+  /** Barriers already shot down: MainScene removes their art. */
+  fallenBarriers?: string[];
+  /** Stations the player holds and what each ship costs there. */
+  stations?: { id: string; x: number; y: number; prices: Record<SquadType, number> }[];
   /** The campaign battlefield currently provides a fixed starting fleet. */
   canProduce?: boolean;
   unitStats?: Record<SquadType, ShipStats>;
@@ -165,7 +184,7 @@ export interface GameplayViewModel {
 /** Things that happened between two server views, for sounds and announcements. */
 export type GameplayEvent =
   | { kind: 'match-start' | 'ship-launched' | 'guardian-down' | 'node-lost' | 'under-attack'
-      | 'satellite-warning' | 'satellite-impact' | 'nebula-warning' | 'core-soon' | 'core-open' | 'core-own-capturing' | 'core-rival-capturing' | 'victory' | 'defeat' }
+      | 'satellite-warning' | 'satellite-impact' | 'nebula-warning' | 'belt-warning' | 'turret-down' | 'barrier-down' | 'station-captured' | 'station-lost' | 'core-soon' | 'core-open' | 'core-own-capturing' | 'core-rival-capturing' | 'victory' | 'defeat' }
   | { kind: 'ship-destroyed' | 'node-captured'; own: boolean };
 
 export type PresentationIntent =
@@ -184,6 +203,7 @@ export type PresentationIntent =
   | { type: 'set-enemy-visibility'; visible: boolean }
   | { type: 'set-clock-running'; running: boolean }
   | { type: 'produce'; kind: SquadType }
+  | { type: 'station-produce'; stationId: string; kind: SquadType }
   | { type: 'disband-selected' }
   | { type: 'upgrade-base'; upgrade: BaseUpgradeKind }
   | { type: 'build-module'; module: ModuleKind }
