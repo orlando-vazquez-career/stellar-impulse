@@ -87,6 +87,23 @@ export class AuthService {
     return this.issue(user);
   }
 
+  async guest(alias?: unknown) {
+    const id = randomUUID();
+    const cleanAlias = (typeof alias === 'string' ? alias.trim().slice(0, 24).replace(/[^a-zA-Z0-9_-]/g, '') : '') || 'guest';
+    const email = `${cleanAlias.toLowerCase()}-${id.slice(0, 8)}@guest.local`;
+    const salt = randomBytes(16).toString('hex');
+    const user: StoredUser = {
+      id, email, salt,
+      passwordHash: scryptSync(id, salt, 64).toString('hex'),
+      displayName: cleanAlias,
+    };
+    this.users.set(email, user);
+    try {
+      await this.store.createAccount(user, [...this.users.values()]);
+    } catch {}
+    return this.issue(user);
+  }
+
   login(email: unknown, password: unknown) {
     const normalized = this.validate(email, password);
     const user = this.users.get(normalized);

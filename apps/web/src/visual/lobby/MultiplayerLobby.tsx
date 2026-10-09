@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import { DEFAULT_CAMPAIGN_MAP, PLAYABLE_MAPS, type PlayableMapId } from '@impulso/input';
 import type { MultiplayerSession } from '../../multiplayer/session';
+import { sessionToken } from '../../auth/client';
 import { useSpaceSound } from '../../login/sound';
 import { useI18n } from '../i18n';
 import { createCommandSpaceScene } from '../menu/command-space';
@@ -216,8 +217,9 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
     sound.playSelect();
     setPending(true);
     try {
-      if (mode === 'create') await session.create(roomName.trim(), token, map);
-      else await session.join(joinCode.trim(), roomName.trim(), token);
+      const activeToken = token || sessionToken() || '';
+      if (mode === 'create') await session.create(roomName.trim(), activeToken, map);
+      else await session.join(joinCode.trim(), roomName.trim(), activeToken);
     } catch {
       // The session publishes the connection error for this operation.
     } finally {
@@ -262,18 +264,27 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
       <canvas ref={canvas} className="vi-lobby-canvas" aria-hidden="true" />
       <header className="vi-screen__header">
         <Brand />
+        <div className="vi-screen__header-center">
+          <span className="vi-screen__header-tag">{copy.eyebrow}</span>
+        </div>
         <div className="vi-header-actions">
           <LanguageToggle />
-          <button className="vi-text-button" disabled={leaving} onClick={() => void leave()}>
-            ← {copy.back}
-          </button>
         </div>
       </header>
 
       <section className="vi-lobby__content">
         <div className="vi-lobby__heading">
           <div>
-            <p className="vi-eyebrow">{copy.eyebrow}</p>
+            <button
+              type="button"
+              className="vi-lobby__back-btn"
+              aria-label={locale === 'es' ? 'Volver al mando · Volver al centro de mando' : copy.back}
+              disabled={leaving}
+              onClick={() => void leave()}
+            >
+              <span className="vi-lobby__back-arrow">←</span>
+              <span>{locale === 'es' ? 'Volver al centro de mando' : copy.back}</span>
+            </button>
             <h1>{mode === 'create' ? copy.createTitle : copy.joinTitle}</h1>
           </div>
           <p>{copy.body}</p>

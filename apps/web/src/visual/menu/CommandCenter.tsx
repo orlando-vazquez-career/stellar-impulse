@@ -1,21 +1,29 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../i18n';
 import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
+import { AudioToggle } from '../shared/AudioToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from './command-space';
+import { HangarPanel } from '../hangar/HangarScreen';
+import { SettingsPanel } from '../settings/SettingsScreen';
+import { loadVisualPreferences, saveVisualPreferences, type VisualPreferences } from '../settings/preferences';
+import { setAudioMix } from '../audio-mix';
+import type { AccountUser } from '../../auth/client';
 
 function MenuCard({
   title,
   detail,
   glyph,
   enabled = false,
+  active = false,
   onClick,
 }: {
   title: string;
   detail: string;
   glyph: string;
   enabled?: boolean;
+  active?: boolean;
   onClick?(): void;
 }) {
   const { t } = useI18n();
@@ -36,10 +44,11 @@ function MenuCard({
 
   return (
     <button
-      className="vi-menu-card"
+      className={`vi-menu-card ${active ? 'is-active' : ''}`}
       disabled={!enabled}
       onMouseEnter={handleHover}
       onClick={handleClick}
+      aria-expanded={active}
     >
       <span className="vi-menu-card__glyph" aria-hidden="true">{glyph}</span>
       <span className="vi-menu-card__copy">
@@ -47,7 +56,9 @@ function MenuCard({
         <small>{detail}</small>
       </span>
       {enabled ? (
-        <span className="vi-menu-card__arrow" aria-hidden="true">→</span>
+        <span className="vi-menu-card__arrow" aria-hidden="true">
+          {active ? '◀' : '→'}
+        </span>
       ) : (
         <span className="vi-menu-card__tag">{t('inDevelopment')}</span>
       )}
@@ -55,9 +66,31 @@ function MenuCard({
   );
 }
 
+export interface CommandCenterProps {
+  alias: string;
+  accountEmail?: string;
+  preferences?: VisualPreferences;
+  onSavePreferences?: (preferences: VisualPreferences) => void;
+  onCreateRoom(): void;
+  /** Starts the run of sectors: the three maps in a row against the AI. */
+  onCampaign?(): void;
+  onCreateMultiplayer(): void;
+  onJoinRoom(): void;
+  onHangar?(): void;
+  onSettings?(): void;
+  onSignOut(): void;
+  onProfile?(): void;
+  onBack?(): void;
+  /** The signed-in account (null for guests): the embedded Hangar needs it for the linked wallet. */
+  account?: AccountUser | null;
+  onAccountChange?(user: AccountUser): void;
+}
+
 export function CommandCenter({
   alias,
   accountEmail,
+  preferences,
+  onSavePreferences,
   onCreateRoom,
   onCampaign,
   onCreateMultiplayer,
@@ -66,21 +99,31 @@ export function CommandCenter({
   onSettings,
   onSignOut,
   onProfile,
-}: {
-  alias: string;
-  accountEmail?: string;
-  onCreateRoom(): void;
-  /** Starts the run of sectors: the three maps in a row against the AI. */
-  onCampaign(): void;
-  onCreateMultiplayer(): void;
-  onJoinRoom(): void;
-  onHangar(): void;
-  onSettings(): void;
-  onSignOut(): void;
-  onProfile?(): void;
-}) {
+  onBack,
+  account = null,
+  onAccountChange,
+}: CommandCenterProps) {
   const { t } = useI18n();
+  const sound = useSpaceSound();
   const canvas = useRef<HTMLCanvasElement>(null);
+  const [unfoldedPanel, setUnfoldedPanel] = useState<'hangar' | 'settings' | null>(null);
+  const [internalPreferences, setInternalPreferences] = useState<VisualPreferences>(
+    () => preferences ?? loadVisualPreferences(),
+  );
+
+  useEffect(() => {
+    if (preferences) {
+      setInternalPreferences(preferences);
+    }
+  }, [preferences]);
+
+  const effectivePreferences = preferences ?? internalPreferences;
+  const handleSavePreferences = (next: VisualPreferences) => {
+    saveVisualPreferences(next);
+    setInternalPreferences(next);
+    setAudioMix(next.audio);
+    onSavePreferences?.(next);
+  };
 
   useEffect(() => {
     const el = canvas.current;
@@ -104,45 +147,125 @@ export function CommandCenter({
     };
   }, []);
 
+  function toggleHangar() {
+    setUnfoldedPanel((current) => (current === 'hangar' ? null : 'hangar'));
+  }
+
+  function toggleSettings() {
+    setUnfoldedPanel((current) => {
+      if (current === 'settings') {
+        setAudioMix(effectivePreferences.audio);
+        return null;
+      }
+      return 'settings';
+    });
+  }
+
+  function handleBack() {
+    sound.playSelect();
+    if (unfoldedPanel) {
+      if (unfoldedPanel === 'settings') {
+        setAudioMix(effectivePreferences.audio);
+      }
+      setUnfoldedPanel(null);
+    } else if (onBack) {
+      onBack();
+    } else {
+      onSignOut();
+    }
+  }
+
   return (
     <main className="vi-command vi-screen">
       <canvas ref={canvas} className="vi-command-canvas" aria-hidden="true" />
-      <header className="vi-screen__header">
-        <Brand />
-        <div className="vi-header-actions">
+      <header className="vi-screen__header vi-command__header">
+        <div className="vi-command__header-brand">
+          <Brand />
+          <div className="vi-command__header-tag">
+            <span className="vi-hud-badge">● SISTEMAS EN LÍNEA</span>
+            <span className="vi-command__channel">{t('sector').toUpperCase()} 01 // PUENTE</span>
+          </div>
+        </div>
+
+        <div className="vi-command__header-greeting">
+          <h1 className="vi-command__greeting">{t('welcome', { name: alias })}</h1>
+          <p className="vi-command__subtitle">{t('menuBody')}</p>
+        </div>
+
+        <div className="vi-header-actions vi-command__header-actions">
+          <AudioToggle />
           <LanguageToggle />
-          {onProfile&&<button className="vi-text-button" onClick={onProfile}>{t('profile')}</button>}
+          {onProfile && <button className="vi-text-button" onClick={onProfile}>{t('profile')}</button>}
           <button className="vi-text-button" onClick={onSignOut}>{t(accountEmail ? 'accountLogout' : 'signOut')}</button>
         </div>
       </header>
 
-      <section className="vi-command__content">
-        <div className="vi-command__heading">
-          <p className="vi-eyebrow">{t('commandCenter')}</p>
-          <h1>{t('welcome', { name: alias })}</h1>
-          <p>{t('menuBody')}</p>
+      <section className={`vi-command__content ${unfoldedPanel ? 'has-unfolded-panel' : ''}`}>
+        <div className="vi-command__sidebar">
+          <div className="vi-command__menu-label">
+            <button
+              type="button"
+              className="vi-command__back-btn"
+              onClick={handleBack}
+              onMouseEnter={() => sound.playHover({ pitch: 580 })}
+              title="Ir atrás"
+            >
+              <span className="vi-command__back-arrow" aria-hidden="true">◀</span>
+              <span>IR ATRÁS</span>
+            </button>
+            <span className="vi-command__menu-tag">OPERACIONES</span>
+          </div>
+
+          <div className="vi-menu-grid">
+            <MenuCard glyph="△" title={t('deploy')} detail={t('deployDetail')} enabled onClick={onCreateRoom} />
+            {onCampaign && <MenuCard glyph="✦" title={t('campaignMode')} detail={t('campaignModeDetail')} enabled onClick={onCampaign} />}
+            <MenuCard glyph="⇄" title={t('createMultiplayer')} detail={t('createMultiplayerDetail')} enabled onClick={onCreateMultiplayer} />
+            <MenuCard glyph="⌁" title={t('joinRoom')} detail={t('joinDetail')} enabled onClick={onJoinRoom} />
+            <MenuCard
+              glyph="◇"
+              title={t('hangar')}
+              detail={t('hangarDetail')}
+              enabled
+              active={unfoldedPanel === 'hangar'}
+              onClick={toggleHangar}
+            />
+            <MenuCard
+              glyph="＋"
+              title={t('settings')}
+              detail={t('settingsDetail')}
+              enabled
+              active={unfoldedPanel === 'settings'}
+              onClick={toggleSettings}
+            />
+          </div>
         </div>
 
-        <div className="vi-menu-grid">
-          <MenuCard glyph="△" title={t('deploy')} detail={t('deployDetail')} enabled onClick={onCreateRoom} />
-          <MenuCard glyph="✦" title={t('campaignMode')} detail={t('campaignModeDetail')} enabled onClick={onCampaign} />
-          <MenuCard glyph="⇄" title={t('createMultiplayer')} detail={t('createMultiplayerDetail')} enabled onClick={onCreateMultiplayer} />
-          <MenuCard glyph="⌁" title={t('joinRoom')} detail={t('joinDetail')} enabled onClick={onJoinRoom} />
-          <MenuCard glyph="◇" title={t('hangar')} detail={t('hangarDetail')} enabled onClick={onHangar} />
-          <MenuCard glyph="＋" title={t('settings')} detail={t('settingsDetail')} enabled onClick={onSettings} />
-        </div>
+        {unfoldedPanel && (
+          <div className="vi-command__workspace">
+            {unfoldedPanel === 'hangar' && (
+              <HangarPanel onBack={() => setUnfoldedPanel(null)} isEmbedded account={account} onAccountChange={onAccountChange} />
+            )}
+            {unfoldedPanel === 'settings' && (
+              <SettingsPanel
+                preferences={effectivePreferences}
+                onSave={handleSavePreferences}
+                onPreviewAudio={setAudioMix}
+                onBack={() => {
+                  setAudioMix(effectivePreferences.audio);
+                  setUnfoldedPanel(null);
+                }}
+                isEmbedded
+              />
+            )}
+          </div>
+        )}
       </section>
 
-      <div className="vi-command__sector" aria-hidden="true">
-        <span>01</span>
-        <i />
-        <small>{t('sector')} // {t('preparation')}</small>
-      </div>
-
-      <footer className="vi-screen__footer">
+      <footer className="vi-screen__footer vi-command__footer">
         <span>{t('commander')} // {alias.toUpperCase()}</span>
         <span>{accountEmail || t('localConnection')}</span>
       </footer>
     </main>
   );
 }
+

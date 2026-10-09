@@ -26,9 +26,16 @@ const HULL_PREVIEW_FILTERS: Record<string, string> = {
   obsidian: 'grayscale(.65) brightness(.68) sepia(.3) hue-rotate(205deg) saturate(1.6)',
 };
 
-/** `account`: the signed-in account (null for guests), whose linked wallet holds the NFT pieces. */
-export function HangarScreen({ onBack, account = null, onAccountChange = () => {} }: {
-  onBack(): void; account?: AccountUser | null; onAccountChange?(user: AccountUser): void;
+export function HangarPanel({
+  onBack,
+  isEmbedded = false,
+  account = null,
+  onAccountChange = () => {},
+}: {
+  onBack(): void;
+  isEmbedded?: boolean;
+  account?: AccountUser | null;
+  onAccountChange?(user: AccountUser): void;
 }) {
   const i18n = useI18n();
   const { locale, t } = i18n;
@@ -36,7 +43,6 @@ export function HangarScreen({ onBack, account = null, onAccountChange = () => {
   const [view, setView] = useState<'collection' | 'market'>('collection');
   const [selected, setSelected] = useState<string | null>(null);
   const sound = useSpaceSound();
-  const canvas = useRef<HTMLCanvasElement>(null);
 
   const [category, setCategory] = useState<HangarCategory>('hull');
   const [selectedShip, setSelectedShip] = useState<SquadType>('interceptor');
@@ -56,29 +62,6 @@ export function HangarScreen({ onBack, account = null, onAccountChange = () => {
       return changed ? next : current;
     });
   }, [chain.loaded, chain.ownedClasses]);
-
-  useEffect(() => {
-    const el = canvas.current;
-    if (!el) return;
-    const scene = createCommandSpaceScene(el);
-    scene.start();
-
-    const onResize = () => scene.resize();
-    const onPointer = (event: PointerEvent) => {
-      scene.setPointer(
-        (event.clientX / window.innerWidth) * 2 - 1,
-        (event.clientY / window.innerHeight) * 2 - 1,
-      );
-    };
-    window.addEventListener('resize', onResize);
-    window.addEventListener('pointermove', onPointer);
-    return () => {
-      scene.stop();
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('pointermove', onPointer);
-    };
-  }, []);
-
   const equippedItems = useMemo(
     () => ({
       hull: cosmeticCatalog.find((item) => item.id === loadout.hull)!,
@@ -140,38 +123,35 @@ export function HangarScreen({ onBack, account = null, onAccountChange = () => {
   }
 
   return (
-    <main className="vi-hangar vi-screen">
-      <canvas ref={canvas} className="vi-hangar-canvas" aria-hidden="true" />
-      <header className="vi-screen__header">
-        <Brand />
-        <div className="vi-header-actions">
-          <LanguageToggle />
-          <button
-            className="vi-text-button"
-            onClick={() => {
-              sound.playSelect();
-              onBack();
-            }}
-          >
-            ← {t('backToCommand')}
-          </button>
+    <section className={`vi-hangar__content ${isEmbedded ? 'vi-hangar__content--embedded' : ''}`}>
+      <div className="vi-hangar__heading">
+        <div>
+          <p className="vi-eyebrow">{t('hangarEyebrow')}</p>
+          <h1>{t('hangarTitle')}</h1>
         </div>
-      </header>
-
-      <section className="vi-hangar__content">
-        <div className="vi-hangar__heading">
-          <div>
-            <p className="vi-eyebrow">{t('hangarEyebrow')}</p>
-            <h1>{t('hangarTitle')}</h1>
-          </div>
-          <div>
-            <p>{t('hangarBody')}</p>
+        <div className="vi-hangar__heading-meta">
+          <p>{t('hangarBody')}</p>
+          <div className="vi-hangar__heading-tags">
             <span>
               <i />
               {t('cosmeticOnly')}
             </span>
+            {isEmbedded && (
+              <button
+                className="vi-embedded-close"
+                onClick={() => {
+                  sound.playSelect();
+                  onBack();
+                }}
+                aria-label={t('backToCommand')}
+                title={t('backToCommand')}
+              >
+                ✕
+              </button>
+            )}
           </div>
         </div>
+      </div>
 
         <div className="vi-hangar__workspace">
           <section className="vi-ship-preview" aria-labelledby="ship-preview-title" style={previewStyle}>
@@ -310,8 +290,73 @@ export function HangarScreen({ onBack, account = null, onAccountChange = () => {
               </div>
             </div>
           </section>
+      </div>
+    </section>
+  );
+}
+
+export function HangarScreen({
+  onBack,
+  account = null,
+  onAccountChange = () => {},
+  embedded = false,
+}: {
+  onBack(): void;
+  account?: AccountUser | null;
+  onAccountChange?(user: AccountUser): void;
+  embedded?: boolean;
+}) {
+  const { t } = useI18n();
+  const sound = useSpaceSound();
+  const canvas = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (embedded) return;
+    const el = canvas.current;
+    if (!el) return;
+    const scene = createCommandSpaceScene(el);
+    scene.start();
+
+    const onResize = () => scene.resize();
+    const onPointer = (event: PointerEvent) => {
+      scene.setPointer(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        (event.clientY / window.innerHeight) * 2 - 1,
+      );
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('pointermove', onPointer);
+    return () => {
+      scene.stop();
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('pointermove', onPointer);
+    };
+  }, [embedded]);
+
+  if (embedded) {
+    return <HangarPanel onBack={onBack} isEmbedded account={account} onAccountChange={onAccountChange} />;
+  }
+
+  return (
+    <main className="vi-hangar vi-screen">
+      <canvas ref={canvas} className="vi-hangar-canvas" aria-hidden="true" />
+      <header className="vi-screen__header">
+        <Brand />
+        <div className="vi-header-actions">
+          <LanguageToggle />
+          <button
+            className="vi-text-button"
+            onClick={() => {
+              sound.playSelect();
+              onBack();
+            }}
+          >
+            ← {t('backToCommand')}
+          </button>
         </div>
-      </section>
+      </header>
+
+      <HangarPanel onBack={onBack} account={account} onAccountChange={onAccountChange} />
 
       <footer className="vi-screen__footer">
         <span>IMPULSO // {t('hangar').toUpperCase()}</span>
@@ -320,3 +365,4 @@ export function HangarScreen({ onBack, account = null, onAccountChange = () => {
     </main>
   );
 }
+

@@ -63,6 +63,57 @@ export function registerAccount(email: string, password: string, displayName?: s
   return startSession('/auth/register', { email, password, ...(displayName === undefined ? {} : { displayName }) });
 }
 
+export async function ensureGuestSession(alias?: string): Promise<AccountUser> {
+  const currentToken = sessionToken();
+  if (currentToken) {
+    try {
+      const restored = await restoreAccount();
+      if (restored) return restored;
+    } catch {
+      // Session expired or invalid, request a new guest session
+    }
+  }
+
+  try {
+    const response = await fetch(`${SERVER_URL}/auth/guest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ alias: alias || 'guest' }),
+    });
+    if (response.ok) {
+      const result = await response.json() as { token?: unknown; user?: unknown };
+      const user = toUser(result.user);
+      if (typeof result.token === 'string' && /^[A-Za-z0-9_-]{40,}$/.test(result.token) && user) {
+        sessionStorage.setItem(TOKEN_KEY, result.token);
+        return user;
+      }
+    }
+  } catch {
+    // If /auth/guest endpoint is not reachable, fallback to register
+  }
+
+  const randomSuffix = Math.random().toString(36).slice(2, 10);
+  const cleanAlias = (alias?.trim().slice(0, 16).replace(/[^a-zA-Z0-9]/g, '') || 'guest').toLowerCase();
+  const guestEmail = `${cleanAlias}-${randomSuffix}@guest.local`;
+  const guestPassword = `Guest_${randomSuffix}_${Date.now()}`;
+
+  const regResponse = await fetch(`${SERVER_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    body: JSON.stringify({ email: guestEmail, password: guestPassword }),
+  });
+  if (!regResponse.ok) throw new AuthRequestError(regResponse.status);
+  const regResult = await regResponse.json() as { token?: unknown; user?: unknown };
+  const regUser = toUser(regResult.user);
+  if (typeof regResult.token !== 'string' || !/^[A-Za-z0-9_-]{40,}$/.test(regResult.token) || !regUser) {
+    throw new Error('Invalid authentication response');
+  }
+  sessionStorage.setItem(TOKEN_KEY, regResult.token);
+  return regUser;
+}
+
 export async function restoreAccount(): Promise<AccountUser | null> {
   const token = sessionToken();
   if (!token) return null;

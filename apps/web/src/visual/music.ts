@@ -1,4 +1,4 @@
-import { channelVolume, getAudioMix, subscribeAudioMix, type AudioMix } from './audio-mix';
+import { channelVolume, getAudioMix, setAudioMix, subscribeAudioMix, type AudioMix } from './audio-mix';
 import { equippedCosmetic } from './hangar/loadout';
 
 export type MusicTrack = 'menu' | 'match';
@@ -23,7 +23,7 @@ const SCALE = [0, 2, 3, 5, 7, 8, 10, 12, 14, 15, 17, 19];
  */
 export class MusicPlayer {
   private static readonly CROSSFADE_DURATION = 1.2;
-  private static readonly TAB_FADE_DURATION = 1.2;
+  private static readonly TAB_FADE_DURATION = 0.6;
 
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -41,7 +41,7 @@ export class MusicPlayer {
   private synthGain: GainNode | null = null;
   private seed = 1;
   /** Set once disposed: late async work (decoding the recorded tracks) must never start sound again. */
-  private disposed = false;
+  private _disposed = false;
   private audio: AudioMix;
   private readonly unsubscribe: () => void;
 
@@ -49,6 +49,24 @@ export class MusicPlayer {
     this.audio = audio;
     this.unsubscribe = subscribeAudioMix((mix) => this.setPreferences(mix));
     void this.loadRecorded(manifestUrl);
+  }
+
+  get disposed(): boolean {
+    return this._disposed;
+  }
+
+  get isPlaying(): boolean {
+    return Boolean(this.activeSource || this.timer);
+  }
+
+  get isMuted(): boolean {
+    return Boolean(this.audio.muted);
+  }
+
+  toggleMute(): boolean {
+    const nextMuted = !this.audio.muted;
+    setAudioMix({ ...this.audio, muted: nextMuted });
+    return nextMuted;
   }
 
   private get volume(): number {
@@ -61,7 +79,7 @@ export class MusicPlayer {
   }
 
   private ensureContext(): AudioContext | null {
-    if (this.disposed || typeof AudioContext === 'undefined') return null;
+    if (this._disposed || typeof AudioContext === 'undefined') return null;
     if (!this.context) {
       this.context = new AudioContext();
       this.master = this.context.createGain();
@@ -100,28 +118,28 @@ export class MusicPlayer {
 
   private async loadRecorded(manifestUrl: string) {
     try {
-      const manifest = await (await fetch(manifestUrl)).json() as { music?: Partial<Record<MusicTrack, string | null>> };
+      const manifest = (await (await fetch(manifestUrl)).json()) as { music?: Partial<Record<MusicTrack, string | null>> };
       const base = new URL(manifestUrl, window.location.href);
       if (manifest.music?.menu) this.paths.menu = new URL(manifest.music.menu, base).href;
       if (!this.paths.match && manifest.music?.match) this.paths.match = new URL(manifest.music.match, base).href;
     } catch { /* the equipped match track can load even if the manifest is unavailable */ }
-    if (this.disposed) return;
+    if (this._disposed) return;
     await Promise.all(['menu', 'match'].map((track) => this.loadTrack(track as MusicTrack)));
   }
 
   /** Cache by file, so a late download cannot overwrite a newer hangar selection. */
   private async loadTrack(track: MusicTrack) {
     const path = this.paths[track];
-    if (!path || this.disposed || this.recorded.has(path)) return;
+    if (!path || this._disposed || this.recorded.has(path)) return;
     if (this.pending.has(path)) return this.pending.get(path);
     const ctx = this.ensureContext();
     if (!ctx) return;
     const request = (async () => {
       try {
         const response = await fetch(path);
-        if (!response.ok || this.disposed) return;
+        if (!response.ok || this._disposed) return;
         const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
-        if (this.disposed) return;
+        if (this._disposed) return;
         this.recorded.set(path, buffer);
         if (this.track && this.paths[this.track] === path) this.play(this.track, true);
       } catch { /* keep the generative fallback for unavailable or undecodable recordings */ }
@@ -138,7 +156,7 @@ export class MusicPlayer {
   }
 
   play(track: MusicTrack, force = false) {
-    if (this.disposed) return;
+    if (this._disposed) return;
     // The app keeps this player alive while visiting the hangar: reread on match entry.
     if (track === 'match') this.paths.match = equippedCosmetic('music').musicFile;
     const path = this.paths[track];
@@ -319,7 +337,7 @@ export class MusicPlayer {
   }
 
   dispose() {
-    this.disposed = true;
+    this._disposed = true;
     this.unsubscribe();
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.handleVisibilityChange);
@@ -329,5 +347,23 @@ export class MusicPlayer {
     this.context = null;
     this.master = null;
     this.visibilityGain = null;
+  }
+}
+
+let sharedPlayer: MusicPlayer | null = null;
+
+export function getMusicPlayer(audio?: AudioMix): MusicPlayer {
+  if (!sharedPlayer || sharedPlayer.disposed) {
+    sharedPlayer = new MusicPlayer(audio ?? getAudioMix());
+  } else if (audio) {
+    sharedPlayer.setPreferences(audio);
+  }
+  return sharedPlayer;
+}
+
+export function disposeSharedMusicPlayer() {
+  if (sharedPlayer) {
+    sharedPlayer.dispose();
+    sharedPlayer = null;
   }
 }

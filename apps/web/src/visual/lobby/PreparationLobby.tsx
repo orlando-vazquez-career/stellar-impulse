@@ -126,24 +126,29 @@ export function PreparationLobby({
       {anomaly && <canvas ref={overlay} className="vi-lobby-overlay" aria-hidden="true" />}
       <header className="vi-screen__header">
         <Brand />
+        <div className="vi-screen__header-center">
+          <span className="vi-screen__header-tag">{t('lobbyEyebrow')}</span>
+        </div>
         <div className="vi-header-actions">
           <LanguageToggle />
-          <button
-            className="vi-text-button"
-            onClick={() => {
-              sound.playSelect();
-              onBack();
-            }}
-          >
-            ← {t('backToCommand')}
-          </button>
         </div>
       </header>
 
       <section className="vi-lobby__content">
         <div className="vi-lobby__heading">
           <div>
-            <p className="vi-eyebrow">{t('lobbyEyebrow')}</p>
+            <button
+              type="button"
+              className="vi-lobby__back-btn"
+              onMouseEnter={() => hover(560)}
+              onClick={() => {
+                sound.playSelect();
+                onBack();
+              }}
+            >
+              <span className="vi-lobby__back-arrow">←</span>
+              <span>{t('backToCommand')}</span>
+            </button>
             <h1>{t(mode === 'create' ? 'lobbyCreateTitle' : 'lobbyJoinTitle')}</h1>
           </div>
           <p>{t('lobbyBody')}</p>
