@@ -49,13 +49,20 @@ export interface ProduceCommand {
   type: 'produce';
   kind: 'explorer' | 'interceptor' | 'frigate' | 'bomber';
 }
+/** Buy one ship at a captured station: it launches at once, at the station's price. */
+export interface StationProduceCommand {
+  seq: number;
+  type: 'station_produce';
+  kind: ProduceCommand['kind'];
+  stationId: string;
+}
 export interface DisbandCommand { seq: number; type: 'disband'; squadIds: string[] }
 export interface UpgradeBaseCommand { seq: number; type: 'upgrade_base'; upgrade: 'damage' | 'capacity' }
 /** Build one base module. Slot rules and costs are checked by the server. */
 export interface BuildModuleCommand { seq: number; type: 'build_module'; module: 'refinery' | 'refinery2' | 'shipyard' | 'bastion' | 'radar' }
 export interface SurrenderCommand { seq: number; type: 'surrender' }
 export type Command = MoveCommand | MoveFormationCommand | AttackCommand | StopCommand | EnqueueCommand | StanceCommand | ProduceCommand | DisbandCommand
-  | UpgradeBaseCommand | BuildModuleCommand | SurrenderCommand;
+  | UpgradeBaseCommand | BuildModuleCommand | SurrenderCommand | StationProduceCommand;
 export type ParseResult = { ok: true; command: Command } | { ok: false; reason: 'invalid_command' };
 
 /** Strict validation at the JSON boundary. No coercion or extra properties. */
@@ -73,6 +80,7 @@ export function parseCommand(value: unknown): ParseResult {
     : type === 'move_formation' ? ['seq', 'type', 'squadIds', 'x', 'y', 'formation']
     : type === 'stance' ? ['seq', 'type', 'squadId', 'stance']
     : type === 'produce' ? ['seq', 'type', 'kind']
+    : type === 'station_produce' ? ['seq', 'type', 'kind', 'stationId']
     : type === 'upgrade_base' ? ['seq', 'type', 'upgrade']
     : type === 'build_module' ? ['seq', 'type', 'module']
     : type === 'surrender' ? ['seq', 'type'] : [];
@@ -111,10 +119,13 @@ export function parseCommand(value: unknown): ParseResult {
     if (upgrade !== 'damage' && upgrade !== 'capacity') return invalid;
     return { ok: true, command: { seq, type, upgrade } };
   }
-  if (type === 'produce') {
+  if (type === 'produce' || type === 'station_produce') {
     const kind: unknown = fields.kind!.value;
     if (kind !== 'explorer' && kind !== 'interceptor' && kind !== 'frigate' && kind !== 'bomber') return invalid;
-    return { ok: true, command: { seq, type, kind } };
+    if (type === 'produce') return { ok: true, command: { seq, type, kind } };
+    const stationId: unknown = fields.stationId!.value;
+    if (typeof stationId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(stationId)) return invalid;
+    return { ok: true, command: { seq, type, kind, stationId } };
   }
   const squadId: unknown = fields.squadId!.value;
   if (typeof squadId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(squadId)) return invalid;

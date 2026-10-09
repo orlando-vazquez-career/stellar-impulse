@@ -13,7 +13,7 @@ export class WeaponEffects {
     const to = cellToIso(shot.to.x, shot.to.y);
     const bomber = squad.unitType === 'bomber';
     const beam = squad.unitType === 'frigate';
-    const hue = bomber ? 0xffba65 : squad.owner === 'blue' ? 0x83dfff : 0xff718c;
+    const hue = bomber ? 0xffba65 : squad.owner === 'blue' ? 0x83dfff : squad.owner === 'neutral' ? 0xffd166 : 0xff718c;
     const graphics = this.scene.add.graphics().setDepth(250000);
     this.active.add(graphics);
     const duration = bomber ? 520 : beam ? 180 : 200;

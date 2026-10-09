@@ -3,6 +3,7 @@ import { distance, type PlayerId, type Squad, type World } from '../index.js';
 import { statsFor, type ShipStats, type StatsContext } from '../stats.js';
 import { hasModule, nodeRate, RADAR, rivalOf, SHIPYARD } from '../base.js';
 import { AUGMENTS_BY_ID, type Effect } from './catalog.js';
+import { nebulaHides, nebulaVision } from '../mecanicas/nebulosas.js';
 export interface EffectContext extends StatsContext { suddenDeath?: boolean; players?: Partial<Record<PlayerId, { statModifiers?: World['players']['p1']['statModifiers']; augments?: string[] }>> }
 const effectLists=new Map<string,readonly Effect[]>();
 export function effectsFor(world: EffectContext, player: PlayerId): readonly Effect[] {
@@ -46,6 +47,8 @@ export function captureDuration(world: EffectContext, player: PlayerId, ticks: n
   return Math.max(1, Math.round(effectsFor(world,player).reduce((time,e) => e.hook === 'capture' && (!e.coreOnly || core) ? time * e.factor : time, ticks)));
 }
 export function isConcealed(world: World, unit: Squad): boolean {
+  // The purple nebula hides a ship from any rival that is not right beside it.
+  if (world.nebula && nebulaHides(world, rivalOf(unit.ownerId), unit)) return true;
   return effectsFor(world,unit.ownerId).some((e) => e.hook === 'camouflage'
     && world.tick - Math.max(unit.lastMovedTick ?? 0, unit.lastAttackTick ?? 0) >= e.idleTicks)
     && !radarCovers(world, rivalOf(unit.ownerId), unit);
@@ -62,7 +65,7 @@ export function visionSources(world: World, player: PlayerId): { position: {x:nu
   const baseBonus = Math.max(sensor?.hook === 'sensors' ? sensor.baseBonus : 0, radar ? RADAR.baseVision : 0);
   const nodeRadius = Math.max(sensor?.hook === 'sensors' ? sensor.nodeRadius : 0, radar ? RADAR.nodeVision : 0);
   return [{ position: world.players[player].base, radius: world.rules.visionRadius + baseBonus },
-    ...world.squads.filter((u) => u.ownerId === player && u.hp > 0).map((u) => ({position:u,radius:statsFor(world,player,u.kind).vision})),
+    ...world.squads.filter((u) => u.ownerId === player && u.hp > 0).map((u) => ({position:u,radius:nebulaVision(world,u,statsFor(world,player,u.kind).vision)})),
     ...(nodeRadius > 0 ? world.nodes.filter((n) => n.ownerId === player).map((n) => ({position:n,radius:nodeRadius})) : [])];
 }
 export function baseIncome(world: World, player: PlayerId): number {

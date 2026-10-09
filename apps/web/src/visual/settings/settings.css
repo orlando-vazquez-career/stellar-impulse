@@ -310,11 +310,24 @@
 }
 .vi-audio-settings .vi-setting-range strong { line-height: 18px; }
 .vi-audio-settings .vi-setting-range output { line-height: 18px; }
-.vi-control-settings { padding: 8px 24px; }
-.vi-control-settings__head, .vi-control-settings > label { display: grid; grid-template-columns: 1fr 180px; align-items: center; }
-.vi-control-settings__head { padding: 9px 12px; color: var(--settings-muted); font-family: var(--vi-display); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
-.vi-control-settings > label { min-height: 49px; padding: 6px 12px; border-top: 1px solid var(--settings-line); }
-.vi-control-settings > label strong { font-size: 13px; }
+.vi-control-settings { padding: 4px 24px 20px; }
+.vi-control-settings__section { padding: 8px 0 13px; border-bottom: 1px solid var(--settings-line); }
+.vi-control-settings__section h3 { margin: 5px 10px 7px; color: var(--settings-accent-light); font-family: var(--vi-display); font-size: 12px; letter-spacing: .11em; text-transform: uppercase; }
+.vi-control-settings__row { min-height: 48px; padding: 6px 10px; border-top: 1px solid var(--settings-line); display: grid; grid-template-columns: minmax(155px, .75fr) minmax(0, 1.25fr); align-items: center; gap: 12px; }
+.vi-control-settings__row > strong { font-size: 13px; }
+.vi-control-settings__bindings { min-width: 0; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+.vi-control-binding { display: inline-flex; align-items: stretch; border: 1px solid var(--settings-border); background: rgba(3, 7, 12, .35); }
+.vi-control-binding button { min-height: 32px; border: 0; border-radius: 0; background: transparent; color: var(--vi-text); }
+.vi-control-binding__key { padding: 3px 7px; }
+.vi-control-binding__key kbd { color: inherit; font: inherit; }
+.vi-control-binding__remove { width: 28px; padding: 0; border-left: 1px solid var(--settings-line) !important; color: var(--settings-muted) !important; }
+.vi-control-binding button:hover { background: rgba(113, 229, 220, .13); color: var(--settings-accent-light); }
+.vi-control-binding__add { min-height: 32px; padding: 3px 8px; border: 1px dashed var(--settings-border); border-radius: 0; background: transparent; color: var(--settings-accent-light); font-size: 12px; }
+.vi-control-binding__add:hover { border-color: var(--settings-accent-light); background: rgba(113, 229, 220, .1); }
+.vi-control-settings__recording, .vi-control-settings__error { grid-column: 1 / -1; }
+.vi-control-settings__recording { display: flex; justify-content: flex-end; align-items: center; gap: 10px; color: var(--settings-accent-light); font-size: 12px; }
+.vi-control-settings__recording button { padding: 4px 8px; border: 1px solid var(--settings-border); border-radius: 0; background: transparent; color: var(--vi-text); font-size: 11px; }
+.vi-control-settings__error { color: #ff9a9a; text-align: right; }
 .vi-control-settings select, .vi-color-profile select {
   height: 35px;
   padding: 0 10px;
@@ -383,7 +396,10 @@
   .vi-settings-panel { min-height: 480px; grid-template-rows: 82px minmax(0, 1fr) auto; }
   .vi-settings-panel > footer, .vi-settings-panel > footer > div { flex-wrap: wrap; }
   .vi-language-settings > div { grid-template-columns: 1fr; }
-  .vi-control-settings__head, .vi-control-settings > label { grid-template-columns: 1fr 100px; }
+  .vi-control-settings { padding-right: 12px; padding-left: 12px; }
+  .vi-control-settings__row { grid-template-columns: 1fr; gap: 7px; }
+  .vi-control-settings__bindings { justify-content: flex-start; }
+  .vi-control-settings__recording { justify-content: flex-start; }
   .vi-color-profile { grid-template-columns: 1fr; gap: 8px; }
 }
 

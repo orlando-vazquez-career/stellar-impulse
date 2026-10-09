@@ -1,4 +1,4 @@
-import { PLAYABLE_MAPS } from './playable-maps.js';
+import { PLAYABLE_MAPS, type PlayableMapId } from './playable-maps.js';
 
 /**
  * Versioned message envelopes. Campaign v3 runs the match engine (Espiral, augments, base);
@@ -7,7 +7,7 @@ import { PLAYABLE_MAPS } from './playable-maps.js';
 export const PROTOCOL_VERSION = 1;
 export const BATTLEFIELD_PROTOCOL_VERSION = 2;
 export const CAMPAIGN_PROTOCOL_VERSION = 3;
-export type CampaignMap = 'espiral' | 'sector-01';
+export type CampaignMap = PlayableMapId | 'sector-01';
 
 export type EnvelopeResult =
   | { ok: true; body: unknown }

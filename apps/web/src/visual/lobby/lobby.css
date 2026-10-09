@@ -280,6 +280,7 @@
   display: grid;
   grid-template-columns: minmax(330px, 0.82fr) minmax(520px, 1.18fr);
   gap: 18px;
+  align-items: start;
 }
 
 @media (max-width: 960px) {
@@ -823,7 +824,19 @@
 }
 
 .vi-map-select {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.vi-map-select .is-soon {
+  grid-column: 1 / -1;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vi-map-select .is-soon:hover {
+  transform: none;
+  border-color: rgba(113, 229, 220, 0.3);
+  background: rgba(5, 16, 26, 0.85);
 }
 
 /* Controles de listo y despliegue */
@@ -1023,7 +1036,93 @@
   .vi-lobby__content{padding-top:10px;}
   .vi-lobby__grid{margin-top:12px;}
   .vi-room__section,.vi-side-select,.vi-difficulty,.vi-ready-controls{padding-top:7px;padding-bottom:7px;}
+  .vi-difficulty button{min-height:48px;}
+  .vi-map-select button small{display:none;}
   .vi-duration{margin:0;padding:6px 20px;display:flex;align-items:center;gap:18px;}
   .vi-duration legend{float:left;font-size:12px;}
   .vi-duration select{flex:1;width:auto;min-width:0;padding:5px;font-size:13px;}
+}
+
+/* ==========================================================================
+   TRASCENDENCIA ESTELAR: el lobby bajo interferencia
+   ========================================================================== */
+
+.vi-lobby.is-anomaly {
+  background: #010104;
+}
+
+/* Capa por encima de los paneles: interferencia, textos interceptados y su polvo. No recibe clics. */
+.vi-lobby-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.vi-lobby.is-anomaly::before {
+  border-color: rgba(150, 120, 255, 0.2);
+  box-shadow:
+    0 0 0 6vw rgba(110, 70, 255, 0.03),
+    0 0 0 12vw rgba(120, 200, 255, 0.012),
+    0 0 50px rgba(130, 110, 255, 0.07);
+}
+
+/* Sin mezcla "screen": sobre un fondo animado obliga a recomponer toda la pantalla en cada cuadro. */
+.vi-lobby.is-anomaly::after {
+  background: repeating-linear-gradient(to bottom, rgba(150, 170, 255, 0.03) 0 1px, transparent 1px 3px);
+  mix-blend-mode: normal;
+}
+
+/* Los paneles dejan ver el agujero negro que tienen detrás. */
+.vi-lobby.is-anomaly .vi-lobby-card {
+  background: linear-gradient(160deg, rgba(5, 7, 18, 0.74), rgba(2, 3, 11, 0.66));
+  border-color: rgba(140, 125, 255, 0.45);
+  box-shadow:
+    0 0 34px rgba(110, 90, 255, 0.12),
+    inset 0 0 22px rgba(90, 140, 255, 0.05);
+  transition: background 0.6s ease, border-color 0.6s ease;
+}
+
+.vi-map-select .is-anomaly-option {
+  grid-column: 1 / -1;
+  border-color: rgba(150, 125, 255, 0.5);
+}
+
+/* Run de sectores: los tres mapas encadenados. */
+.vi-map-select .is-run-option {
+  grid-column: 1 / -1;
+  border-color: rgba(56, 214, 240, 0.5);
+}
+
+.vi-map-select .is-run-option.is-selected {
+  border-color: rgba(120, 232, 255, 0.95);
+  box-shadow: 0 0 18px rgba(56, 214, 240, 0.35), inset 0 0 14px rgba(138, 92, 240, 0.14);
+}
+
+.vi-map-select .is-anomaly-option.is-selected {
+  border-color: rgba(190, 170, 255, 0.95);
+  box-shadow: 0 0 18px rgba(130, 100, 255, 0.35), inset 0 0 14px rgba(120, 200, 255, 0.12);
+}
+
+/* Ráfaga: el script mueve los paneles cuadro a cuadro (solo transform); aquí solo se separan en colores. */
+.vi-lobby.is-anomaly .vi-lobby-card,
+.vi-lobby.is-anomaly .vi-lobby__heading,
+.vi-lobby.is-anomaly .vi-screen__header {
+  will-change: transform;
+}
+
+.vi-lobby.is-glitching .vi-lobby-card,
+.vi-lobby.is-glitching .vi-lobby__heading {
+  filter: drop-shadow(-3px 0 rgba(255, 30, 100, 0.55)) drop-shadow(3px 0 rgba(0, 235, 255, 0.55));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vi-lobby.is-glitching .vi-lobby-card,
+  .vi-lobby.is-glitching .vi-lobby__heading,
+  .vi-lobby.is-glitching .vi-screen__header {
+    filter: none;
+  }
 }

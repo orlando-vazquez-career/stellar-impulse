@@ -1,17 +1,22 @@
 import Phaser from 'phaser';
 import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '../model';
+import type { CameraPanDirection } from '../../settings/control-bindings';
 import type { GridPoint } from './grid';
 import { activeMapId, HIDDEN_LAYERS, mapImageUrl, planSectorMove, sectorMap, sectorSurface, TILE_WIDTH, type Tileset } from '../../map/sector-map';
 import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, playerViewCenter, playerViewZoom, projectedWorldBounds } from './isometric';
 import { WeaponEffects } from './weapon-effects';
 import { DEFAULT_FORMATION, formationSeats } from '../formation';
 import { SatelliteEffects } from './satellite-effects';
+import { NebulaEffects } from './nebula-effects';
+import { shatterBarrier } from './barrier-effects';
+import { BeltEffects } from './belt-effects';
 import { RobotEffects, ROBOT_LAYER } from './robot-effects';
+import { GAME_ASSET_MANIFEST, SHIP_DISPLAY_SIZE, STRUCTURE_DISPLAY_SIZE, coreFactionForState, shipTextureKey, structureTextureKey } from './game-assets';
 
 /** Tiled stores flip flags in the top bits of every gid. */
 const GID_MASK = 0x1fffffff;
 /** Draw order: terrain layers, then node rings, then ships and map structures sorted by screen y, then overlays. */
-const DEPTH = { layer: 10000, nodes: 90000, units: 100000, route: 200000, core: 200001, selection: 300000 } as const;
+const DEPTH = { sky: 1, layer: 10000, emblems: 89000, nodes: 90000, units: 100000, route: 200000, core: 200001, selection: 300000 } as const;
 /** Multiplicative tint for tiles outside vision: dark, but the terrain stays readable. */
 const FOG_TINT = 0x4a5566;
 /** Never seen: much darker, so scouting reveals the map. */
@@ -23,6 +28,11 @@ const FOG_TINTS: Record<number, number | null> = { [UNSEEN]: UNEXPLORED_TINT, [E
 const FADE_MS = 220;
 /** Layer written by scripts/obstaculos-tmx.ts so the editor shows the obstacles; never drawn in game. */
 const OBSTACLE_PREVIEW_LAYER = 'obstaculos-vista';
+/** Object layers that are not structures: the far background behind the terrain and the emblems painted on the floor. */
+const SKY_LAYER = 'fondo-espacio';
+const EMBLEM_LAYER = 'logos';
+/** Tile layer with the asteroid art. */
+const DECOR_LAYER = 'decoracion';
 /** Opening zoom over your own fleet. The wheel goes from ZOOM_MIN (wider view of the sector)
  * to ZOOM_MAX (close-up). The whole 96×96 map at once is unreadable and costly to draw. */
 export const ZOOM_DEFAULT = 1.5;
@@ -67,7 +77,8 @@ interface TerrainChunk {
 interface UnitVisual {
   container: Phaser.GameObjects.Container;
   selection: Phaser.GameObjects.Graphics;
-  hull: Phaser.GameObjects.Graphics;
+  /** Game art for ships; a drawn marker for turrets and barriers. */
+  hull: Phaser.GameObjects.Image | Phaser.GameObjects.Graphics;
   label: Phaser.GameObjects.Text;
   hitFlash: Phaser.GameObjects.Graphics;
   health: Phaser.GameObjects.Rectangle;
@@ -108,18 +119,26 @@ export class MainScene extends Phaser.Scene {
   private showBaseRange=false;
   private selectionBox?: Phaser.GameObjects.Graphics;
   private core?: Phaser.GameObjects.Graphics;
+  private coreSprite?: Phaser.GameObjects.Image;
   private nodeMarks?: Phaser.GameObjects.Graphics;
   private baseMarks?: Phaser.GameObjects.Graphics;
+  private readonly baseSprites = new Map<'blue' | 'red', Phaser.GameObjects.Image>();
   /** Terrain images per cell, so fog can tint the real tile art instead of painting over it. */
   private tileImages: Phaser.GameObjects.Image[][] = [];
   private fogShown: number[] = [];
   private fogSource: boolean[] | null | undefined;
   private exploredSource: boolean[] | null | undefined;
-  private terrainLayers: { data: number[]; order: number }[] = [];
+  private terrainLayers: { data: number[]; order: number; name: string }[] = [];
+  /** Cells of the asteroid belt's passages: BeltEffects draws their rocks, not the static art. */
+  private beltCells = new Set<number>();
+  /** Art of each destructible barrier, by where the map draws it; it goes away when the barrier falls. */
+  private barrierArt: { image: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite; x: number; y: number }[] = [];
+  private readonly barriersGone = new Set<string>();
   private chunks: TerrainChunk[] = [];
   /** Flat ground tiles with no see-through pixels: whatever flat tile lies under one is never visible. */
   private readonly solidGround = new Set<number>();
   private readonly panVelocity = { x: 0, y: 0 };
+  private readonly panInput: Record<CameraPanDirection, boolean> = { up: false, down: false, left: false, right: false };
   private zoomTarget = ZOOM_DEFAULT;
   private zoomAnchor: { x: number; y: number } | null = null;
   private rangeKey = '';
@@ -128,11 +147,12 @@ export class MainScene extends Phaser.Scene {
   private created = false;
   private weapons?: WeaponEffects;
   private satellites?: SatelliteEffects;
+  private nebulas?: NebulaEffects;
+  private belt?: BeltEffects;
   private robots?: RobotEffects;
   private serverTickAt = 0;
   private readonly unitVisuals = new Map<string, UnitVisual>();
-  private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
-  private movementKeys?: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
+
   private dragOrigin?: { x: number; y: number; scrollX: number; scrollY: number };
   private selectionDrag?: { start: { x: number; y: number }; current: { x: number; y: number }; clickedId: string | null };
   private lastClick: { id: string; at: number; group: boolean } | null = null;
@@ -159,6 +179,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   preload() {
+    for (const asset of GAME_ASSET_MANIFEST) this.load.image(asset.key, asset.src);
     for (const tileset of sectorMap.tilesets) {
       const sheet = mapImageUrl(tileset.image);
       if (sheet) this.load.spritesheet(textureKey(tileset)!, sheet, { frameWidth: tileset.tilewidth, frameHeight: tileset.tileheight });
@@ -191,6 +212,8 @@ export class MainScene extends Phaser.Scene {
     this.baseMarks = this.add.graphics().setDepth(DEPTH.core);
     this.weapons = new WeaponEffects(this);
     this.satellites = new SatelliteEffects(this);
+    this.nebulas = new NebulaEffects(this, this.snapshot.tickRate ?? 10);
+    this.belt = new BeltEffects(this, this.snapshot.tickRate ?? 10);
     this.robots = new RobotEffects(this);
     this.serverTickAt = this.time.now;
 
@@ -215,6 +238,8 @@ export class MainScene extends Phaser.Scene {
       this.chunks = [];
       this.weapons?.destroy();
       this.satellites?.destroy();
+      this.nebulas?.destroy();
+      this.belt?.destroy();
       this.robots?.destroy();
     });
   }
@@ -243,6 +268,8 @@ export class MainScene extends Phaser.Scene {
     const tickRate = this.snapshot.tickRate ?? 10;
     const ahead = this.snapshot.clockRunning ? Math.min(1, (this.time.now - this.serverTickAt) / 1000 * tickRate) : 0;
     this.satellites?.update(this.snapshot.tick + ahead, tickRate);
+    this.nebulas?.update(this.snapshot.tick + ahead, tickRate);
+    this.belt?.update(this.snapshot.tick + ahead, tickRate, (index) => (this.fogShown[index] ?? IN_SIGHT) === IN_SIGHT);
     this.robots?.update(Math.min(delta, 100));
     const camera = this.cameras.main;
     const pointer = this.input.activePointer;
@@ -254,11 +281,10 @@ export class MainScene extends Phaser.Scene {
       const depth = position < EDGE_ZONE ? -(1 - position / EDGE_ZONE) : position > size - EDGE_ZONE ? 1 - (size - position) / EDGE_ZONE : 0;
       return Math.sign(depth) * Phaser.Math.Easing.Quadratic.Out(Math.abs(depth));
     };
-    const cameraKey = (key: Phaser.Input.Keyboard.Key | undefined) => key?.isDown;
-    const keys = (positive: boolean | undefined, negative: boolean | undefined) => Number(Boolean(positive)) - Number(Boolean(negative));
+    const keys = (positive: boolean, negative: boolean) => Number(positive) - Number(negative);
     const wanted = {
-      x: Phaser.Math.Clamp(keys(this.cursors?.right.isDown || cameraKey(this.movementKeys?.right), this.cursors?.left.isDown || cameraKey(this.movementKeys?.left)) + drift(pointer.x, this.scale.width), -1, 1),
-      y: Phaser.Math.Clamp(keys(this.cursors?.down.isDown || cameraKey(this.movementKeys?.down), this.cursors?.up.isDown || cameraKey(this.movementKeys?.up)) + drift(pointer.y, this.scale.height), -1, 1),
+      x: Phaser.Math.Clamp(keys(this.panInput.right, this.panInput.left) + drift(pointer.x, this.scale.width), -1, 1),
+      y: Phaser.Math.Clamp(keys(this.panInput.down, this.panInput.up) + drift(pointer.y, this.scale.height), -1, 1),
     };
     const ease = 1 - Math.exp(-seconds / PAN_EASE);
     this.panVelocity.x += (wanted.x * PAN_SPEED - this.panVelocity.x) * ease;
@@ -310,6 +336,10 @@ export class MainScene extends Phaser.Scene {
     return this.created && this.centerOnCell(x, y);
   }
 
+  setCameraPan(direction: CameraPanDirection, active: boolean) {
+    this.panInput[direction] = active;
+  }
+
   private zoomLimits() {
     const fit = this.fitZoom();
     return this.fitsWholeMap() ? { min: Math.min(fit, ZOOM_MAX), max: Math.max(fit, ZOOM_MAX) } : { min: ZOOM_MIN, max: ZOOM_MAX };
@@ -355,7 +385,8 @@ export class MainScene extends Phaser.Scene {
   /** Index the terrain in blocks. Their tile images are created the first time a block is on screen. */
   private drawTerrain() {
     this.terrainLayers = sectorMap.layers.filter((layer) => layer.visible && layer.data && !HIDDEN_LAYERS.has(layer.name))
-      .map((layer, order) => ({ data: layer.data, order }));
+      .map((layer, order) => ({ data: layer.data, order, name: layer.name }));
+    this.beltCells = BeltEffects.cells();
     this.fogShown = Array.from({ length: sectorMap.width * sectorMap.height }, () => IN_SIGHT);
     this.chunks = [];
     this.solidGround.clear();
@@ -429,7 +460,7 @@ export class MainScene extends Phaser.Scene {
     for (const [depth, layer] of this.terrainLayers.entries()) {
       for (let y = chunk.y0; y < chunk.y1; y++) for (let x = chunk.x0; x < chunk.x1; x++) {
         const gid = layer.data[y * columns + x]! & GID_MASK;
-        if (!gid) continue;
+        if (!gid || (layer.name === DECOR_LAYER && this.beltCells.has(y * columns + x))) continue;
         const point = cellToIso(x, y);
         const tileset = tilesetFor(gid);
         // Flat ground completely covered by a solid tile of a higher layer is never seen: do not create it.
@@ -460,8 +491,10 @@ export class MainScene extends Phaser.Scene {
       // Robots are animated by RobotEffects, not drawn as static art.
       // The obstacle preview is for Tiled: the game draws obstacles from the simulation, below.
       if (!layer.visible || !layer.objects || layer.name === ROBOT_LAYER || layer.name === OBSTACLE_PREVIEW_LAYER) continue;
-      for (const object of layer.objects) {
+      for (const [order, object] of layer.objects.entries()) {
         if (!object.gid || object.visible === false) continue;
+        // Dynamic owner-colored bases below replace the oversized legacy Tiled placeholders.
+        if (object.name === 'base_jugador' || object.name === 'base_enemiga') continue;
         const gid = object.gid & GID_MASK;
         const tileset = tilesetFor(gid);
         const key = tileset && textureKey(tileset, gid - tileset.firstgid);
@@ -470,8 +503,13 @@ export class MainScene extends Phaser.Scene {
         const cellX = object.x / TILE_HALF_HEIGHT / 2;
         const cellY = object.y / TILE_HALF_HEIGHT / 2;
         const point = cellToIso(cellX, cellY);
-        const image = this.add.image(point.x, point.y - TILE_HALF_HEIGHT, key)
-          .setDisplaySize(object.width, object.height).setOrigin(0.5, 1).setDepth(DEPTH.units + point.y - TILE_HALF_HEIGHT);
+        const animation = tileAnimation(this, tileset, gid - tileset.firstgid);
+        const image = (animation ? this.add.sprite(point.x, point.y - TILE_HALF_HEIGHT, key).play(animation) : this.add.image(point.x, point.y - TILE_HALF_HEIGHT, key))
+          .setDisplaySize(object.width, object.height).setOrigin(0.5, tileset.objectalignment === 'center' ? 0.5 : 1)
+          .setDepth(layer.name === SKY_LAYER ? DEPTH.sky + order / 1000 : layer.name === EMBLEM_LAYER ? DEPTH.emblems + order : DEPTH.units + point.y - TILE_HALF_HEIGHT);
+        // The far background is never under fog: it is not part of the sector.
+        if (layer.name === SKY_LAYER) continue;
+        if (object.name?.startsWith('barrera_')) this.barrierArt.push({ image, x: cellX, y: cellY });
         const col = Phaser.Math.Clamp(Math.floor(cellX), 0, sectorMap.width - 1);
         const row = Phaser.Math.Clamp(Math.floor(cellY), 0, sectorMap.height - 1);
         (this.tileImages[row * sectorMap.width + col] ??= []).push(image);
@@ -492,17 +530,26 @@ export class MainScene extends Phaser.Scene {
     if (!graphics) return;
     const center = cellToIso(sectorSurface.core.x, sectorSurface.core.y);
     const hue = coreColor(this.snapshot.core.state);
+    const texture = structureTextureKey('nexus-core', coreFactionForState(this.snapshot.core.state));
+    const groundY = center.y + TILE_HALF_HEIGHT;
+    if (this.textures.exists(texture)) {
+      if (!this.coreSprite) {
+        this.coreSprite = this.add.image(center.x, center.y, texture)
+          .setOrigin(0.5, 0.5)
+          .setDisplaySize(STRUCTURE_DISPLAY_SIZE.nexusCore, STRUCTURE_DISPLAY_SIZE.nexusCore)
+          .setDepth(DEPTH.units + groundY);
+      } else {
+        this.coreSprite.setTexture(texture).setPosition(center.x, center.y).setDepth(DEPTH.units + groundY);
+      }
+    }
     graphics.clear();
-    graphics.fillStyle(0x071420, 0.8);
-    graphics.fillEllipse(center.x, center.y + 9, 72, 38);
     graphics.lineStyle(2, hue, 0.84);
-    graphics.strokeEllipse(center.x, center.y + 9, 62, 31);
-    graphics.fillStyle(hue, 0.95);
-    graphics.fillTriangle(center.x, center.y - 19, center.x + 8, center.y - 3, center.x - 8, center.y - 3);
+    const ringRadius = STRUCTURE_DISPLAY_SIZE.nexusCore / 2 + 12;
+    graphics.strokeEllipse(center.x, center.y + 4, ringRadius * 2, ringRadius);
     if (this.snapshot.core.progress > 0 && this.snapshot.core.state !== 'locked') {
       graphics.lineStyle(4, hue, 1);
       graphics.beginPath();
-      graphics.arc(center.x, center.y + 9, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.snapshot.core.progress / 100);
+      graphics.arc(center.x, center.y + 4, ringRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.snapshot.core.progress / 100);
       graphics.strokePath();
     }
   }
@@ -513,7 +560,7 @@ export class MainScene extends Phaser.Scene {
    * take the owner's colour, turn amber while both sides have ships inside and fill with the captor's progress.
    */
   private drawCaptureAreas(graphics: Phaser.GameObjects.Graphics) {
-    for (const area of sectorSurface.captures) {
+    for (const area of [...sectorSurface.captures, ...(sectorSurface.stations ?? [])]) {
       if (!area.radius) continue;
       const node = this.snapshot.nodes.find((candidate) => candidate.x === area.x && candidate.y === area.y);
       const center = cellToIso(area.x, area.y);
@@ -546,6 +593,15 @@ export class MainScene extends Phaser.Scene {
     if (!graphics) return;
     graphics.clear();
     this.drawCaptureAreas(graphics);
+    // Reach of every turret in sight: the square of cells it fires into.
+    for (const turret of this.snapshot.squads) {
+      if (!turret.turret || !turret.visible || turret.healthPercent <= 0) continue;
+      const reach = turret.turret.range + 0.5;
+      const corners = polygon([[-reach, -reach], [reach, -reach], [reach, reach], [-reach, reach]]
+        .map(([dx, dy]) => cellToIso(turret.gridX + dx!, turret.gridY + dy!)));
+      graphics.fillStyle(color.neutral, 0.04).fillPoints(corners, true);
+      graphics.lineStyle(1.5, color.neutral, 0.45).strokePoints(corners, true);
+    }
     for (const node of this.snapshot.nodes) {
       const center = cellToIso(node.x, node.y);
       const hue = node.owner === 'blue' ? color.blue : node.owner === 'red' ? color.red : 0x8aa0b8;
@@ -554,6 +610,14 @@ export class MainScene extends Phaser.Scene {
       const alpha = node.stale ? 0.4 : node.stabilizingSeconds ? 0.35 : 0.9;
       graphics.lineStyle(2, hue, alpha);
       graphics.strokeEllipse(center.x, center.y + 9, 54, 27);
+      if (node.station) {
+        // A station: a hexagonal dock in its owner's colour.
+        graphics.lineStyle(3, hue, 0.95);
+        graphics.strokePoints(polygon(Array.from({ length: 6 }, (_, side) => {
+          const angle = side / 6 * Math.PI * 2;
+          return { x: center.x + Math.cos(angle) * 40, y: center.y + 9 + Math.sin(angle) * 20 };
+        })), true);
+      }
       if (node.kind === 'metal') {
         graphics.fillStyle(hue, node.stale ? 0.4 : 0.95);
         graphics.fillPoints(polygon([{ x: center.x, y: center.y - 2 }, { x: center.x + 7, y: center.y + 9 },
@@ -564,6 +628,7 @@ export class MainScene extends Phaser.Scene {
 
   /** Base hull bars, the shield before bases are exposed and one pip per finished module. */
   private drawBases() {
+    this.syncBaseSprites();
     const graphics = this.baseMarks;
     if (!graphics) return;
     graphics.clear();
@@ -580,11 +645,11 @@ export class MainScene extends Phaser.Scene {
       const center = cellToIso(base.at.x, base.at.y);
       if (shielded) {
         graphics.lineStyle(2, 0x83d4ff, 0.45);
-        graphics.strokeEllipse(center.x, center.y + 4, 150, 75);
+        graphics.strokeEllipse(center.x, center.y + 4, STRUCTURE_DISPLAY_SIZE.commandBase + 24, STRUCTURE_DISPLAY_SIZE.commandBase * 0.64);
       }
       // Above the station art, framed so it never blends with the sprite's own lights.
-      const width = 112;
-      const top = center.y - 150;
+      const width = 88;
+      const top = center.y - STRUCTURE_DISPLAY_SIZE.commandBase / 2 - 16;
       graphics.fillStyle(0x071420, 0.9);
       graphics.fillRect(center.x - width / 2 - 2, top - 2, width + 4, 12);
       graphics.lineStyle(1, 0xd8e6f3, 0.7);
@@ -595,6 +660,36 @@ export class MainScene extends Phaser.Scene {
         graphics.fillStyle(0x7fe0b0, 0.95);
         graphics.fillRect(center.x - width / 2 + pip * 10, top + 13, 7, 4);
       }
+    }
+  }
+
+  /** Render the authoritative base positions and retain the map's fog-of-war treatment. */
+  private syncBaseSprites() {
+    const entries = [
+      { faction: 'blue' as const, at: sectorSurface.bases.p1 },
+      { faction: 'red' as const, at: sectorSurface.bases.p2 },
+    ];
+    for (const { faction, at } of entries) {
+      let sprite = this.baseSprites.get(faction);
+      if (!at) {
+        sprite?.setVisible(false);
+        continue;
+      }
+      const center = cellToIso(at.x, at.y);
+      const groundY = center.y + TILE_HALF_HEIGHT;
+      const texture = structureTextureKey('command-base', faction);
+      if (!sprite) {
+        sprite = this.add.image(center.x, center.y, texture)
+          .setOrigin(0.5, 0.5)
+          .setDisplaySize(STRUCTURE_DISPLAY_SIZE.commandBase, STRUCTURE_DISPLAY_SIZE.commandBase);
+        this.baseSprites.set(faction, sprite);
+      }
+      sprite.setTexture(texture).setPosition(center.x, center.y).setDepth(DEPTH.units + groundY).setVisible(true);
+      const index = Math.floor(at.y) * sectorMap.width + Math.floor(at.x);
+      const inSight = !this.snapshot.visibleCells || this.snapshot.visibleCells[index] === true;
+      const explored = !this.snapshot.exploredCells || this.snapshot.exploredCells[index] === true;
+      if (inSight) sprite.clearTint();
+      else sprite.setTint(explored ? FOG_TINT : UNEXPLORED_TINT);
     }
   }
 
@@ -649,7 +744,23 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
+  /** A barrier that fell shatters where the map drew it. One already down when the match is joined is just gone. */
+  private dropBarriers() {
+    for (const id of this.snapshot.fallenBarriers ?? []) {
+      if (this.barriersGone.has(id)) continue;
+      this.barriersGone.add(id);
+      const barrier = sectorSurface.barriers?.find((candidate) => candidate.id === id);
+      if (!barrier) continue;
+      const art = [...this.barrierArt].sort((a, b) => Math.hypot(a.x - barrier.x, a.y - barrier.y) - Math.hypot(b.x - barrier.x, b.y - barrier.y))[0];
+      if (!art || Math.hypot(art.x - barrier.x, art.y - barrier.y) > 4) continue;
+      this.barrierArt.splice(this.barrierArt.indexOf(art), 1);
+      if (this.created) shatterBarrier(this, art.image, barrier.material);
+      else art.image.setVisible(false);
+    }
+  }
+
   private renderSnapshot() {
+    this.dropBarriers();
     this.drawCore();
     this.drawNodes();
     this.drawBases();
@@ -712,7 +823,6 @@ export class MainScene extends Phaser.Scene {
     const point = cellToIso(squad.gridX, squad.gridY);
     const allied = squad.owner === 'blue';
     const neutral = squad.owner === 'neutral';
-    const primary = allied ? color.blue : neutral ? color.neutral : color.red;
     const light = allied ? color.blueLight : neutral ? color.neutralLight : color.redLight;
     const container = this.add.container(point.x, point.y).setDepth(DEPTH.units + point.y);
     const selection = this.add.graphics();
@@ -721,39 +831,39 @@ export class MainScene extends Phaser.Scene {
     selection.lineStyle(1, light, 0.4);
     selection.strokeEllipse(0, 6, 62, 34);
     const shadow = this.add.graphics();
-    shadow.fillStyle(0x020912, 0.7);
+    shadow.fillStyle(0x020912, squad.barrier ? 0 : 0.7);
     shadow.fillEllipse(0, 9, 46, 18);
-    const marker = this.add.graphics();
-    marker.fillStyle(allied ? 0xa4d8e5 : neutral ? 0xe6cf95 : 0xe1a1a9, 1);
-    if (squad.unitType === 'interceptor') {
-      marker.fillPoints(polygon([{ x: 0, y: -38 }, { x: 12, y: -1 }, { x: 34, y: 13 }, { x: 8, y: 8 },
-        { x: 0, y: 17 }, { x: -8, y: 8 }, { x: -34, y: 13 }, { x: -12, y: -1 }]), true);
-      marker.fillStyle(0x223a4a, 1);
-      marker.fillTriangle(0, -28, 8, 4, -8, 4);
-    } else if (squad.unitType === 'bomber') {
-      marker.fillPoints(polygon([{ x: 0, y: -40 }, { x: 19, y: -28 }, { x: 24, y: 0 },
-        { x: 37, y: 16 }, { x: 13, y: 16 }, { x: 0, y: 24 }, { x: -13, y: 16 },
-        { x: -37, y: 16 }, { x: -24, y: 0 }, { x: -19, y: -28 }]), true);
-      marker.fillStyle(0x263c4b, 1);
-      marker.fillRect(-14, -19, 28, 31);
-      marker.fillStyle(0xf7e77c, 1);
-      marker.fillCircle(0, 4, 5);
+    const primary = allied ? color.blue : neutral ? color.neutral : color.red;
+    let hull: Phaser.GameObjects.Image | Phaser.GameObjects.Graphics;
+    if (squad.turret || squad.barrier) {
+      // Fixed defences keep their drawn marker; ships use the game art.
+      const marker = this.add.graphics();
+      marker.fillStyle(allied ? 0xa4d8e5 : neutral ? 0xe6cf95 : 0xe1a1a9, 1);
+      if (squad.barrier) {
+        // The map already draws the barrier; this is only what the player clicks and its hull bar.
+      } else if (squad.turret) {
+        // A fixed gun: armoured hexagon with a barrel that turns toward its last shot.
+        const hexagon = (radius: number) => polygon(Array.from({ length: 6 }, (_, side) => {
+          const angle = side / 6 * Math.PI * 2;
+          return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+        }));
+        marker.fillStyle(0x4a3d1f, 1).fillPoints(hexagon(30), true);
+        marker.fillStyle(0xe6cf95, 1).fillPoints(hexagon(24), true);
+        marker.fillStyle(0x263c4b, 1).fillCircle(0, 0, 13);
+        marker.fillStyle(primary, 1).fillRect(-5, -46, 10, 38);
+        marker.fillStyle(0xfff1c9, 1).fillCircle(0, 0, 5);
+      }
+      hull = marker;
     } else {
-      marker.fillPoints(polygon([{ x: 0, y: -38 }, { x: 15, y: -22 }, { x: 18, y: 7 }, { x: 28, y: 14 },
-        { x: 10, y: 13 }, { x: 0, y: 23 }, { x: -10, y: 13 }, { x: -28, y: 14 },
-        { x: -18, y: 7 }, { x: -15, y: -22 }]), true);
-      marker.fillStyle(0x243b4e, 1);
-      marker.fillRect(-9, -20, 18, 25);
+      const size = SHIP_DISPLAY_SIZE[squad.unitType];
+      hull = this.add.image(0, size * 0.38, shipTextureKey(squad.owner, squad.unitType))
+        .setOrigin(0.5, 1)
+        .setDisplaySize(size, size);
     }
-    marker.fillStyle(primary, 1);
-    marker.fillTriangle(0, -23, 6, -7, -6, -7);
-    marker.fillCircle(-11, 16, 4);
-    marker.fillCircle(11, 16, 4);
     const hitFlash = this.add.graphics();
     hitFlash.fillStyle(0xffd4a1, 0.75);
     hitFlash.fillCircle(0, -8, 28);
     hitFlash.setAlpha(0);
-    marker.setScale(squad.unitType==='bomber'?0.65:0.58);
     const label = this.add.text(0, 32, squad.callSign.toUpperCase(), {
       color: allied ? '#83d4ff' : neutral ? '#f7d774' : '#ff9ba7', fontFamily: 'Rajdhani, sans-serif', fontSize: '11px', fontStyle: '600', letterSpacing: 1,
     }).setOrigin(0.5, 0);
@@ -761,10 +871,10 @@ export class MainScene extends Phaser.Scene {
     const health = this.add.rectangle(-19, 23, 38 * squad.healthPercent / 100, 3, squad.healthPercent > 35 ? 0x4ad69a : color.red).setOrigin(0, 0.5);
     const reloadBack = this.add.rectangle(0, 28, 38, 2, 0x303b48).setOrigin(0.5);
     const reload = this.add.rectangle(-19, 28, 38, 2, 0xa0aab6).setOrigin(0, 0.5);
-    container.add([selection, shadow, marker, hitFlash, label, healthBack, health, reloadBack, reload]);
-    container.setInteractive(new Phaser.Geom.Ellipse(0, 0, 62, 55), Phaser.Geom.Ellipse.Contains);
+    container.add([selection, shadow, hull, hitFlash, label, healthBack, health, reloadBack, reload]);
+    container.setInteractive(squad.barrier ? new Phaser.Geom.Ellipse(0, -14, 150, 96) : new Phaser.Geom.Ellipse(0, 0, 62, 55), Phaser.Geom.Ellipse.Contains);
     container.setData('unitId', squad.id);
-    const visual = { container, selection, hull: marker, label, hitFlash, health, reloadBack, reload, lastShotTick: -1,
+    const visual = { container, selection, hull, label, hitFlash, health, reloadBack, reload, lastShotTick: -1,
       healthPercent: squad.healthPercent, gridX: squad.gridX, gridY: squad.gridY,
       targetX: point.x, targetY: point.y, heading: 0 };
     this.unitVisuals.set(squad.id, visual);
@@ -927,10 +1037,6 @@ export class MainScene extends Phaser.Scene {
 
   private configureInput() {
     this.input.setTopOnly(false);
-    if (this.input.keyboard) {
-      this.cursors = this.input.keyboard.createCursorKeys();
-      this.movementKeys = this.input.keyboard.addKeys({ up: 'W', down: 'S', left: 'A', right: 'D' }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
-    }
     this.input.mouse?.disableContextMenu();
     this.input.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
       if (pointer.middleButtonDown()) {
@@ -1041,6 +1147,21 @@ function structureKey(name: string): string | null {
 /** A ground tile exactly the size of a cell, so it cannot stick out from under another. */
 function isFlat(tileset: Tileset): boolean {
   return !!tileset.image && tileset.tilewidth === TILE_WIDTH && tileset.tileheight === TILE_HALF_HEIGHT * 2 && !tileset.tileoffset;
+}
+
+/** Key of the looping animation a collection tile declares in Tiled (`<animation>`), created on first use. */
+function tileAnimation(scene: Phaser.Scene, tileset: Tileset, tile: number): string | null {
+  const frames = tileset.tiles?.find((candidate) => candidate.id === tile)?.animation;
+  const key = textureKey(tileset, tile);
+  if (!frames?.length || !key) return null;
+  const name = `${key}:anim`;
+  if (!scene.anims.exists(name)) {
+    scene.anims.create({
+      key: name, repeat: -1,
+      frames: frames.map((frame) => ({ key: textureKey(tileset, frame.tileid)!, duration: frame.duration })),
+    });
+  }
+  return name;
 }
 
 function tilesetFor(gid: number): Tileset | undefined {

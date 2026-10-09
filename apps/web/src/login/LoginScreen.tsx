@@ -5,7 +5,7 @@ import { initialLoginUi, reduceLoginUi } from './login-state';
 import { createLoginScene } from './scene';
 import { Brand } from '../visual/shared/Brand';
 import { LanguageToggle } from '../visual/shared/LanguageToggle';
-import { AudioToggle } from '../visual/shared/AudioToggle';
+import { useI18n } from '../visual/i18n';
 import loginCss from './login.css?inline';
 
 export interface LoginScreenProps {
@@ -24,6 +24,10 @@ export interface LoginScreenProps {
   chainBusy?: boolean;
   /** Si existe, muestra el acceso al centro de mando debajo del panel. */
   onOpenAtlas?: () => void;
+  musicVolume?: number;
+  musicMuted?: boolean;
+  onMusicVolumeChange?: (volume: number) => void;
+  onMusicMuteChange?: (muted: boolean) => void;
 }
 
 /**
@@ -46,10 +50,16 @@ export function LoginScreen(props: LoginScreenProps) {
     chainStatus = 'Stellar Testnet',
     chainBusy = false,
     onOpenAtlas,
+    musicVolume = 60,
+    musicMuted = false,
+    onMusicVolumeChange = () => {},
+    onMusicMuteChange = () => {},
   } = props;
+  const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [ui, dispatch] = useReducer(reduceLoginUi, undefined, initialLoginUi);
   const [glitchTrigger, setGlitchTrigger] = useState(0);
+  const [musicOptionsOpen, setMusicOptionsOpen] = useState(false);
 
   const triggerGlitch = () => setGlitchTrigger((count) => count + 1);
 
@@ -99,9 +109,19 @@ export function LoginScreen(props: LoginScreenProps) {
       <canvas ref={canvas} className="li-canvas" aria-hidden="true" />
       <header className="li-topbar">
         <Brand />
-        <div className="li-topbar-actions">
-          <AudioToggle />
+        <div className="li-topbar__actions">
           <LanguageToggle />
+          <div className="li-music-control">
+            <button className="li-music-control__toggle" type="button" aria-label={t('musicSettings')} aria-expanded={musicOptionsOpen} onClick={() => setMusicOptionsOpen(!musicOptionsOpen)}>
+              <span aria-hidden="true">♫</span><span>{t('musicSettings')}</span>
+            </button>
+            {musicOptionsOpen && <section className="li-music-control__panel" aria-label={t('musicSettings')}>
+              <label className="li-music-control__range"><span><strong>{t('musicVolume')}</strong><output>{musicVolume}%</output></span>
+                <input type="range" min="0" max="100" value={musicVolume} aria-label={t('loginMusicVolume')} onChange={(event) => onMusicVolumeChange(Number(event.target.value))} />
+              </label>
+              <label className="li-music-control__mute"><input type="checkbox" checked={musicMuted} aria-label={t('muteMusic')} onChange={(event) => onMusicMuteChange(event.target.checked)} /><span>{t('muteMusic')}</span></label>
+            </section>}
+          </div>
         </div>
       </header>
       <div className="li-panel-wrap">

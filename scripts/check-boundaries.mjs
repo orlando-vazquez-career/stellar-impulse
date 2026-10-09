@@ -3,7 +3,13 @@ import path from 'node:path';
 import ts from 'typescript';
 const root = process.cwd();
 const errors = [];
-const walk = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]);
+const walk = (dir) => {
+  if (dir.split(path.sep).includes('tiled-maps')) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const next = path.join(dir, entry.name);
+    return entry.isDirectory() ? walk(next) : [next];
+  });
+};
 for (const file of walk('packages/sim/src').filter(f => f.endsWith('.ts') && !f.endsWith('.test.ts') && !f.includes(`${path.sep}tiled-maps${path.sep}`))) {
   const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
   function inspect(node) {

@@ -40,9 +40,23 @@ export { OBSTACLE_MODELS } from './mapas/obstaculos.js';
 export type { MapObstacle, ObstacleModel } from './mapas/obstaculos.js';
 export { findPath as findTiledPath } from './maps/pathfinding.js';
 import { ESPIRAL } from './mapas/espiral.js';
+import { ESPIRAL_2 } from './mapas/espiral-2.js';
+import { createNebula, nebulaSlowdown, type NebulaField } from './mecanicas/nebulosas.js';
+export { cloudAt, cloudCovers, createNebula, inNebula, nebulaClouds, nebulaHides, nebulaSlowdown, NEBULA_REVEAL_RADIUS } from './mecanicas/nebulosas.js';
+export type { NebulaCloud, NebulaCloudSpec, NebulaCloudState, NebulaField, NebulaPhase, NebulaSpec } from './mecanicas/nebulosas.js';
 import { cloneSatellites, createSatellites, runSatellites, type SatelliteState } from './mecanicas/satellites.js';
 export { SATELLITE_AFTERMATH_TICKS } from './mecanicas/satellites.js';
 export type { DropZone, DropZoneSpec, SatelliteFall, SatelliteState } from './mecanicas/satellites.js';
+import { beltSurface, createBelt, settleOn, type BeltField } from './mecanicas/cinturon.js';
+import { barrierSurface, createBarriers, fallenBarriers, type BarrierField } from './mecanicas/barreras.js';
+export { barrierSurface, createBarriers, fallenBarriers } from './mecanicas/barreras.js';
+export type { BarrierField, BarrierSpec } from './mecanicas/barreras.js';
+import { TRASCENDENCIA } from './mapas/trascendencia.js';
+export { beltGates, beltSurface, createBelt, gateAt } from './mecanicas/cinturon.js';
+export type { BeltField, BeltGate, BeltGateSpec, BeltGateState, BeltPhase } from './mecanicas/cinturon.js';
+import { createTurrets } from './mecanicas/torretas.js';
+export { TURRET_DEFAULTS } from './mecanicas/torretas.js';
+export type { TurretSpec } from './mecanicas/torretas.js';
 import type { SectorLeido, Superficie } from './mapas/leer-tiled.js';
 
 export { defineMapSpec, MAX_MAP_SIDE, MAX_MAP_CELLS } from './maps/types.js';
@@ -66,7 +80,7 @@ import { observeKnowledge, type AiKnowledge } from './inteligencia-enemiga/knowl
 export { CHALLENGES, MERITS, emptyProgress, emptyMatchRecord, profileFor, unlockedPool, rewardForCampaign, rewardForMatch, challengeProgress } from './progression.js';
 export type { AccountProgress, AwardRecord, CampaignOutcome, MeritId, ProgressProfile, MatchReward, MatchRecord } from './progression.js';
 export { effectiveFleetCap, effectiveBaseDamage, effectsFor, statsForUnit, visionSources, isConcealed, captureDuration, metalIncomeRate } from './augments/effects.js';
-export { initializeAugments, setAugmentPool, grantAugment, pickAugment, rerollAugments, chooseAiAugment, prepareCampaignSector } from './augments/runtime.js';
+export { initializeAugments, setAugmentPool, carryAugments, grantAugment, pickAugment, rerollAugments, chooseAiAugment, prepareCampaignSector } from './augments/runtime.js';
 export { AUGMENT_CATALOG, AUGMENTS_BY_ID, INITIAL_AUGMENTS } from './augments/catalog.js';
 export type { Augment, AugmentTier, ChallengeId } from './augments/catalog.js';
 export type { AugmentOffer, AugmentMatch, CampaignSectorAugments } from './augments/runtime.js';
@@ -174,7 +188,7 @@ export interface Squad extends Position {
 }
 /** Ticks between steps: the ship's own speed, slowed to its formation's pace while marching in one. */
 export function marchInterval(world: World, squad: Squad): number {
-  return Math.max(moveInterval(world, squad.ownerId, squad.kind), squad.formationPace ?? 0);
+  return Math.max(moveInterval(world, squad.ownerId, squad.kind), squad.formationPace ?? 0) * nebulaSlowdown(world, squad);
 }
 export function createSquad(id: string, ownerId: PlayerId, kind: UnitKind, position: Position, world?: World): Squad {
   const stats = statsFor(world ?? { rules: TRAINING_RULES }, ownerId, kind);
@@ -190,6 +204,10 @@ export interface Guardian extends Position {
   maxHp: number;
   damage: number;
   transit?: { from: Position; untilTick: number };
+  /** A turret never leaves its cell and fires at any ship within `range` cells. A barrier only stands in the way. */
+  role?: 'turret' | 'barrier';
+  range?: number;
+  lastShot?: { tick: number; to: Position };
 }
 export interface CaptureObjective extends Position {
   id: string;
@@ -205,6 +223,8 @@ export interface ResourceNode extends CaptureObjective {
   activeAt?: number;
   /** Match worlds: the first-capture bonus has been paid. */
   claimed?: boolean;
+  /** A capturable station: its owner buys ships there at once, at `priceFactor` times their cost. */
+  station?: { priceFactor: number };
 }
 export interface Core extends CaptureObjective { open: boolean }
 export interface World {
@@ -239,6 +259,12 @@ export interface World {
   baseRules?: Readonly<BaseRules>;
   /** Falling satellites over the map's `zona_caida` areas. Absent on maps without them. */
   satellites?: SatelliteState;
+  /** Purple nebula that slows and hides ships, with its drifting clouds. Absent on maps without it. */
+  nebula?: NebulaField;
+  /** Asteroid belt that closes the map's `asteroid_gate` passages by cycles. Absent on maps without them. */
+  belt?: BeltField;
+  /** Destructible barriers that seal cells until they are shot down. Absent on maps without them. */
+  barriers?: BarrierField;
 }
 export type CommandRejection =
   | 'invalid_command' | 'unknown_player' | 'stale_sequence'
@@ -286,8 +312,8 @@ const STARTING_FLEET: readonly { kind: UnitKind; dx: number; dy: number }[] = [
 export const GUARDIAN_AGGRO_RADIUS = 3;
 /** Guardians move one cell every this many ticks (slower than an Interceptor). */
 const GUARDIAN_MOVE_TICKS = 9;
-/** Training maps by id: Diego's Espiral Estelar (96×96) and the original Sector 01 (29×29). */
-export const TRAINING_MAPS = Object.freeze({ espiral: ESPIRAL, 'sector-01': SECTOR_01 });
+/** Training maps by id: Diego's Espiral Estelar and its horizontal variant (96×96), and the original Sector 01 (29×29). */
+export const TRAINING_MAPS = Object.freeze({ espiral: ESPIRAL, 'espiral-2': ESPIRAL_2, trascendencia: TRASCENDENCIA, 'sector-01': SECTOR_01 });
 export type TrainingMapId = keyof typeof TRAINING_MAPS;
 export function createSectorWorld(map: TrainingMapId = 'sector-01'): World {
   return createWorldOn(TRAINING_MAPS[map]);
@@ -315,10 +341,16 @@ export function createWorldOn(sector: SectorLeido): World {
       return createSquad(`${player}-${kind}`, player, kind, cell);
     });
   };
+  const captures = sector.captures.map((cell, index) => node({ id: `capture-${index + 1}`, kind: 'capture', x: cell.x, y: cell.y, radius: cell.radius }));
+  const stations = (sector.stations ?? []).map((cell, index) => ({
+    ...node({ id: `station-${index + 1}`, kind: 'capture', x: cell.x, y: cell.y, radius: cell.radius }), station: { priceFactor: cell.priceFactor },
+  }));
+  const belt = createBelt(sector.belt, sector, SECTOR_RULES.tickRate);
+  const barriers = createBarriers(sector.barriers, belt ? belt.closed : sector);
   return {
     schemaVersion: 1, mode: 'training', tick: 0, width: sector.width, height: sector.height,
     obstacles: [],
-    surface: {
+    surface: belt ? beltSurface(belt, 0) : barriers ? barriers.field.closed : {
       width: sector.width, height: sector.height,
       walkable: [...sector.walkable], level: [...sector.level], ramp: [...sector.ramp],
     },
@@ -332,17 +364,19 @@ export function createWorldOn(sector: SectorLeido): World {
     guardians: [
       ...metals.map((metal) => ({ id: metal.guardianId, objectiveId: metal.id, x: metal.x, y: metal.y, hp: 60, maxHp: 60, damage: 3 })),
       { id: 'core-guardian', objectiveId: 'core', x: sector.core.x, y: sector.core.y, hp: 160, maxHp: 160, damage: 5 },
+      ...createTurrets(sector.turrets, [...captures, ...metals, { id: 'core', ...sector.core }]),
+      ...(barriers?.guardians ?? []),
     ],
-    nodes: [
-      ...metals,
-      ...sector.captures.map((cell, index) => node({ id: `capture-${index + 1}`, kind: 'capture', x: cell.x, y: cell.y, radius: cell.radius })),
-    ],
+    nodes: [...metals, ...captures, ...stations],
     core: { id: 'core', x: sector.core.x, y: sector.core.y, guardianId: 'core-guardian', open: false, progress: { p1: 0, p2: 0 } },
     winner: null,
     production: { p1: null, p2: null },
     built: { p1: 0, p2: 0 },
     economy: true,
     satellites: createSatellites(sector.dropZones, SECTOR_RULES.tickRate),
+    nebula: createNebula(sector.nebula, sector.width, sector.height, SECTOR_RULES.tickRate),
+    ...(belt ? { belt } : {}),
+    ...(barriers ? { barriers: barriers.field } : {}),
   };
 }
 export function distance(a: Position, b: Position): number {
@@ -426,7 +460,8 @@ export function cloneWorld(world: World): World {
       transit: unit.transit ? { ...unit.transit, from: { ...unit.transit.from } } : undefined })),
     nodes: world.nodes.map((node) => ({ ...node, progress: { ...node.progress } })),
     core: { ...world.core, progress: { ...world.core.progress } },
-    surface: world.duration ? world.surface : copySurface(world.surface),
+    // A belt hands out frozen surfaces of its own: they are shared like a match world's.
+    surface: world.duration || world.belt || world.barriers ? world.surface : copySurface(world.surface),
     production: {
       p1: world.production.p1 ? { ...world.production.p1 } : null,
       p2: world.production.p2 ? { ...world.production.p2 } : null,
@@ -687,6 +722,17 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
     player.baseUpgrades[command.upgrade] += 1;
     return { accepted: true, world: next };
   }
+  if (command.type === 'station_produce') {
+    const refused = stationRefusal(world, playerId, command.stationId, command.kind);
+    if (refused) return reject(refused);
+    const next = cloneWorld(world);
+    next.players[playerId].lastSequence = command.seq;
+    const station = next.nodes.find((node) => node.id === command.stationId)!;
+    next.players[playerId].metal -= stationPrice(next, playerId, station, command.kind);
+    next.built[playerId] += 1;
+    next.squads.push(createSquad(`${playerId}-${command.kind}-${next.built[playerId]}`, playerId, command.kind, stationDock(next, station)!, next));
+    return { accepted: true, world: next };
+  }
   if (command.type === 'produce') {
     if (!world.economy) return reject('invalid_command');
     const refused = productionRefusal(world, playerId, command.kind);
@@ -709,7 +755,11 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
     if ('objectiveId' in target && !guardianActive(world, target)) return reject('target_unavailable');
     if ('structure' in target && !baseVulnerable(world)) return reject('target_unavailable');
     if (!canSee(world, playerId, target)) return reject('target_not_visible');
-    if (!routeExists(world, squad, target)) return reject('unreachable_destination');
+    // A barrier stands on sealed rock: it is reached from any open cell beside it.
+    const reachable = 'role' in target && target.role === 'barrier'
+      ? DIRECTIONS.some(([dx, dy]) => { const cell = { x: target.x + dx, y: target.y + dy }; return cellOnBoard(world, cell) && routeExists(world, squad, cell); })
+      : routeExists(world, squad, target);
+    if (!reachable) return reject('unreachable_destination');
     return commitOrder(world, playerId, command.seq, squad.id, (nextSquad) => {
       nextSquad.stance = 'march';
       nextSquad.anchor = null;
@@ -751,7 +801,7 @@ function guardianPost(world: World, guardian: Guardian): Position {
 function moveGuardians(world: World): void {
   if (!world.surface || world.tick % GUARDIAN_MOVE_TICKS !== 0) return;
   for (const guardian of world.guardians) {
-    if (!guardianActive(world, guardian)) continue;
+    if (!guardianActive(world, guardian) || guardian.role) continue;
     const post = guardianPost(world, guardian);
     const intruder = world.squads
       .filter((unit) => unit.hp > 0 && distance(unit, post) <= GUARDIAN_AGGRO_RADIUS)
@@ -967,6 +1017,30 @@ function productionRefusal(world: World, playerId: PlayerId, kind: UnitKind): Co
   if (world.players[playerId].metal < statsFor(world, playerId, kind).cost) return 'insufficient_metal';
   return null;
 }
+/** What a ship costs at a station: its usual price times the station's factor. */
+export function stationPrice(world: World, playerId: PlayerId, station: ResourceNode, kind: UnitKind): number {
+  return statsFor(world, playerId, kind).cost * (station.station?.priceFactor ?? 1);
+}
+function stationDock(world: World, station: ResourceNode): Position | null {
+  return launchCell(station, world.width, world.height, (point) => cellOnBoard(world, point), (point) => cellOccupied(world, point, ''));
+}
+function stationRefusal(world: World, playerId: PlayerId, stationId: string, kind: UnitKind): CommandRejection | null {
+  const station = world.nodes.find((node) => node.id === stationId);
+  if (!station?.station) return 'unknown_target';
+  if (station.ownerId !== playerId) return 'not_owner';
+  if (effectsFor(world, playerId).some((e) => e.hook === 'no-production' && e.kind === kind)) return 'production_forbidden';
+  if (world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0 && !unit.isDecoy).length >= effectiveFleetCap(world, playerId)) return 'fleet_full';
+  if (world.players[playerId].metal < stationPrice(world, playerId, station, kind)) return 'insufficient_metal';
+  if (!stationDock(world, station)) return 'production_busy';
+  return null;
+}
+/** Belt passages due this tick and barriers shot down since the last one. */
+function runTerrain(world: World): void {
+  if (!world.belt && !world.barriers) return;
+  let surface = world.belt ? beltSurface(world.belt, world.tick) : world.barriers!.closed;
+  if (world.barriers) surface = barrierSurface(world.barriers, surface, fallenBarriers(world));
+  settleOn(world, surface);
+}
 function startProduction(world: World, playerId: PlayerId, kind: UnitKind): void {
   world.players[playerId].metal -= statsFor(world, playerId, kind).cost;
   const state=world.augmentMatch?.players[playerId];
@@ -1014,6 +1088,7 @@ export function stepWorld(world: World): World {
   if (next.duration && next.tick >= DURATION_MODES[next.duration].suddenDeathTick) next.suddenDeath = true;
   scheduleAugments(next);
   next.core.open = next.tick >= next.rules.coreOpenTick;
+  runTerrain(next);
   if (next.economy) runBases(next);
   runBaseStructures(next);
   moveSquads(next);
@@ -1068,7 +1143,7 @@ function resolveBaseDefense(world: World): void {
     const ownBase = baseTargetId(player.id);
     // Ships shooting at this base come first, then the nearest hostile.
     const target = [...world.squads.filter((unit) => unit.ownerId !== player.id && unit.hp > 0),
-      ...world.guardians.filter((unit) => guardianActive(world, unit))]
+      ...world.guardians.filter((unit) => guardianActive(world, unit) && unit.role !== 'barrier')]
       .filter((unit) => distance(unit, player.base) <= range && canSee(world,player.id,unit))
       .sort((a, b) => Number('ownerId' in b && b.attackTargetId === ownBase) - Number('ownerId' in a && a.attackTargetId === ownBase)
         || distance(a, player.base) - distance(b, player.base) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
@@ -1136,7 +1211,7 @@ function acquireStanceTarget(world: World, squad: Squad): void {
 function nearestFoe(world: World, squad: Squad, origin: Position, radius: number): Squad | Guardian | undefined {
   const foes: Array<Squad | Guardian> = [
     ...world.squads.filter((unit) => unit.hp > 0 && unit.ownerId !== squad.ownerId && canSee(world,squad.ownerId,unit)),
-    ...world.guardians.filter((unit) => guardianActive(world, unit) && canSee(world, squad.ownerId, unit)),
+    ...world.guardians.filter((unit) => guardianActive(world, unit) && unit.role !== 'barrier' && canSee(world, squad.ownerId, unit)),
   ];
   let best: Squad | Guardian | undefined;
   let bestDistance = Infinity;

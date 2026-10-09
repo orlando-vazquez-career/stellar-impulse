@@ -9,6 +9,7 @@ import { HangarPanel } from '../hangar/HangarScreen';
 import { SettingsPanel } from '../settings/SettingsScreen';
 import { loadVisualPreferences, saveVisualPreferences, type VisualPreferences } from '../settings/preferences';
 import { setAudioMix } from '../audio-mix';
+import type { AccountUser } from '../../auth/client';
 
 function MenuCard({
   title,
@@ -71,6 +72,8 @@ export interface CommandCenterProps {
   preferences?: VisualPreferences;
   onSavePreferences?: (preferences: VisualPreferences) => void;
   onCreateRoom(): void;
+  /** Starts the run of sectors: the three maps in a row against the AI. */
+  onCampaign?(): void;
   onCreateMultiplayer(): void;
   onJoinRoom(): void;
   onHangar?(): void;
@@ -78,6 +81,9 @@ export interface CommandCenterProps {
   onSignOut(): void;
   onProfile?(): void;
   onBack?(): void;
+  /** The signed-in account (null for guests): the embedded Hangar needs it for the linked wallet. */
+  account?: AccountUser | null;
+  onAccountChange?(user: AccountUser): void;
 }
 
 export function CommandCenter({
@@ -86,6 +92,7 @@ export function CommandCenter({
   preferences,
   onSavePreferences,
   onCreateRoom,
+  onCampaign,
   onCreateMultiplayer,
   onJoinRoom,
   onHangar,
@@ -93,6 +100,8 @@ export function CommandCenter({
   onSignOut,
   onProfile,
   onBack,
+  account = null,
+  onAccountChange,
 }: CommandCenterProps) {
   const { t } = useI18n();
   const sound = useSpaceSound();
@@ -209,6 +218,7 @@ export function CommandCenter({
 
           <div className="vi-menu-grid">
             <MenuCard glyph="△" title={t('deploy')} detail={t('deployDetail')} enabled onClick={onCreateRoom} />
+            {onCampaign && <MenuCard glyph="✦" title={t('campaignMode')} detail={t('campaignModeDetail')} enabled onClick={onCampaign} />}
             <MenuCard glyph="⇄" title={t('createMultiplayer')} detail={t('createMultiplayerDetail')} enabled onClick={onCreateMultiplayer} />
             <MenuCard glyph="⌁" title={t('joinRoom')} detail={t('joinDetail')} enabled onClick={onJoinRoom} />
             <MenuCard
@@ -233,7 +243,7 @@ export function CommandCenter({
         {unfoldedPanel && (
           <div className="vi-command__workspace">
             {unfoldedPanel === 'hangar' && (
-              <HangarPanel onBack={() => setUnfoldedPanel(null)} isEmbedded />
+              <HangarPanel onBack={() => setUnfoldedPanel(null)} isEmbedded account={account} onAccountChange={onAccountChange} />
             )}
             {unfoldedPanel === 'settings' && (
               <SettingsPanel

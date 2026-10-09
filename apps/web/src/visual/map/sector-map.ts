@@ -1,11 +1,13 @@
-import { findTiledPath, TRAINING_MAPS, type TrainingMapId } from '@impulso/sim';
+import { barrierSurface, beltSurface, createBarriers, createBelt, findTiledPath, TRAINING_MAPS, type BarrierField, type BeltField, type TrainingMapId } from '@impulso/sim';
 import { parseTiledTsx } from '../../../../../packages/sim/src/mapas/tsx-tileset';
 import sectorSource from '../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/sector-01.tmj?raw';
 import espiralSource from '../../../../../packages/sim/src/tiled-maps/espiral-estelar/espiral-estelar.json?raw';
+import espiral2Source from '../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/espiral-estelar_2.json?raw';
+import trascendenciaSource from '../../../../../packages/sim/src/tiled-maps/trascendencia-estelar_2/trascendencia-estelar_2.json?raw';
 
 export type { TrainingMapId } from '@impulso/sim';
 
-interface TiledObject { name?: string; gid?: number; x: number; y: number; width: number; height: number; visible?: boolean }
+interface TiledObject { name?: string; type?: string; gid?: number; x: number; y: number; width: number; height: number; visible?: boolean }
 interface TileLayer { name: string; type?: string; data: number[]; visible: boolean; objects?: TiledObject[] }
 interface TilesetTile {
   id: number; image?: string; imagewidth?: number; imageheight?: number;
@@ -13,7 +15,7 @@ interface TilesetTile {
 }
 interface Tileset {
   firstgid: number; columns: number; tilewidth: number; tileheight: number; image?: string; name?: string;
-  source?: string; tiles?: TilesetTile[]; tileoffset?: { x: number; y: number };
+  source?: string; tiles?: TilesetTile[]; tileoffset?: { x: number; y: number }; objectalignment?: string;
 }
 interface TiledSector {
   orientation: string;
@@ -32,16 +34,40 @@ const IMAGE_URLS: Record<TrainingMapId, Record<string, string>> = {
     ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar/assets-externos/sprites/*.png', { eager: true, query: '?url', import: 'default' }),
     ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar/*.png', { eager: true, query: '?url', import: 'default' }),
   }),
+  'espiral-2': byFileName({
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/tilesets/img/*.png', { eager: true, query: '?url', import: 'default' }),
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/assets-externos/sprites/*.png', { eager: true, query: '?url', import: 'default' }),
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/*.png', { eager: true, query: '?url', import: 'default' }),
+  }),
+  trascendencia: byFileName({
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/trascendencia-estelar_2/tilesets/img/*.png', { eager: true, query: '?url', import: 'default' }),
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/trascendencia-estelar_2/assets-externos/sprites/*.png', { eager: true, query: '?url', import: 'default' }),
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/trascendencia-estelar_2/*.png', { eager: true, query: '?url', import: 'default' }),
+  }),
 };
-const SOURCES: Record<TrainingMapId, string> = { 'sector-01': sectorSource, espiral: espiralSource };
-const ESPIRAL_TSX = import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar/**/*.tsx', {
+const SOURCES: Record<TrainingMapId, string> = { 'sector-01': sectorSource, espiral: espiralSource, 'espiral-2': espiral2Source, trascendencia: trascendenciaSource };
+/** Maps whose tilesets live in external `.tsx` files, and the kit folder each one reads them from. */
+const TSX_FOLDERS: Partial<Record<TrainingMapId, string>> = { espiral: 'espiral-estelar', 'espiral-2': 'espiral-estelar_2', trascendencia: 'trascendencia-estelar_2' };
+const ESPIRAL_TSX = import.meta.glob(['../../../../../packages/sim/src/tiled-maps/espiral-estelar/**/*.tsx', '../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/**/*.tsx', '../../../../../packages/sim/src/tiled-maps/trascendencia-estelar_2/**/*.tsx'], {
   eager: true, query: '?raw', import: 'default',
 }) as Record<string, string>;
 /** Tile layers that carry rules for the server, not art. */
 export const HIDDEN_LAYERS = new Set(['logica', 'altura']);
 export const DEFAULT_PLAYABLE_MAP: TrainingMapId = 'espiral';
+const MAP_DISPLAY_NAME = {
+  espiral: 'Espiral Estelar',
+  'espiral-2': 'Caos Estelar',
+  trascendencia: 'Trascendencia Estelar',
+  'sector-01': 'Sector 01',
+} as const satisfies Record<TrainingMapId, string>;
+
+export function playableMapLabel(id: TrainingMapId): string {
+  return MAP_DISPLAY_NAME[id];
+}
 const MAP_SOURCE_FILE: Record<TrainingMapId, string> = {
   espiral: 'espiral-estelar.json',
+  'espiral-2': 'espiral-estelar_2.json',
+  trascendencia: 'trascendencia-estelar_2.json',
   'sector-01': 'sector-01.tmj',
 };
 
@@ -67,9 +93,32 @@ export function selectMap(id: TrainingMapId): void {
   activeMapId = id;
   sectorMap = readTiledMap(SOURCES[id], id);
   sectorSurface = TRAINING_MAPS[id];
+  terrain = null;
   MAP_ORIGIN_X = sectorMap.height * TILE_WIDTH / 2;
   ISO_WORLD_WIDTH = sectorMap.width * TILE_WIDTH;
   ISO_WORLD_HEIGHT = (sectorMap.width + sectorMap.height) * TILE_HEIGHT / 2 + MAP_ORIGIN_Y + 48;
+}
+
+let terrain: { tickRate: number; belt: BeltField | undefined; barriers: BarrierField | undefined;
+  surfaces: Map<readonly boolean[], typeof sectorSurface> } | null = null;
+
+/**
+ * Put the surface the client plans and draws on in the state the server has on that tick: belt passages
+ * open or closed, and the cells of the barriers already shot down opened.
+ */
+export function syncTerrain(tick: number, tickRate: number, fallenBarriers: readonly string[] = []): void {
+  const base = TRAINING_MAPS[activeMapId];
+  if (!base.belt?.length && !base.barriers?.length) return;
+  if (terrain?.tickRate !== tickRate) {
+    const belt = createBelt(base.belt, base, tickRate);
+    terrain = { tickRate, belt, barriers: createBarriers(base.barriers, belt ? belt.closed : base)?.field, surfaces: new Map() };
+  }
+  let now = terrain.belt ? beltSurface(terrain.belt, tick) : terrain.barriers!.closed;
+  if (terrain.barriers) now = barrierSurface(terrain.barriers, now, fallenBarriers);
+  if (now.walkable === sectorSurface.walkable) return;
+  let surface = terrain.surfaces.get(now.walkable);
+  if (!surface) { surface = { ...base, walkable: now.walkable }; terrain.surfaces.set(now.walkable, surface); }
+  sectorSurface = surface;
 }
 
 /** URL of a tileset image of the active map, or null when the file is not in the repository. */
@@ -108,12 +157,13 @@ export function routeAcrossSector(start: { x: number; y: number }, target: { x: 
 
 function readTiledMap(raw: string, mapId: TrainingMapId): TiledSector {
   const map = JSON.parse(raw) as TiledSector;
-  if (mapId !== 'espiral') return map;
+  const folder = TSX_FOLDERS[mapId];
+  if (!folder) return map;
   return {
     ...map,
     tilesets: map.tilesets.map((tileset) => {
       if (!tileset.source) return tileset;
-      const xml = tsxXml(tileset.source);
+      const xml = tsxXml(tileset.source, folder);
       if (!xml) return tileset;
       return parseTiledTsx({
         xml,
@@ -124,12 +174,12 @@ function readTiledMap(raw: string, mapId: TrainingMapId): TiledSector {
   };
 }
 
-function tsxXml(source: string): string | undefined {
+function tsxXml(source: string, folder: string): string | undefined {
   const needle = source.replaceAll('\\', '/');
   const matches = Object.entries(ESPIRAL_TSX).filter(([path]) => path.replaceAll('\\', '/').endsWith(needle));
   const preferred = matches.find(([path]) => {
     const normalized = path.replaceAll('\\', '/');
-    return normalized.endsWith(`/espiral-estelar/${needle}`);
+    return normalized.endsWith(`/${folder}/${needle}`);
   });
   return (preferred ?? matches[0])?.[1];
 }

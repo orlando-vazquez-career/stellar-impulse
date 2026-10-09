@@ -5,11 +5,26 @@ import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
 import type { AccountUser } from '../../auth/client';
+import type { SquadType } from '../game/model';
+import { GAME_ASSET_MANIFEST, GAME_SHIP_TYPES } from '../game/phaser/game-assets';
 import { canEquip, cosmeticCatalog, formatXlm, hangarCategories, imageForCosmetic, itemsForCategory, type HangarCategory } from './catalog';
 import { defaultCosmeticLoadout, loadCosmeticLoadout, saveCosmeticLoadout, type CosmeticLoadout } from './loadout';
 import { ChainNoticeBar, ItemDetail, MarketView, WalletStrip } from './HangarChainPanels';
 import { useHangarChain } from './useHangarChain';
 import './hangar.css';
+
+const HANGAR_SHIPS = GAME_SHIP_TYPES.map((shipType, index) => {
+  const asset = GAME_ASSET_MANIFEST.find((candidate) => candidate.kind === 'ship'
+    && candidate.faction === 'blue' && candidate.shipType === shipType);
+  if (!asset) throw new Error(`Missing Hangar preview for ${shipType}`);
+  return { shipType, src: asset.src, number: String(index + 1).padStart(2, '0') };
+});
+
+const HULL_PREVIEW_FILTERS: Record<string, string> = {
+  aegis: 'saturate(1.18)',
+  polar: 'grayscale(.78) brightness(1.35) saturate(.4)',
+  obsidian: 'grayscale(.65) brightness(.68) sepia(.3) hue-rotate(205deg) saturate(1.6)',
+};
 
 export function HangarPanel({
   onBack,
@@ -30,6 +45,7 @@ export function HangarPanel({
   const sound = useSpaceSound();
 
   const [category, setCategory] = useState<HangarCategory>('hull');
+  const [selectedShip, setSelectedShip] = useState<SquadType>('interceptor');
   const [loadout, setLoadout] = useState<CosmeticLoadout>(loadCosmeticLoadout);
   const [saved, setSaved] = useState(false);
 
@@ -64,11 +80,19 @@ export function HangarPanel({
     voice: t('announcerPack'),
     music: t('musicTrack'),
   };
+  const shipLabels: Record<SquadType, string> = {
+    interceptor: t('unitInterceptor'),
+    explorer: t('unitExplorer'),
+    frigate: t('unitFrigate'),
+    bomber: t('unitBomber'),
+  };
+  const selectedShipAsset = HANGAR_SHIPS.find((ship) => ship.shipType === selectedShip)!;
 
   const previewStyle = {
     '--hangar-hull': equippedItems.hull.tone,
     '--hangar-trail': equippedItems.trail.tone,
     '--hangar-insignia': equippedItems.insignia.tone,
+    '--hangar-finish-filter': HULL_PREVIEW_FILTERS[loadout.hull] ?? 'none',
   } as CSSProperties;
 
   const equip = (itemId: string) => {
@@ -134,21 +158,38 @@ export function HangarPanel({
             <header>
               <div>
                 <span>{t('shipPreview')}</span>
-                <h2 id="ship-preview-title">{t('interceptorFrame')}</h2>
+                <h2 id="ship-preview-title">{shipLabels[selectedShip]}</h2>
               </div>
-              <b>AX-7</b>
+              <b>{selectedShip === 'interceptor' ? 'AX-7' : selectedShipAsset.number}</b>
             </header>
-            <div className="vi-ship-stage" aria-hidden="true">
+            <div className="vi-ship-stage">
               <div className="vi-ship-trail vi-ship-trail--left" />
               <div className="vi-ship-trail vi-ship-trail--right" />
               <div className="vi-ship-model">
-                <i className="vi-ship-model__wing vi-ship-model__wing--left" />
-                <i className="vi-ship-model__body" />
-                <i className="vi-ship-model__wing vi-ship-model__wing--right" />
-                <span>△</span>
+                <img className="vi-ship-model__art" src={selectedShipAsset.src} alt={shipLabels[selectedShip]} />
+                <span className="vi-ship-model__insignia" aria-hidden="true">△</span>
               </div>
               <div className="vi-ship-orbit" />
             </div>
+            <nav className="vi-ship-roster" aria-label={t('hangarFleet')}>
+              {HANGAR_SHIPS.map(({ shipType, src, number }) => (
+                <button
+                  key={shipType}
+                  type="button"
+                  className={selectedShip === shipType ? 'is-selected' : ''}
+                  aria-pressed={selectedShip === shipType}
+                  onClick={() => {
+                    sound.playSelect();
+                    setSelectedShip(shipType);
+                  }}
+                  onMouseEnter={() => hover(500)}
+                >
+                  <img src={src} alt="" aria-hidden="true" loading="lazy" />
+                  <span>{shipLabels[shipType]}</span>
+                  <small>{shipType === 'interceptor' ? 'AX-7' : number}</small>
+                </button>
+              ))}
+            </nav>
             <div className="vi-loadout-summary">
               <strong>{t('currentLoadout')}</strong>
               <div>

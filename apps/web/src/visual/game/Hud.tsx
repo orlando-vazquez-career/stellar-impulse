@@ -6,9 +6,11 @@ import { formatStat } from './format-stat';
 import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
 import { AudioControls } from '../settings/AudioControls';
-import type { CameraView, CoreState, GameplayAction, GameplayPresentationAdapter, GameplayViewModel } from './model';
+import type { CameraView, CoreState, GameplayPresentationAdapter, GameplayViewModel } from './model';
 import { activeMapId, sectorMap, sectorSurface } from '../map/sector-map';
 import { cellToIso, isoToPoint, ISO_ORIGIN_X, ISO_ORIGIN_Y, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, projectedWorldBounds, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, VIEW_YAW_RADIANS } from './phaser/isometric';
+import { PRODUCTION_ORDER } from './control-shortcuts';
+import { formatKeyBinding } from '../settings/control-bindings';
 
 function formatTime(seconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -158,6 +160,18 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
   const exploredPath = useMemo(() => exploredCells
     ? floor.filter((cell) => exploredCells[cell.y * sectorMap.width + cell.x] === true).map((cell) => cell.path).join(' ')
     : terrainPath, [exploredCells, floor, terrainPath]);
+  const gates = (sectorSurface.belt ?? []).map((gate) => ({
+    id: gate.id, phase: view.belts?.find((state) => state.id === gate.id)?.phase ?? 'closed',
+    path: gate.cells.map((cell) => miniDiamond(cell.x, cell.y)).join(' '),
+    x: gate.cells.reduce((sum, cell) => sum + cell.x, 0) / gate.cells.length,
+    y: gate.cells.reduce((sum, cell) => sum + cell.y, 0) / gate.cells.length,
+  }));
+  // Sparkles over whatever is about to happen: a satellite coming down, fog leaving its nebula, the belt closing.
+  const sparkles = [
+    ...(view.satellites ?? []).filter((fall) => view.tick < fall.impactTick).map((fall) => ({ key: fall.id, x: fall.x, y: fall.y, tone: 'danger' })),
+    ...(view.nebulas ?? []).filter((cloud) => cloud.phase === 'warning').map((cloud) => ({ key: cloud.id, ...(cloud.path.at(-1) ?? cloud), tone: 'fog' })),
+    ...gates.filter((gate) => gate.phase === 'warning').map((gate) => ({ key: gate.id, x: gate.x, y: gate.y, tone: 'belt' })),
+  ];
   return <Panel className={`vi-minimap ${collapsed ? 'is-collapsed' : ''}`}>
     <header><strong>{t('minimap')}</strong><button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></header>
     {!collapsed && <button className="vi-minimap__pan" aria-label={t('minimapPan')} onClick={(event) => {
@@ -172,10 +186,11 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
       <path d={terrainPath} fill="#22384f" />
       <path d={exploredPath} fill="#34587a" />
       <path d={seenPath} fill="#5b95c4" />
+      {gates.map((gate) => <path key={gate.id} className={`map-belt map-belt--${gate.phase}`} d={gate.path} />)}
       {[...(view.chart?.nodes??[]),...(view.chart?.guardians??[])].map((cell,index)=>{
         const point=miniPoint(cell.x,cell.y);return <circle key={`chart-${index}`} className="map-chart-marker" cx={point.x} cy={point.y} r="2.4" fill="none" stroke="#b5c4d1" opacity=".65"/>;
       })}
-      {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); return <rect key={node.id} x={point.x - 2.2} y={point.y - 2.2} width="4.4" height="4.4"
+      {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); const half = node.station ? 3.4 : 2.2; return <rect key={node.id} x={point.x - half} y={point.y - half} width={half * 2} height={half * 2}
         transform={`rotate(45 ${point.x} ${point.y})`} fill={node.owner ? OWNER_FILL[node.owner] : '#8aa0b8'} opacity={node.stale ? 0.45 : 1} />; })}
       <circle className="map-core" cx={miniPoint(core.x, core.y).x} cy={miniPoint(core.x, core.y).y} r="4" />
       {Object.entries(bases).map(([owner, cell]) => { const point = miniPoint(cell.x, cell.y); return <rect key={owner}
@@ -183,10 +198,16 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
       {route && <polyline className="map-move-route" points={route.route.map((cell) => { const point = miniPoint(cell.x, cell.y); return `${point.x},${point.y}`; }).join(' ')} />}
       {view.squads.filter((squad) => squad.visible).map((squad) => {
         const point = miniPoint(squad.gridX, squad.gridY);
+        if (squad.turret) return <rect key={squad.id} className="map-turret" x={point.x - 2.6} y={point.y - 2.6} width="5.2" height="5.2" />;
         return <circle key={squad.id} className={squad.owner === 'blue' ? 'map-ally' : 'map-enemy'} cx={point.x} cy={point.y} r={squad.selected ? 3.2 : 2.4}
           fill={squad.owner === 'neutral' ? OWNER_FILL.neutral : undefined} />;
       })}
       {route && <circle className="map-destination" cx={miniPoint(route.destination.x, route.destination.y).x} cy={miniPoint(route.destination.x, route.destination.y).y} r="3" />}
+      {sparkles.map((sparkle) => { const point = miniPoint(sparkle.x, sparkle.y); return <g key={sparkle.key}
+        className={`map-sparkle map-sparkle--${sparkle.tone}`} transform={`translate(${point.x} ${point.y})`}>
+        <circle className="map-sparkle__ring" r="7" />
+        <path className="map-sparkle__star" d="M0,-7 L1.6,-1.6 L7,0 L1.6,1.6 L0,7 L-1.6,1.6 L-7,0 L-1.6,-1.6 Z" />
+      </g>; })}
       {cameraView && <rect className="map-camera"
         data-iso-width={world.width} data-iso-height={world.height}
         data-world-origin-x={world.x} data-world-origin-y={world.y}
@@ -216,19 +237,21 @@ function FormationIcon({ kind }: { kind: FormationKind }) {
   </svg>;
 }
 
-function FormationPicker({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
-  const { t } = useI18n();
+function FormationPicker({ view, adapter, controls }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls'] }) {
+  const { t, locale } = useI18n();
   if (!view.formation) return null;
+  const binding = controls.cycleFormation[0];
+  const hint = binding ? t('formationHint', { key: formatKeyBinding(binding, locale === 'es' ? 'Espacio' : 'Space') }) : t('shortcutUnassigned');
   return <div className="vi-formation" role="radiogroup" aria-label={t('formation')}>
     {FORMATIONS.map((kind) => <button key={kind} role="radio" aria-checked={view.formation === kind}
-      className={view.formation === kind ? 'is-active' : undefined} title={`${t(FORMATION_LABEL[kind])} · ${t('formationHint')}`}
+      className={view.formation === kind ? 'is-active' : undefined} title={`${t(FORMATION_LABEL[kind])} · ${hint}`}
       aria-label={t(FORMATION_LABEL[kind])} onClick={() => adapter.dispatch({ type: 'set-formation', formation: kind })}>
       <FormationIcon kind={kind} /></button>)}
   </div>;
 }
 
-function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
-  const { t } = useI18n();
+function SquadHud({ view, adapter, controls }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls'] }) {
+  const { t, locale } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
   const selected = view.squads.filter((candidate) => view.selectedSquadIds.includes(candidate.id) && candidate.visible && candidate.healthPercent > 0);
   if (!selected.length) return null;
@@ -241,9 +264,9 @@ function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: Gamepla
   return <Panel className={`vi-squad ${collapsed ? 'is-collapsed' : ''} ${group && view.formation ? 'has-formation' : ''}`}>
     <header><span>{group ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span>
       <div className="vi-squad__tools"><button className="vi-retire" disabled={!!view.result}
-        title={t('retireShipsHelp')} onClick={() => adapter.dispatch({ type: 'disband-selected' })}>{t('retireShips')}</button>
+        title={t('retireShipsHelp')} onClick={() => adapter.dispatch({ type: 'disband-selected' })}>{t('retireShips')}{controls.disband[0] && <> <kbd>{formatKeyBinding(controls.disband[0], locale === 'es' ? 'Espacio' : 'Space')}</kbd></>}</button>
         <button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></div></header>
-    {!collapsed && group && <FormationPicker view={view} adapter={adapter} />}
+    {!collapsed && group && <FormationPicker view={view} adapter={adapter} controls={controls} />}
     {!collapsed && selected.length > 1 ? <div className="vi-squad__group">{(['explorer','interceptor','frigate','bomber'] as const).map(kind=>{
       const ships=selected.filter(s=>s.unitType===kind);if(!ships.length)return null;
       const hp=ships.reduce((n,s)=>n+(s.hp??s.healthPercent),0),maxHp=ships.reduce((n,s)=>n+(s.maxHp??100),0);
@@ -262,32 +285,8 @@ function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: Gamepla
   </Panel>;
 }
 
-const actionGlyphs: Record<Exclude<GameplayAction, null> | 'cancel', string> = { move: '↗', attack: '⌖', hold: 'Ⅱ', capture: '◇', cancel: '×' };
-
-function ActionHud({ view, adapter, controls }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls'] }) {
-  const { t } = useI18n();
-  const actions: Array<{ action: Exclude<GameplayAction, null>; label: string; key: string }> = [
-    { action: 'move', label: t('move'), key: controls.move },
-    { action: 'attack', label: t('attack'), key: controls.attack },
-    { action: 'hold', label: t('hold'), key: controls.hold },
-    { action: 'capture', label: t('capture'), key: controls.capture },
-  ];
-  return <Panel className="vi-actions"><span className="vi-actions__label">{t('actions')}</span>
-    <div className="vi-actions__list">
-      {actions.map(({ action, label, key }) => <button key={action} className={view.activeAction === action ? 'is-active' : ''} onClick={() => adapter.dispatch({ type: 'set-action', action })} aria-pressed={view.activeAction === action}>
-        <span className="vi-action-glyph" aria-hidden="true">{actionGlyphs[action]}</span><span>{label}</span><kbd>{key}</kbd>
-      </button>)}
-      <button disabled={!view.activeAction} onClick={() => adapter.dispatch({ type: 'set-action', action: null })}><span className="vi-action-glyph" aria-hidden="true">{actionGlyphs.cancel}</span><span>{t('cancel')}</span><kbd>{controls.cancel}</kbd></button>
-    </div>
-  </Panel>;
-}
-
-const PRODUCTION_ORDER = [
-  { kind: 'interceptor', key: '1' }, { kind: 'frigate', key: '2' }, { kind: 'bomber', key: '3' }, { kind: 'explorer', key: '4' },
-] as const;
-
 /** Base hangar: one ship at a time, paid in Metal. Hidden in the offline mock. */
-function ProductionHud({ view, adapter,onBaseRange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter;onBaseRange?:(show:boolean)=>void }) {
+function ProductionHud({ view, adapter, controls, onBaseRange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; onBaseRange?:(show:boolean)=>void }) {
   const { t,locale } = useI18n();
   const [tab, setTab] = useState<'hangar' | 'modules' | 'base'>('hangar');
   const [hovered,setHovered]=useState<keyof typeof UNIT_COSTS|null>(null);
@@ -322,7 +321,9 @@ function ProductionHud({ view, adapter,onBaseRange }: { view: GameplayViewModel;
       ? <p className="vi-production__queue">{unitNames[view.production.kind]} · {view.production.remainingSeconds} s</p>
       : <p className="vi-production__queue">{full ? 'Flota completa' : 'Listo para construir'}</p>}
     <div className="vi-production__list">
-      {PRODUCTION_ORDER.map(({ kind, key }) => {
+      {PRODUCTION_ORDER.map(({ kind, control }) => {
+        const binding = controls[control][0];
+        const key = binding ? formatKeyBinding(binding, locale === 'es' ? 'Espacio' : 'Space') : '';
         const cost = view.unitStats?.[kind]?.cost ?? UNIT_COSTS[kind];
         const disabled = !!view.production || !!view.productionForbidden?.includes(kind) || full || view.resources.metal < cost || !!view.result;
         const stats=view.unitStats?.[kind];
@@ -330,7 +331,7 @@ function ProductionHud({ view, adapter,onBaseRange }: { view: GameplayViewModel;
         const names=(strong:boolean)=>counters.filter(([,multiplier])=>strong?multiplier>1:multiplier<1).map(([target,multiplier])=>`${target==='guardian'?t('guardiansCore'):unitNames[target as keyof typeof unitNames]} ×${multiplier}`).join(', ');
         return <div className="vi-production__unit" key={kind} onMouseEnter={()=>setHovered(kind)} onMouseLeave={()=>setHovered(null)} onFocus={()=>setHovered(kind)} onBlur={()=>setHovered(null)}>
           <button disabled={disabled} onClick={() => adapter.dispatch({ type: 'produce', kind })} aria-describedby={hovered===kind?`build-guide-${kind}`:undefined}>
-            <span>{unitNames[kind]}</span><small>{cost} M · {t('attackRange')} {stats?.range??'—'}</small><kbd>{key}</kbd>
+            <span>{unitNames[kind]}</span><small>{cost} M · {t('attackRange')} {stats?.range??'—'}</small>{key && <kbd>{key}</kbd>}
           </button>
           {hovered===kind&&stats&&<div className="vi-unit-guide" role="tooltip" id={`build-guide-${kind}`}>
             <header><strong>{unitNames[kind]}</strong><span>{cost} Metal · {stats.buildTicks/10} s</span></header>
@@ -341,7 +342,19 @@ function ProductionHud({ view, adapter,onBaseRange }: { view: GameplayViewModel;
           </div>}
         </div>;
       })}
-    </div></div>}
+    </div>
+    {(view.stations ?? []).map((station, index) => <div className="vi-production__station" key={station.id}>
+      <p className="vi-production__queue">{locale === 'es' ? `Estación ${index + 1} · entrega inmediata` : `Station ${index + 1} · instant delivery`}</p>
+      <div className="vi-production__list">{PRODUCTION_ORDER.map(({ kind }) => {
+        const cost = station.prices[kind];
+        const disabled = !!view.productionForbidden?.includes(kind) || full || view.resources.metal < cost || !!view.result;
+        return <div className="vi-production__unit" key={kind}>
+          <button disabled={disabled} onClick={() => adapter.dispatch({ type: 'station-produce', stationId: station.id, kind })}>
+            <span>{unitNames[kind]}</span><small>{cost} M · ×3</small>
+          </button>
+        </div>;
+      })}</div>
+    </div>)}</div>}
   </Panel>;
 }
 
@@ -424,9 +437,8 @@ export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCame
     <SectorHud view={view} />
     <TopControls view={view} adapter={adapter} onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} multiplayer={multiplayer} audio={audio} onAudioChange={onAudioChange} />
     <Minimap view={view} cameraView={cameraView} onPanMap={onPanMap} />
-    <SquadHud view={view} adapter={adapter} />
-    <ActionHud view={view} adapter={adapter} controls={controls} />
-    <ProductionHud view={view} adapter={adapter} onBaseRange={onBaseRange}/>
+    <SquadHud view={view} adapter={adapter} controls={controls} />
+    <ProductionHud view={view} adapter={adapter} controls={controls} onBaseRange={onBaseRange}/>
     <NoticeHud view={view} />
   </div>;
 }

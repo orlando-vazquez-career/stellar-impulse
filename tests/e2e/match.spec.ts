@@ -37,12 +37,7 @@ test('retires an accidental ship with Delete and buys capacity and damage upgrad
   await expect(production).toContainText('22 daño');
   await expect(damage).toContainText('Nivel 1/3');
   await page.screenshot({ path: 'test-results/base-upgrades.png' });
-  const overlap = await page.evaluate(() => {
-    const base = document.querySelector('.vi-production')!.getBoundingClientRect();
-    const actions = document.querySelector('.vi-actions')!.getBoundingClientRect();
-    return base.x < actions.right && base.right > actions.x && base.y < actions.bottom && base.bottom > actions.y;
-  });
-  expect(overlap).toBe(false);
+  await expect(page.locator('.vi-actions')).toHaveCount(0);
 });
 
 test('plays Espiral Estelar against the server rival and builds a ship', async ({ page }) => {
