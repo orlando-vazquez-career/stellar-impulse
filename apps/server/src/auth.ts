@@ -1,9 +1,14 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { parseDisplayName } from '@impulso/input';
 import { emptyProgress, profileFor, rewardForCampaign, rewardForMatch, type AccountProgress, type CampaignOutcome, type ChallengeId, type MatchReward, type PlayerId, type ProgressProfile, type RivalDifficulty, type World } from '@impulso/sim';
+import { Keypair, Transaction } from '@stellar/stellar-sdk';
+import { createWalletChallenge, STELLAR_TESTNET, validatePublicAddress, verifyWalletChallenge, type WalletChallenge } from '@impulso/chain';
 import { FileAccountStore, type AccountStore, type StoredUser } from './account-store';
+import { ChainRewards } from './chain-rewards';
 
 const SESSION_MS = 24 * 60 * 60_000;
+/** A wallet challenge must be signed within this window (it also expires inside the transaction). */
+const CHALLENGE_MS = 5 * 60_000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export interface PublicUser {
@@ -11,9 +16,13 @@ export interface PublicUser {
   email: string;
   /** Commander alias kept in the account; null until the player picks one. */
   displayName: string | null;
+  /** Linked Stellar wallet; merit emblems are minted to it. Null until the player links one. */
+  walletAddress: string | null;
 }
 
-const publicUser = (user: StoredUser): PublicUser => ({ id: user.id, email: user.email, displayName: user.displayName ?? null });
+const publicUser = (user: StoredUser): PublicUser => ({
+  id: user.id, email: user.email, displayName: user.displayName ?? null, walletAddress: user.walletAddress ?? null,
+});
 
 export class AuthError extends Error {
   constructor(public readonly status: number, public readonly code: string) {
@@ -31,6 +40,11 @@ export class AuthService {
   /** Awards for one account run one after another, so two rooms ending together add up. */
   private readonly queues = new Map<string, Promise<unknown>>();
   private readonly store: AccountStore;
+  /** Signs wallet challenges. A fresh key per process is enough: a challenge lives five minutes. */
+  private readonly challengeKey = Keypair.random();
+  /** One open challenge per account; signing it links that exact address. */
+  private readonly challenges = new Map<string, { address: string; hash: string; expiresAt: number }>();
+  private rewards = new ChainRewards(null);
 
   /** A file path (or null for memory only) loads synchronously; use `open` for Postgres. */
   constructor(storage: string | null | AccountStore = null, preloaded: readonly StoredUser[] = []) {
@@ -43,6 +57,9 @@ export class AuthService {
   static async open(store: AccountStore & { load(): Promise<StoredUser[]> }): Promise<AuthService> {
     return new AuthService(store, await store.load());
   }
+
+  /** On-chain merit emblems; off until the server is given a minter key. */
+  useChainRewards(rewards: ChainRewards): void { this.rewards = rewards; }
 
   /** Accounts survive a restart with a file or a database; sessions never do. */
   get persistent(): boolean { return this.store.kind !== 'memory'; }
@@ -120,6 +137,70 @@ export class AuthService {
     });
   }
 
+  /** Step 1 of linking: a challenge only `address` can sign. Replaces any earlier challenge. */
+  walletChallenge(userId: string, address: unknown): WalletChallenge {
+    const user = this.byId(userId);
+    if (!user) throw new AuthError(401, 'authentication_required');
+    let wallet: string;
+    try { wallet = validatePublicAddress(address); } catch { throw new AuthError(400, 'invalid_wallet'); }
+    const challenge = createWalletChallenge(this.challengeKey, wallet);
+    const hash = Buffer.from(new Transaction(challenge.transaction, STELLAR_TESTNET.networkPassphrase).hash()).toString('hex');
+    this.challenges.set(userId, { address: wallet, hash, expiresAt: Date.now() + CHALLENGE_MS });
+    return challenge;
+  }
+
+  /**
+   * Step 2: the signed challenge proves the player controls the address. Only the challenge this
+   * account asked for counts, once. Afterwards the account's merit emblems are minted to it.
+   */
+  async linkWallet(userId: string, signedTransaction: unknown): Promise<PublicUser> {
+    const pending = this.challenges.get(userId);
+    if (!pending || pending.expiresAt <= Date.now()) throw new AuthError(400, 'wallet_challenge_expired');
+    if (typeof signedTransaction !== 'string' || signedTransaction.length > 4096) throw new AuthError(400, 'invalid_wallet_signature');
+    let hash: string;
+    try { hash = Buffer.from(new Transaction(signedTransaction, STELLAR_TESTNET.networkPassphrase).hash()).toString('hex'); }
+    catch { throw new AuthError(400, 'invalid_wallet_signature'); }
+    if (hash !== pending.hash) throw new AuthError(400, 'invalid_wallet_signature');
+    try { verifyWalletChallenge(signedTransaction, this.challengeKey.publicKey(), pending.address); }
+    catch { throw new AuthError(400, 'invalid_wallet_signature'); }
+    this.challenges.delete(userId);
+    const linked = await this.setWallet(userId, pending.address);
+    void this.syncMerits(userId);
+    return linked;
+  }
+
+  /** The account keeps its emblems on chain; new ones wait until a wallet is linked again. */
+  unlinkWallet(userId: string): Promise<PublicUser> {
+    return this.setWallet(userId, undefined);
+  }
+
+  /** Mints any earned merit not yet on chain to the linked wallet. Safe to call any time. */
+  syncMerits(userId: string) {
+    const user = this.byId(userId);
+    if (!user?.walletAddress) return Promise.resolve([]);
+    return this.rewards.sync({ id: user.id, walletAddress: user.walletAddress, merits: user.progress?.merits ?? [] });
+  }
+
+  private setWallet(userId: string, address: string | undefined): Promise<PublicUser> {
+    return this.inQueue(userId, async () => {
+      const user = this.byId(userId);
+      if (!user) throw new AuthError(401, 'authentication_required');
+      if (address && [...this.users.values()].some((other) => other.id !== userId && other.walletAddress === address)) {
+        throw new AuthError(409, 'wallet_in_use');
+      }
+      const previous = user.walletAddress;
+      if (previous === address) return publicUser(user);
+      if (address) user.walletAddress = address; else delete user.walletAddress;
+      try {
+        await this.store.saveWallet(user, [...this.users.values()]);
+      } catch (error) {
+        if (previous) user.walletAddress = previous; else delete user.walletAddress;
+        throw error;
+      }
+      return publicUser(user);
+    });
+  }
+
   awardMatch(userId: string, matchId: string, world: World, player: PlayerId, difficulty: RivalDifficulty | 'pvp'): Promise<MatchReward> {
     return this.award(userId, matchId, (progress) => rewardForMatch(progress, matchId, world, player, difficulty));
   }
@@ -146,6 +227,8 @@ export class AuthService {
         user.progress = previous;
         throw error;
       }
+      // A new emblem goes to the linked wallet; the room never waits for the network.
+      if (result.reward.merits?.length) void this.syncMerits(userId);
       return result.reward;
     });
   }

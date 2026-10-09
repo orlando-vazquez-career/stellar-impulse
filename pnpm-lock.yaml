@@ -44,6 +44,9 @@ importers:
       '@colyseus/ws-transport':
         specifier: 0.18.2
         version: 0.18.2(@colyseus/core@0.18.15)(express@5.2.1(supports-color@10.2.2))
+      '@impulso/chain':
+        specifier: workspace:*
+        version: link:../../packages/chain
       '@impulso/input':
         specifier: workspace:*
         version: link:../../packages/input
@@ -59,6 +62,9 @@ importers:
       '@prisma/client':
         specifier: 7.10.0
         version: 7.10.0(prisma@7.10.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@5.9.3))(typescript@5.9.3)
+      '@stellar/stellar-sdk':
+        specifier: 17.1.0
+        version: 17.1.0(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)
       express:
         specifier: 5.2.1
         version: 5.2.1(supports-color@10.2.2)

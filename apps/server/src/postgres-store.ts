@@ -52,7 +52,8 @@ export class PostgresAccountStore implements AccountStore {
       };
       return {
         id: account.id, email: account.email, salt: account.salt, passwordHash: account.passwordHash,
-        ...(account.displayName === null ? {} : { displayName: account.displayName }), progress,
+        ...(account.displayName === null ? {} : { displayName: account.displayName }),
+        ...(account.walletAddress === null ? {} : { walletAddress: account.walletAddress }), progress,
       };
     });
   }
@@ -69,6 +70,16 @@ export class PostgresAccountStore implements AccountStore {
   /** Writes only the profile columns, so it never races the XP another process adds. */
   async saveProfile(user: StoredUser): Promise<void> {
     await this.db.account.update({ where: { id: user.id }, data: { displayName: user.displayName ?? null } });
+  }
+
+  /** The unique column refuses a wallet already linked to another account. */
+  async saveWallet(user: StoredUser): Promise<void> {
+    try {
+      await this.db.account.update({ where: { id: user.id }, data: { walletAddress: user.walletAddress ?? null } });
+    } catch (error) {
+      if (duplicate(error)) throw new AuthError(409, 'wallet_in_use');
+      throw error;
+    }
   }
 
   /** XP is added in the database, so results saved by different processes still sum up. */
@@ -112,7 +123,7 @@ export class PostgresAccountStore implements AccountStore {
         const progress = user.progress;
         await tx.account.create({ data: {
           id: user.id, email: user.email, salt: user.salt, passwordHash: user.passwordHash,
-          displayName: user.displayName ?? null, xp: progress?.xp ?? 0,
+          displayName: user.displayName ?? null, walletAddress: user.walletAddress ?? null, xp: progress?.xp ?? 0,
         } });
         if (!progress) continue;
         const achievements = [

@@ -14,11 +14,13 @@
   "dependencies": {
     "@colyseus/core": "0.18.15",
     "@colyseus/ws-transport": "0.18.2",
+    "@impulso/chain": "workspace:*",
     "@impulso/input": "workspace:*",
     "@impulso/sim": "workspace:*",
     "@impulso/state": "workspace:*",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
+    "@stellar/stellar-sdk": "17.1.0",
     "express": "5.2.1",
     "pg": "8.23.0",
     "prisma": "7.10.0",
