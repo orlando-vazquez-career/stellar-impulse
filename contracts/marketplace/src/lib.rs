@@ -13,7 +13,8 @@ use soroban_sdk::{
 const DAY_IN_LEDGERS: u32 = 17_280;
 const INSTANCE_BUMP: u32 = 30 * DAY_IN_LEDGERS;
 const INSTANCE_THRESHOLD: u32 = INSTANCE_BUMP - DAY_IN_LEDGERS;
-const LISTING_BUMP: u32 = 60 * DAY_IN_LEDGERS;
+/// Storage rent is paid per ledger kept, so a listing lives just past its longest duration.
+const LISTING_BUMP: u32 = 31 * DAY_IN_LEDGERS;
 const LISTING_THRESHOLD: u32 = LISTING_BUMP - 7 * DAY_IN_LEDGERS;
 /// A listing (and its approval) lasts at most this long; the seller can list again.
 pub const MAX_LISTING_LEDGERS: u32 = 30 * DAY_IN_LEDGERS;
