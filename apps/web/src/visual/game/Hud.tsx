@@ -160,6 +160,18 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
   const exploredPath = useMemo(() => exploredCells
     ? floor.filter((cell) => exploredCells[cell.y * sectorMap.width + cell.x] === true).map((cell) => cell.path).join(' ')
     : terrainPath, [exploredCells, floor, terrainPath]);
+  const gates = (sectorSurface.belt ?? []).map((gate) => ({
+    id: gate.id, phase: view.belts?.find((state) => state.id === gate.id)?.phase ?? 'closed',
+    path: gate.cells.map((cell) => miniDiamond(cell.x, cell.y)).join(' '),
+    x: gate.cells.reduce((sum, cell) => sum + cell.x, 0) / gate.cells.length,
+    y: gate.cells.reduce((sum, cell) => sum + cell.y, 0) / gate.cells.length,
+  }));
+  // Sparkles over whatever is about to happen: a satellite coming down, fog leaving its nebula, the belt closing.
+  const sparkles = [
+    ...(view.satellites ?? []).filter((fall) => view.tick < fall.impactTick).map((fall) => ({ key: fall.id, x: fall.x, y: fall.y, tone: 'danger' })),
+    ...(view.nebulas ?? []).filter((cloud) => cloud.phase === 'warning').map((cloud) => ({ key: cloud.id, ...(cloud.path.at(-1) ?? cloud), tone: 'fog' })),
+    ...gates.filter((gate) => gate.phase === 'warning').map((gate) => ({ key: gate.id, x: gate.x, y: gate.y, tone: 'belt' })),
+  ];
   return <Panel className={`vi-minimap ${collapsed ? 'is-collapsed' : ''}`}>
     <header><strong>{t('minimap')}</strong><button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></header>
     {!collapsed && <button className="vi-minimap__pan" aria-label={t('minimapPan')} onClick={(event) => {
@@ -174,10 +186,11 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
       <path d={terrainPath} fill="#22384f" />
       <path d={exploredPath} fill="#34587a" />
       <path d={seenPath} fill="#5b95c4" />
+      {gates.map((gate) => <path key={gate.id} className={`map-belt map-belt--${gate.phase}`} d={gate.path} />)}
       {[...(view.chart?.nodes??[]),...(view.chart?.guardians??[])].map((cell,index)=>{
         const point=miniPoint(cell.x,cell.y);return <circle key={`chart-${index}`} className="map-chart-marker" cx={point.x} cy={point.y} r="2.4" fill="none" stroke="#b5c4d1" opacity=".65"/>;
       })}
-      {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); return <rect key={node.id} x={point.x - 2.2} y={point.y - 2.2} width="4.4" height="4.4"
+      {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); const half = node.station ? 3.4 : 2.2; return <rect key={node.id} x={point.x - half} y={point.y - half} width={half * 2} height={half * 2}
         transform={`rotate(45 ${point.x} ${point.y})`} fill={node.owner ? OWNER_FILL[node.owner] : '#8aa0b8'} opacity={node.stale ? 0.45 : 1} />; })}
       <circle className="map-core" cx={miniPoint(core.x, core.y).x} cy={miniPoint(core.x, core.y).y} r="4" />
       {Object.entries(bases).map(([owner, cell]) => { const point = miniPoint(cell.x, cell.y); return <rect key={owner}
@@ -185,10 +198,16 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
       {route && <polyline className="map-move-route" points={route.route.map((cell) => { const point = miniPoint(cell.x, cell.y); return `${point.x},${point.y}`; }).join(' ')} />}
       {view.squads.filter((squad) => squad.visible).map((squad) => {
         const point = miniPoint(squad.gridX, squad.gridY);
+        if (squad.turret) return <rect key={squad.id} className="map-turret" x={point.x - 2.6} y={point.y - 2.6} width="5.2" height="5.2" />;
         return <circle key={squad.id} className={squad.owner === 'blue' ? 'map-ally' : 'map-enemy'} cx={point.x} cy={point.y} r={squad.selected ? 3.2 : 2.4}
           fill={squad.owner === 'neutral' ? OWNER_FILL.neutral : undefined} />;
       })}
       {route && <circle className="map-destination" cx={miniPoint(route.destination.x, route.destination.y).x} cy={miniPoint(route.destination.x, route.destination.y).y} r="3" />}
+      {sparkles.map((sparkle) => { const point = miniPoint(sparkle.x, sparkle.y); return <g key={sparkle.key}
+        className={`map-sparkle map-sparkle--${sparkle.tone}`} transform={`translate(${point.x} ${point.y})`}>
+        <circle className="map-sparkle__ring" r="7" />
+        <path className="map-sparkle__star" d="M0,-7 L1.6,-1.6 L7,0 L1.6,1.6 L0,7 L-1.6,1.6 L-7,0 L-1.6,-1.6 Z" />
+      </g>; })}
       {cameraView && <rect className="map-camera"
         data-iso-width={world.width} data-iso-height={world.height}
         data-world-origin-x={world.x} data-world-origin-y={world.y}
@@ -323,7 +342,19 @@ function ProductionHud({ view, adapter, controls, onBaseRange }: { view: Gamepla
           </div>}
         </div>;
       })}
-    </div></div>}
+    </div>
+    {(view.stations ?? []).map((station, index) => <div className="vi-production__station" key={station.id}>
+      <p className="vi-production__queue">{locale === 'es' ? `Estación ${index + 1} · entrega inmediata` : `Station ${index + 1} · instant delivery`}</p>
+      <div className="vi-production__list">{PRODUCTION_ORDER.map(({ kind }) => {
+        const cost = station.prices[kind];
+        const disabled = !!view.productionForbidden?.includes(kind) || full || view.resources.metal < cost || !!view.result;
+        return <div className="vi-production__unit" key={kind}>
+          <button disabled={disabled} onClick={() => adapter.dispatch({ type: 'station-produce', stationId: station.id, kind })}>
+            <span>{unitNames[kind]}</span><small>{cost} M · ×3</small>
+          </button>
+        </div>;
+      })}</div>
+    </div>)}</div>}
   </Panel>;
 }
 

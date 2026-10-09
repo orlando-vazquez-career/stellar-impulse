@@ -29,6 +29,7 @@ jobs:
       - run: pnpm check
   browser:
     runs-on: ubuntu-latest
+    # Playwright plus two Phaser clients on Espiral often finishes near 14 min; 15 cuts the job during teardown.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

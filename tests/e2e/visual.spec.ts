@@ -99,6 +99,20 @@ test.describe('visual interface foundation', () => {
     await page.screenshot({ path: 'test-results/structures-top-down.png' });
   });
 
+  test('offers Espiral Estelar and Caos Estelar before launch', async ({ page }) => {
+    await openApp(page);
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    const espiral = page.getByRole('button', { name: /Espiral Estelar/ });
+    const caos = page.getByRole('button', { name: /Caos Estelar/ });
+    await expect(espiral).toBeVisible();
+    await expect(caos).toBeVisible();
+    await caos.click();
+    await expect(caos).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.vi-briefing__data dd').first()).toHaveText('Caos Estelar');
+  });
+
   test('keeps HUD modules inside 1366×768 without overlap', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await openApp(page, '/visual?adapter=mock');

@@ -4,7 +4,7 @@ import { useI18n } from '../../i18n';
 import type { CameraView, GameplayViewModel } from '../model';
 import type { CameraPanDirection } from '../../settings/control-bindings';
 import { MainScene } from './MainScene';
-import { activeMapId, activeMapSourceFile } from '../../map/sector-map';
+import { activeMapId, activeMapSourceFile, playableMapLabel } from '../../map/sector-map';
 
 export interface PhaserBattlefieldHandle {
   resetCamera(): void;
@@ -65,7 +65,6 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
         if (disposed) return;
         setLoadError(null);
         host.parentElement?.setAttribute('data-ready', 'true');
-        host.parentElement?.setAttribute('data-map-source', activeMapSourceFile());
         host.parentElement?.setAttribute('data-atlas-ready', 'true');
       },
       (message) => { if (!disposed) setLoadError(message); },
@@ -84,7 +83,6 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
     return () => {
       disposed = true;
       host.parentElement?.removeAttribute('data-ready');
-      host.parentElement?.removeAttribute('data-map-source');
       host.parentElement?.removeAttribute('data-atlas-ready');
       sceneRef.current = null;
       gameRef.current = null;
@@ -95,9 +93,9 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
     };
   }, []);
 
-  return <div className="vi-phaser" aria-label={t('battlefieldReady')}>
+  return <div className="vi-phaser" data-map-source={activeMapSourceFile()} aria-label={t('battlefieldReady')}>
     <div className="vi-phaser__canvas" ref={canvasHostRef} />
-    <div className="vi-phaser__status"><strong>{activeMapId === 'espiral' ? 'ESPIRAL ESTELAR' : t('battlefieldStatus')}</strong><span>{t('cameraHint')}</span><span>{t('controlGroupsHint')}</span></div>
+    <div className="vi-phaser__status"><strong>{activeMapId === 'sector-01' ? t('battlefieldStatus') : playableMapLabel(activeMapId).toUpperCase()}</strong><span>{t('cameraHint')}</span><span>{t('controlGroupsHint')}</span></div>
     {loadError && <div className="vi-phaser__error" role="alert">{loadError}</div>}
   </div>;
 });

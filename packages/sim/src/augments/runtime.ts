@@ -49,8 +49,10 @@ function hand(world: World, player: PlayerId, choice: number, rerolls: number, p
 }
 function offer(world: World, player: PlayerId, choice: number): void {
   const state = world.augmentMatch!.players[player];
-  state.offer = { choice, tier: TIERS[choice]!, cards: hand(world,player,choice,0),
-    deadline: world.augmentMatch!.clock + (choice === 0 ? OPENING_TICKS : 200), rerolls: 0 };
+  const cards = hand(world,player,choice,0);
+  // A long run can exhaust a tier: with nothing left to deal, that choice is skipped.
+  state.offer = cards.length ? { choice, tier: TIERS[choice]!, cards,
+    deadline: world.augmentMatch!.clock + (choice === 0 ? OPENING_TICKS : 200), rerolls: 0 } : null;
   state.nextChoice = choice + 1;
 }
 export function initializeAugments(world: World, pools: Partial<Record<PlayerId, readonly string[]>> = {}): void {
@@ -91,6 +93,13 @@ export function setAugmentPool(world:World,player:PlayerId,pool:readonly string[
   const state=world.augmentMatch?.players[player];
   if(!state || state.chosen.length || world.tick!==0)return;
   state.unlocked=[...pool];offer(world,player,0);
+}
+/** Trusted admission hook for a run of sectors: augments won in earlier sectors are owned again, then a fresh hand is dealt. */
+export function carryAugments(world:World,player:PlayerId,ids:readonly string[]):void {
+  const state=world.augmentMatch?.players[player];
+  if(!state || state.chosen.length || world.tick!==0)return;
+  for(const id of ids) if(state.unlocked.includes(id)) grantAugment(world,player,id);
+  offer(world,player,0);
 }
 function validOffer(world: World, player: PlayerId, choice: unknown): AugmentOffer | null {
   const match = world.augmentMatch;
@@ -147,8 +156,9 @@ export function prepareCampaignSector(world: World, sector: CampaignSectorAugmen
     for (const id of sector.carried[player]) grantAugment(world, player, id);
     offer(world, player, sector.choice);
     const state = match.players[player];
-    state.offer = { ...state.offer!, deadline: match.clock + OPENING_TICKS, rerollLimit: 1 + (sector.extraRerolls?.[player] ?? 0) };
     state.nextChoice = TIERS.length;
+    if (!state.offer) continue;
+    state.offer = { ...state.offer, deadline: match.clock + OPENING_TICKS, rerollLimit: 1 + (sector.extraRerolls?.[player] ?? 0) };
   }
   match.started = false;
 }

@@ -59,6 +59,7 @@ export function CommandCenter({
   alias,
   accountEmail,
   onCreateRoom,
+  onCampaign,
   onCreateMultiplayer,
   onJoinRoom,
   onHangar,
@@ -69,6 +70,8 @@ export function CommandCenter({
   alias: string;
   accountEmail?: string;
   onCreateRoom(): void;
+  /** Starts the run of sectors: the three maps in a row against the AI. */
+  onCampaign(): void;
   onCreateMultiplayer(): void;
   onJoinRoom(): void;
   onHangar(): void;
@@ -122,6 +125,7 @@ export function CommandCenter({
 
         <div className="vi-menu-grid">
           <MenuCard glyph="△" title={t('deploy')} detail={t('deployDetail')} enabled onClick={onCreateRoom} />
+          <MenuCard glyph="✦" title={t('campaignMode')} detail={t('campaignModeDetail')} enabled onClick={onCampaign} />
           <MenuCard glyph="⇄" title={t('createMultiplayer')} detail={t('createMultiplayerDetail')} enabled onClick={onCreateMultiplayer} />
           <MenuCard glyph="⌁" title={t('joinRoom')} detail={t('joinDetail')} enabled onClick={onJoinRoom} />
           <MenuCard glyph="◇" title={t('hangar')} detail={t('hangarDetail')} enabled onClick={onHangar} />

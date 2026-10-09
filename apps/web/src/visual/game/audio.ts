@@ -285,6 +285,23 @@ export function playEvent(audio: MatchAudio, event: GameplayEvent, locale: 'es' 
     case 'satellite-impact':
       audio.play('explosion-large');
       return null;
+    case 'nebula-warning':
+      audio.play('alarm');
+      return { text: es ? '¡La niebla morada avanza! Ralentiza y tapa la visión' : 'Purple fog advancing! It slows ships and blocks sight', tone: 'bad' };
+    case 'belt-warning':
+      return { text: es ? 'El cinturón de asteroides va a cerrar el paso' : 'The asteroid belt is about to close the passage', tone: 'info' };
+    case 'barrier-down':
+      audio.play('explosion-large');
+      return { text: es ? 'Barrera destruida: el camino de ronda queda abierto' : 'Barrier destroyed: the ring road is open', tone: 'info' };
+    case 'station-captured':
+      audio.play('capture-own');
+      return { text: es ? 'Estación capturada: compra naves al instante en el hangar' : 'Station captured: buy ships at once from the hangar', tone: 'good' };
+    case 'station-lost':
+      audio.play('capture-rival');
+      return { text: es ? 'Estación perdida' : 'Station lost', tone: 'bad' };
+    case 'turret-down':
+      audio.play('explosion-large');
+      return { text: es ? 'Torreta destruida' : 'Turret destroyed', tone: 'good' };
     case 'core-soon':
       audio.announce('core-soon');
       return { text: es ? 'El Núcleo se abre en 30 s' : 'Core opens in 30 s', tone: 'info' };

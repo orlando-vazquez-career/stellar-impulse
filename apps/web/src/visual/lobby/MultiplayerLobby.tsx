@@ -303,7 +303,9 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
                 <legend>{copy.map}</legend>
                 {PLAYABLE_MAPS.map((option) => (
                   <button key={option.id} type="button" className={map === option.id ? 'is-selected' : ''}
-                    aria-pressed={map === option.id} onClick={() => { sound.playSelect(); setMap(option.id); }}>
+                    aria-pressed={map === option.id}
+                    aria-label={`${option.name[locale]}. ${option.description[locale]}`}
+                    onClick={() => { sound.playSelect(); setMap(option.id); }}>
                     <strong>{option.name[locale]}</strong>
                     <small>{option.description[locale]}</small>
                   </button>

@@ -6,6 +6,23 @@ export const PLAYABLE_MAPS = [{
     es: '96×96. Carriles de impulso, nebulosas y núcleo con escudo.',
     en: '96×96. Boost lanes, nebulas and a shielded core.',
   },
+}, {
+  id: 'espiral-2',
+  name: { es: 'Caos Estelar', en: 'Stellar Chaos' },
+  description: {
+    es: '96×96. Carriles anchos, niebla morada que avanza y satélites que se turnan.',
+    en: '96×96. Wide lanes, a drifting purple nebula and taking-turn satellites.',
+  },
+}] as const;
+
+/** Practice against the AI also offers maps that are not open to matches between players yet. */
+export const PRACTICE_MAPS = [...PLAYABLE_MAPS, {
+  id: 'trascendencia',
+  name: { es: 'Trascendencia Estelar', en: 'Stellar Transcendence' },
+  description: {
+    es: '115×115. Archipiélago en el vacío: estaciones capturables, barreras que se rompen y una señal que no debería estar ahí.',
+    en: '115×115. An archipelago in the void: capturable stations, breakable barriers and a signal that should not be there.',
+  },
 }] as const;
 
 export type PlayableMapId = typeof PLAYABLE_MAPS[number]['id'];

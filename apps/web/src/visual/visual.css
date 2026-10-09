@@ -612,6 +612,22 @@
 .vi-minimap .map-core { fill: var(--vi-core); }
 .vi-minimap .map-ally { fill: var(--vi-blue); stroke: var(--vi-blue-light); }
 .vi-minimap .map-enemy { fill: var(--vi-red); stroke: var(--vi-red-light); }
+/* Fog of war: never seen, seen before, in sight now. */
+.vi-minimap .map-fog { fill: #1b2a3d; }
+.vi-minimap .map-known { fill: #34587a; }
+.vi-minimap .map-seen { fill: #6aa9dc; }
+.vi-minimap .map-turret { fill: #f2b84b; stroke: #4a3d1f; stroke-width: .8; }
+.vi-minimap .map-belt--open { fill: #34587a; }
+.vi-minimap .map-belt--closed { fill: #8a6f52; }
+.vi-minimap .map-belt--warning { fill: #ffb347; animation: vi-map-blink .5s steps(2, jump-none) infinite; }
+.vi-minimap .map-sparkle { pointer-events: none; color: #ff7a5c; }
+.vi-minimap .map-sparkle--fog { color: #c98bff; }
+.vi-minimap .map-sparkle--belt { color: #ffd166; }
+.vi-minimap .map-sparkle__star { fill: #fff; stroke: currentColor; stroke-width: 1; transform-box: fill-box; transform-origin: center; animation: vi-map-twinkle .9s ease-in-out infinite; }
+.vi-minimap .map-sparkle__ring { fill: none; stroke: currentColor; stroke-width: 1.4; transform-box: fill-box; transform-origin: center; animation: vi-map-ring .9s ease-out infinite; }
+@keyframes vi-map-twinkle { 0%, 100% { transform: scale(.45) rotate(0deg); opacity: .7; } 50% { transform: scale(1.15) rotate(45deg); opacity: 1; } }
+@keyframes vi-map-ring { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+@keyframes vi-map-blink { from { opacity: 1; } to { opacity: .35; } }
 
 .vi-squad { position: absolute; bottom: 20px; left: 50%; width: 470px; padding: 12px 14px; transform: translateX(-50%); }
 .vi-squad.is-collapsed { width: 250px; }
@@ -788,3 +804,7 @@
 .vi-announcement--bad { border-color: #ff4f64; color: #ffc9cf; }
 @keyframes vi-announce { 0% { opacity: 0; transform: translate(-50%, -8px); } 10%, 80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 .is-reduced-motion .vi-announcement { animation: none; }
+
+/* Captured stations: ships delivered at once, at three times their price. */
+.vi-production__station { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--vi-border); }
+.vi-production__station .vi-production__queue { color: #f2b84b; }
