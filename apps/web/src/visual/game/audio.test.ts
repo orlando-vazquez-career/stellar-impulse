@@ -16,6 +16,7 @@ describe('audio manifest', () => {
 
 import { getAudioMix, setAudioMix } from '../audio-mix';
 import { defaultVisualPreferences } from '../settings/preferences';
+import { defaultCosmeticLoadout, saveCosmeticLoadout } from '../hangar/loadout';
 
 describe('live match audio', () => {
   const players: MatchAudio[] = [];
@@ -69,5 +70,28 @@ describe('live match audio', () => {
     expect(cancel).toHaveBeenCalledTimes(2);
     audio.announce('node-captured');
     expect(speak).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['voz-comandante', 1.08, 0.85],
+    ['voz-analista', 0.95, 1.15],
+  ])('uses the equipped %s profile for announcements in both languages', (voice, rate, pitch) => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) });
+    const speak = vi.fn();
+    vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn() });
+    vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
+    saveCosmeticLoadout({ ...defaultCosmeticLoadout, voice: String(voice) });
+    mix();
+    const spanish = player(); spanish.announce('start');
+    const english = new MatchAudio('en'); players.push(english); english.announce('victory');
+    expect(speak.mock.calls[0]![0]).toMatchObject({ rate, pitch, lang: 'es-ES' });
+    expect(speak.mock.calls[1]![0]).toMatchObject({ rate, pitch, lang: 'en-US', text: 'Victory' });
+    setAudioMix({ ...getAudioMix(), voice: 20 });
+    expect(speak.mock.calls[2]![0]).toMatchObject({ rate, pitch });
+    expect(speak.mock.calls[2]![0].volume).toBeCloseTo(0.24);
+    setAudioMix({ ...getAudioMix(), muted: true });
+    english.announce('start');
+    expect(speak).toHaveBeenCalledTimes(3);
   });
 });
