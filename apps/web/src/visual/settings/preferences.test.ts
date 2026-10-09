@@ -35,4 +35,11 @@ describe('visual preferences', () => {
     localStorage.setItem('impulso.visual-preferences', JSON.stringify({ controls: { attack: 'A' } }));
     expect(loadVisualPreferences().controls.attack).toBe('Q');
   });
+  it('adds the voice and menu channels to older saved settings and keeps volumes in range', () => {
+    localStorage.setItem('impulso.visual-preferences', JSON.stringify({ audio: { master: 140, music: -5, effects: 'loud', muted: true } }));
+    expect(loadVisualPreferences().audio).toEqual({
+      master: 100, music: 0, effects: defaultVisualPreferences.audio.effects,
+      voice: defaultVisualPreferences.audio.voice, interface: defaultVisualPreferences.audio.interface, muted: true,
+    });
+  });
 });

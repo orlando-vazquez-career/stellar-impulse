@@ -1,0 +1,78 @@
+// Accounts and their progression. The game server keeps a working copy in memory and
+// writes every change here; `prisma migrate deploy` applies the migrations at start.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Account {
+  id             String          @id @db.Uuid
+  email          String          @unique
+  salt           String
+  passwordHash   String          @map("password_hash")
+  /// Commander alias the player chose; null until set. It follows the account to any device.
+  displayName    String?         @map("display_name")
+  /// Stellar address the player proved with a signed challenge; merit rewards are minted to it.
+  walletAddress  String?         @unique @map("wallet_address")
+  xp             Int             @default(0)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  achievements   Achievement[]
+  challengeBests ChallengeBest[]
+  matchAwards    MatchAward[]
+
+  @@map("accounts")
+}
+
+/// A challenge (desafío) or a merit emblem the account earned, once.
+model Achievement {
+  accountId  String          @map("account_id") @db.Uuid
+  key        String
+  kind       AchievementKind
+  /// Room that produced it; null for accounts imported from the old file.
+  matchId    String?         @map("match_id")
+  achievedAt DateTime        @default(now()) @map("achieved_at")
+  account    Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@id([accountId, key])
+  @@map("achievements")
+}
+
+enum AchievementKind {
+  challenge
+  merit
+
+  @@map("achievement_kind")
+}
+
+/// Best single-match progress toward each challenge.
+model ChallengeBest {
+  accountId   String  @map("account_id") @db.Uuid
+  challengeId String  @map("challenge_id")
+  best        Int
+  account     Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@id([accountId, challengeId])
+  @@map("challenge_bests")
+}
+
+/// One row per official result: the primary key makes a repeated report a no-op.
+model MatchAward {
+  accountId  String   @map("account_id") @db.Uuid
+  matchId    String   @map("match_id")
+  xpGained   Int      @map("xp_gained")
+  beforeXp   Int      @map("before_xp")
+  challenges String[]
+  merits     String[]
+  unlocked   String[]
+  createdAt  DateTime @default(now()) @map("created_at")
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@id([accountId, matchId])
+  @@index([accountId, createdAt])
+  @@map("match_awards")
+}

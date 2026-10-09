@@ -6,6 +6,10 @@ export interface VisualPreferences {
     master: number;
     effects: number;
     music: number;
+    /** Announcer lines during a match. */
+    voice: number;
+    /** Menu clicks and hovers. */
+    interface: number;
     muted: boolean;
   };
   controls: Record<ControlAction, string>;
@@ -18,7 +22,7 @@ export interface VisualPreferences {
 }
 
 export const defaultVisualPreferences: VisualPreferences = {
-  audio: { master: 80, effects: 85, music: 75, muted: false },
+  audio: { master: 80, effects: 85, music: 60, voice: 90, interface: 60, muted: false },
   controls: { move: 'M', attack: 'Q', hold: 'H', capture: 'C', cancel: 'Esc', camera: 'Space' },
   accessibility: { highContrast: false, reducedMotion: false, largeText: false, colorProfile: 'default' },
 };
@@ -33,13 +37,26 @@ function cloneDefaults(): VisualPreferences {
   };
 }
 
+/** Stored volumes are whole percentages; anything else falls back to the default for that channel. */
+function readAudio(stored: unknown): VisualPreferences['audio'] {
+  const audio = { ...defaultVisualPreferences.audio };
+  if (!stored || typeof stored !== 'object') return audio;
+  const fields = stored as Record<string, unknown>;
+  for (const channel of ['master', 'effects', 'music', 'voice', 'interface'] as const) {
+    const value = fields[channel];
+    if (typeof value === 'number' && Number.isFinite(value)) audio[channel] = Math.min(100, Math.max(0, Math.round(value)));
+  }
+  if (typeof fields.muted === 'boolean') audio.muted = fields.muted;
+  return audio;
+}
+
 export function loadVisualPreferences(): VisualPreferences {
   try {
     const stored = localStorage.getItem(storageKey);
     if (!stored) return cloneDefaults();
     const parsed = JSON.parse(stored) as Partial<VisualPreferences>;
     return {
-      audio: { ...defaultVisualPreferences.audio, ...parsed.audio },
+      audio: readAudio(parsed.audio),
       controls: { ...defaultVisualPreferences.controls, ...Object.fromEntries(
         Object.entries(parsed.controls ?? {}).map(([action, binding]) => [action,
           typeof binding === 'string' && /^[wasd]$/i.test(binding) ? defaultVisualPreferences.controls[action as ControlAction] : binding]),

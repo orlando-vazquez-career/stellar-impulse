@@ -5,7 +5,9 @@ import './profile.css';
 export function MatchProgress({reward}:{reward:MatchReward}) {
   const {locale}=useI18n(),es=locale==='es';
   return <section className="match-progress" aria-label={es?'Progreso de partida':'Match progression'}>
-    {reward.guest?<p>{es?'Inicia sesión para guardar XP y desbloquear aumentos.':'Sign in to save XP and unlock augments.'}</p>:<>
+    {reward.guest?<p>{es?'Inicia sesión para guardar XP y desbloquear aumentos.':'Sign in to save XP and unlock augments.'}</p>
+    :reward.practice?<p>{es?'Partida sin rival: no suma XP ni desafíos.':'No rival in this match: no XP or challenges saved.'}</p>
+    :reward.saveFailed?<p>{es?'No se pudo guardar el progreso de esta partida.':'This match progress could not be saved.'}</p>:<>
       <strong>+{reward.xpGained} XP</strong><small>{es?'Nivel':'Level'} {reward.profile.level} · {reward.profile.levelXp}/300 XP</small>
       <progress aria-label={es?'Progreso de nivel':'Level progress'} value={reward.profile.levelXp} max={300}/>
       {reward.profile.level>1+Math.floor(reward.beforeXp/300)&&<p>{es?'¡Subiste de nivel!':'Level up!'}</p>}

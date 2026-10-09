@@ -1,5 +1,6 @@
-import type { VisualPreferences } from '../settings/preferences';
+import { AudioChannelBus, channelVolume, getAudioMix, subscribeAudioMix, type AudioChannel } from '../audio-mix';
 import type { GameplayEvent } from './model';
+import { equippedCosmetic } from '../hangar/loadout';
 
 /**
  * Match sound effects and announcer.
@@ -47,18 +48,42 @@ export class MatchAudio {
   private sfx = new Map<SfxSlot, AudioBuffer>();
   private voice = new Map<VoiceSlot, AudioBuffer>();
   private speaking: AudioBufferSourceNode | null = null;
+  private disposed = false;
+  private bus: AudioChannelBus | null = null;
+  private speech: { slot: VoiceSlot; line: SpeechSynthesisUtterance } | null = null;
+  private static speechOwner: MatchAudio | null = null;
+  private readonly unsubscribe: () => void;
+  private readonly announcer = equippedCosmetic('voice').announcer;
 
-  constructor(private audio: VisualPreferences['audio'], private locale: 'es' | 'en', manifestUrl = '/audio/manifest.json') {
+  /** Volumes are read from the live mix on every sound, so slider changes apply mid-match. */
+  constructor(private locale: 'es' | 'en', manifestUrl = '/audio/manifest.json') {
+    let previousVolume = this.voiceVolume;
+    this.unsubscribe = subscribeAudioMix(() => {
+      const volume = this.voiceVolume;
+      const slot = this.speech?.slot;
+      if (slot && MatchAudio.speechOwner === this && volume !== previousVolume) {
+        this.stopSpeech();
+        if (volume > 0) this.announce(slot);
+      }
+      previousVolume = volume;
+    });
     void this.load(manifestUrl);
   }
 
   private get volume(): number {
-    return this.audio.muted ? 0 : (this.audio.master / 100) * (this.audio.effects / 100);
+    return channelVolume(getAudioMix(), 'effects');
+  }
+
+  private get voiceVolume(): number {
+    return channelVolume(getAudioMix(), 'voice');
   }
 
   private ctx(): AudioContext | null {
-    if (typeof AudioContext === 'undefined') return null;
-    this.context ??= new AudioContext();
+    if (this.disposed || typeof AudioContext === 'undefined') return null;
+    if (!this.context) {
+      this.context = new AudioContext();
+      this.bus = new AudioChannelBus(this.context);
+    }
     if (this.context.state === 'suspended') void this.context.resume();
     return this.context;
   }
@@ -91,14 +116,14 @@ export class MatchAudio {
     }
   }
 
-  private playBuffer(buffer: AudioBuffer, gain = 1): AudioBufferSourceNode | null {
+  private playBuffer(buffer: AudioBuffer, channel: AudioChannel): AudioBufferSourceNode | null {
     const ctx = this.ctx();
-    if (!ctx || this.volume <= 0) return null;
+    if (!ctx || channelVolume(getAudioMix(), channel) <= 0) return null;
     const source = ctx.createBufferSource();
     const amp = ctx.createGain();
     source.buffer = buffer;
-    amp.gain.value = this.volume * gain;
-    source.connect(amp).connect(ctx.destination);
+    amp.gain.value = 1;
+    source.connect(amp).connect(this.bus!.channel(channel));
     source.start();
     return source;
   }
@@ -117,26 +142,45 @@ export class MatchAudio {
     if ((slot === 'explosion-small' || slot === 'explosion-large') && this.throttled('explosion', 90)) return;
     if (slot === 'alarm' && this.throttled('alarm', 6000)) return;
     const recorded = this.sfx.get(slot);
-    if (recorded) { this.playBuffer(recorded); return; }
+    if (recorded) { this.playBuffer(recorded, 'effects'); return; }
     this.synth(slot);
   }
 
   /** Announcer line: the recorded voice if there is one, otherwise the browser's speech engine. */
   announce(slot: VoiceSlot) {
-    if (this.volume <= 0) return;
+    if (this.disposed || this.voiceVolume <= 0) return;
     const recorded = this.voice.get(slot);
     if (recorded) {
       this.speaking?.stop();
-      this.speaking = this.playBuffer(recorded);
+      this.speaking = this.playBuffer(recorded, 'voice');
       return;
     }
     if (typeof speechSynthesis === 'undefined') return;
-    speechSynthesis.cancel();
+    MatchAudio.speechOwner?.stopSpeech();
     const line = new SpeechSynthesisUtterance(VOICE_TEXT[this.locale][slot]);
     line.lang = this.locale === 'es' ? 'es-ES' : 'en-US';
-    line.rate = 1.08;
-    line.volume = Math.min(1, this.volume * 1.2);
+    line.rate = this.announcer?.rate ?? 1.08;
+    line.pitch = this.announcer?.pitch ?? 1;
+    line.volume = Math.min(1, this.voiceVolume * 1.2);
+    this.speech = { slot, line };
+    MatchAudio.speechOwner = this;
+    const finish = () => {
+      if (this.speech?.line === line) {
+        this.speech = null;
+        if (MatchAudio.speechOwner === this) MatchAudio.speechOwner = null;
+      }
+    };
+    line.onend = finish;
+    line.onerror = finish;
     speechSynthesis.speak(line);
+  }
+
+  private stopSpeech() {
+    this.speech = null;
+    if (MatchAudio.speechOwner === this) {
+      MatchAudio.speechOwner = null;
+      if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+    }
   }
 
   private tone(frequency: number, start: number, duration: number, type: OscillatorType, gain: number, slideTo?: number) {
@@ -149,9 +193,9 @@ export class MatchAudio {
     osc.frequency.setValueAtTime(frequency, at);
     if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, at + duration);
     amp.gain.setValueAtTime(0.0001, at);
-    amp.gain.exponentialRampToValueAtTime(gain * this.volume, at + 0.02);
+    amp.gain.exponentialRampToValueAtTime(gain, at + 0.02);
     amp.gain.exponentialRampToValueAtTime(0.0001, at + duration);
-    osc.connect(amp).connect(ctx.destination);
+    osc.connect(amp).connect(this.bus!.channel('effects'));
     osc.start(at);
     osc.stop(at + duration + 0.05);
   }
@@ -169,8 +213,8 @@ export class MatchAudio {
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(cutoff, ctx.currentTime);
     filter.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + duration);
-    amp.gain.value = gain * this.volume;
-    source.connect(filter).connect(amp).connect(ctx.destination);
+    amp.gain.value = gain;
+    source.connect(filter).connect(amp).connect(this.bus!.channel('effects'));
     source.start();
   }
 
@@ -192,7 +236,11 @@ export class MatchAudio {
   }
 
   dispose() {
-    if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+    this.disposed = true;
+    this.unsubscribe();
+    this.stopSpeech();
+    this.bus?.dispose();
+    this.bus = null;
     this.speaking?.stop();
     void this.context?.close();
     this.context = null;

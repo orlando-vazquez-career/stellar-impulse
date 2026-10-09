@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AugmentCardView } from '@impulso/state';
 import { useI18n } from '../i18n';
 import type { GameplayPresentationAdapter, GameplayViewModel } from './model';
+import { AudioChannelBus, channelVolume, getAudioMix } from '../audio-mix';
 import './augments.css';
 export function AugmentCard({ card, disabled, onPick }: {card:AugmentCardView;disabled?:boolean;onPick?():void}) {
   const {locale}=useI18n();const text=card.text[locale];
@@ -21,12 +22,13 @@ export function AugmentHud({view,adapter,sound=true}:{view:GameplayViewModel;ada
     const key=offer?`${offer.choice}`:'';
     if(!offer || offer.choice===0 || sounded.current===key) return;
     sounded.current=key;
-    if(!sound) return;
-    const audio=new AudioContext(), oscillator=audio.createOscillator(),gain=audio.createGain();
+    const volume=channelVolume(getAudioMix(),'effects');
+    if(!sound||volume<=0) return;
+    const audio=new AudioContext(), bus=new AudioChannelBus(audio), oscillator=audio.createOscillator(),gain=audio.createGain();
     oscillator.type='sine';oscillator.frequency.setValueAtTime(660,audio.currentTime);oscillator.frequency.exponentialRampToValueAtTime(990,audio.currentTime+0.3);
     gain.gain.setValueAtTime(0.08,audio.currentTime);gain.gain.exponentialRampToValueAtTime(0.001,audio.currentTime+0.5);
-    oscillator.connect(gain);gain.connect(audio.destination);oscillator.start();oscillator.stop(audio.currentTime+0.5);
-    oscillator.onended=()=>{void audio.close();};
+    oscillator.connect(gain);gain.connect(bus.channel('effects'));oscillator.start();oscillator.stop(audio.currentTime+0.5);
+    oscillator.onended=()=>{bus.dispose();void audio.close();};
   },[offer?.choice,sound]);
   if(!augments) return null;
   const opening=!augments.started;
@@ -44,7 +46,7 @@ export function AugmentHud({view,adapter,sound=true}:{view:GameplayViewModel;ada
           <strong className="augment-timer" aria-label={es?'Tiempo restante':'Time remaining'}>{time(offer.remainingSeconds)}</strong></header>
         <p>{opening?(es?'Tu rival también está eligiendo. La partida comienza cuando ambos estén listos.':'Your rival is choosing too. The match starts when both are ready.'):(es?'La batalla continúa. Elige antes de que termine el tiempo.':'The battle continues. Pick before time runs out.')}</p>
         <div className="augment-cards">{offer.cards.map((card)=><AugmentCard key={card.id} card={card} onPick={()=>adapter.dispatch({type:'augment-pick',choice:offer.choice,id:card.id})}/>)}</div>
-        <footer><span>{es?'GRATIS · SIN COSTO DE METAL':'FREE · NO METAL COST'}</span><button disabled={offer.rerolls!==0} onClick={()=>adapter.dispatch({type:'augment-reroll',choice:offer.choice})}>{es?'Renovar cartas':'Reroll cards'} · {offer.rerolls===0?'1':'0'}</button>
+        <footer><span>{es?'GRATIS · SIN COSTO DE METAL':'FREE · NO METAL COST'}</span><button disabled={offer.rerolls>=(offer.rerollLimit??1)} onClick={()=>adapter.dispatch({type:'augment-reroll',choice:offer.choice})}>{es?'Renovar cartas':'Reroll cards'} · {Math.max(0,(offer.rerollLimit??1)-offer.rerolls)}</button>
           {!opening && <button onClick={()=>setExpanded(!expanded)}>{expanded?(es?'Reducir':'Collapse'):(es?'Ampliar':'Expand')}</button>}</footer>
       </div>
     </section>}

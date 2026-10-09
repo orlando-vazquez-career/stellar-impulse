@@ -1,10 +1,11 @@
 import type { DurationMode } from '@impulso/sim';
 import { useEffect, useRef, useState } from 'react';
 import { MusicPlayer } from './music';
+import { setAudioMix } from './audio-mix';
 import { AccessScreen } from './access/AccessScreen';
 import { clearSession, logoutAccount, restoreAccount, sessionToken, type AccountUser } from '../auth/client';
 import { createMultiplayerSession, type MultiplayerSession } from '../multiplayer/session';
-import { readPilotAlias } from '../login/pilot-alias';
+import { accountAlias, readPilotAlias, writePilotAlias } from '../login/pilot-alias';
 import { GameplayScreen } from './game/GameplayScreen';
 import { HangarScreen } from './hangar/HangarScreen';
 import { LanguageProvider, useI18n } from './i18n';
@@ -52,7 +53,10 @@ function VisualPrototypeContent() {
     void restoreAccount().then(async (user) => {
       if (!active || !user) return;
       setAccount(user);
-      setAlias(readPilotAlias() || user.email.split('@')[0]!.slice(0, 24));
+      // The account's alias wins over the one this device remembers.
+      const commander = accountAlias(user, readPilotAlias());
+      if (user.displayName) writePilotAlias(commander);
+      setAlias(commander);
       const restored = await connection.restore();
       if (!active) return;
       setMultiplayerMatch(restored);
@@ -116,7 +120,7 @@ function VisualPrototypeContent() {
 
   // One background player for the whole app; browsers only start audio after a gesture.
   useEffect(() => {
-    const player = new MusicPlayer(loadVisualPreferences().audio);
+    const player = new MusicPlayer();
     music.current = player;
     player.resume();
     const wake = () => player.resume();
@@ -135,7 +139,8 @@ function VisualPrototypeContent() {
       music.current = null;
     };
   }, []);
-  useEffect(() => { music.current?.setPreferences(preferences.audio); }, [preferences.audio]);
+  // Every sound source reads this live mix; the saved preferences are its resting value.
+  useEffect(() => { setAudioMix(preferences.audio); }, [preferences.audio]);
   useEffect(() => { music.current?.play(screen === 'gameplay' ? 'match' : 'menu'); }, [screen]);
 
   useEffect(() => {
@@ -164,9 +169,15 @@ function VisualPrototypeContent() {
     {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} onBack={() => setScreen('command')} onExploreMap={() => { selectMap('sector-01'); setScreen('map'); }} onDeploy={(chosen, chosenMap, chosenDuration) => { setDuration(chosenDuration); setDifficulty(chosen); setMap(chosenMap); setScreen('gameplay'); }} />}
     {screen === 'multiplayer' && multiplayer && <MultiplayerLobby alias={alias} token={sessionToken() || ''} mode={lobbyMode} session={multiplayer} initialJoinCode={joinCode} onBack={() => { setMultiplayerMatch(false); setJoinCode(''); setScreen('command'); }} />}
     {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
-    {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} />}
-    {screen === 'settings' && <SettingsScreen preferences={preferences} onBack={() => setScreen('command')} onSave={(nextPreferences) => { saveVisualPreferences(nextPreferences); setPreferences(nextPreferences); }} />}
-    {screen === 'gameplay' && <GameplayScreen preferences={preferences} difficulty={difficulty} map={map} duration={duration} multiplayerSession={multiplayerMatch ? multiplayer ?? undefined : undefined} onLeave={() => multiplayerMatch ? void leaveMultiplayer() : setScreen('command')} />}
+    {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} account={account} onAccountChange={setAccount} />}
+    {screen === 'settings' && <SettingsScreen preferences={preferences} onPreviewAudio={setAudioMix}
+      onBack={() => { setAudioMix(preferences.audio); setScreen('command'); }}
+      onSave={(nextPreferences) => { saveVisualPreferences(nextPreferences); setPreferences(nextPreferences); }} />}
+    {screen === 'gameplay' && <GameplayScreen preferences={preferences} onAudioChange={(audio) => {
+      const next = { ...preferences, audio };
+      saveVisualPreferences(next);
+      setPreferences(next);
+    }} difficulty={difficulty} map={map} duration={duration} multiplayerSession={multiplayerMatch ? multiplayer ?? undefined : undefined} onLeave={() => multiplayerMatch ? void leaveMultiplayer() : setScreen('command')} />}
     <div className="vi-resolution-warning" role="alert"><div><Brand /><h1>{t('resolutionWarningTitle')}</h1><p>{t('resolutionWarningBody')}</p></div></div>
   </div>;
 }

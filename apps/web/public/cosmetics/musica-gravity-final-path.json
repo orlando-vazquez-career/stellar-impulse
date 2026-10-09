@@ -1,0 +1,16 @@
+{
+  "classId": 6,
+  "key": "musica-gravity-final-path",
+  "slot": "Music",
+  "family": "Collection",
+  "name": {
+    "es": "Gravity's Final Path",
+    "en": "Gravity's Final Path"
+  },
+  "description": {
+    "es": "Pista de menú y hangar.",
+    "en": "Menu and hangar track."
+  },
+  "image": "/cosmetics/img/musica-gravity-final-path.svg",
+  "cosmeticOnly": true
+}

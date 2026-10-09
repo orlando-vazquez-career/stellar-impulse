@@ -1,7 +1,7 @@
 import { AUGMENTS_BY_ID, DURATION_MODES, effectsFor, effectiveFleetCap, effectiveBaseDamage, visionSources, isConcealed, statsForUnit, baseUpgradeCost, metalIncomeRate, captureDuration, type Augment } from '@impulso/sim';
 import { nebulaClouds, nebulaHides, nebulaSlowdown, type NebulaCloudState } from '@impulso/sim';
 import { baseArmor, baseDefense, type ExtraModule, type ModuleKind, type ModuleSpec } from '@impulso/sim';
-import { distance, statsFor, moveInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
+import { distance, statsFor, marchInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
 import { weaponView, type WeaponView } from './weapons.js';
 export { UNIT_STATS, damageAgainst, findPath } from '@impulso/sim';
 export type { UnitKind } from '@impulso/sim';
@@ -24,7 +24,7 @@ export interface MatchLobbyView {
 }
 export interface AugmentView {
   started: boolean; own: AugmentCardView[]; rival: AugmentCardView[]; nextChoiceTick: number | null;
-  offer: {choice:number;tier:Augment['tier'];cards:AugmentCardView[];remainingSeconds:number;rerolls:number} | null;
+  offer: {choice:number;tier:Augment['tier'];cards:AugmentCardView[];remainingSeconds:number;rerolls:number;rerollLimit:number} | null;
 }
 export interface PlayerView {
   schemaVersion: 1;
@@ -50,7 +50,8 @@ export interface PlayerView {
   enemyBase?: {x:number;y:number;visible:boolean;hp?:number;maxHp?:number};
   productionForbidden?: UnitKind[];
   /** Metal and the hangar queue are private to their owner. */
-  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; baseUpgrades?: { damage: number; capacity: number }; production?: { kind: UnitKind; remainingTicks: number } | null }>;
+  /** `lastSequence`: owner only, so a restored client keeps numbering its orders after the server's last accepted one. */
+  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; lastSequence?: number; baseUpgrades?: { damage: number; capacity: number }; production?: { kind: UnitKind; remainingTicks: number } | null }>;
   squads: VisibleSquad[];
   guardians: Guardian[];
   /** `fraction`: each side's capture progress from 0 to 1, with its own capture time. */
@@ -93,6 +94,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     p2: { id: 'p2', base: { ...world.players.p2.base } },
   };
   players[playerId].metal = world.players[playerId].metal;
+  players[playerId].lastSequence = world.players[playerId].lastSequence;
   players[playerId].baseUpgrades = { ...(world.players[playerId].baseUpgrades ?? { damage: 0, capacity: 0 }) };
   const order = world.production[playerId];
   players[playerId].production = order ? { kind: order.kind, remainingTicks: Math.max(0, order.readyTick - world.tick) } : null;
@@ -106,7 +108,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     coreFraction:Math.max(...(['p1','p2'] as const).map(p=>world.core.progress[p]/captureDuration(world,p,world.rules.coreCaptureTicks,true))),
     augments: match && augmentPlayer ? {started:match.started,own:augmentPlayer.chosen.map(card),rival:match.players[rivalId].chosen.map(card),
       nextChoiceTick:world.duration && augmentPlayer.nextChoice<3 ? DURATION_MODES[world.duration].choices[augmentPlayer.nextChoice]! : null,
-      offer:offer ? {choice:offer.choice,tier:offer.tier,cards:offer.cards.map(card),remainingSeconds:Math.max(0,Math.ceil((offer.deadline-match.clock)/world.rules.tickRate)),rerolls:offer.rerolls} : null} : undefined,
+      offer:offer ? {choice:offer.choice,tier:offer.tier,cards:offer.cards.map(card),remainingSeconds:Math.max(0,Math.ceil((offer.deadline-match.clock)/world.rules.tickRate)),rerolls:offer.rerolls,rerollLimit:offer.rerollLimit ?? 1} : null} : undefined,
     chart:augmentPlayer?.chart ? {nodes:augmentPlayer.chart.nodes.map((p)=>({...p})),guardians:augmentPlayer.chart.guardians.map((p)=>({...p}))} : undefined,
     base:{damage:effectiveBaseDamage(world,playerId)+baseDefense(world,playerId).damage,range:Math.max(baseDefense(world,playerId).range,4),fleetCap:effectiveFleetCap(world,playerId),upgradeCosts:{damage:baseUpgradeCost('damage',world.players[playerId].baseUpgrades),capacity:baseUpgradeCost('capacity',world.players[playerId].baseUpgrades)},
       ...(world.baseRules && own.structure && own.modules ? {
@@ -129,7 +131,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
       const publicUnit = {
         id: unit.id, ownerId: unit.ownerId, kind: unit.kind,
         x: unit.x, y: unit.y, hp: disguised?unit.hp/unit.maxHp*maxHp:unit.hp, maxHp, damage: stats.damage,
-        stats, moveTicks: moveInterval(world, unit.ownerId, unit.kind) * nebulaSlowdown(world, unit),
+        stats, moveTicks: marchInterval(world, unit),
         ...weaponView(unit, stats, world.tick, visible),
       };
       return unit.ownerId === playerId

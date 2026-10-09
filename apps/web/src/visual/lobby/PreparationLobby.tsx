@@ -1,3 +1,4 @@
+import { DEFAULT_CAMPAIGN_MAP, PLAYABLE_MAPS } from '@impulso/input';
 import type { DurationMode } from '@impulso/sim';
 import { useState, useRef, useEffect, type FormEvent } from 'react';
 import { useI18n } from '../i18n';
@@ -5,7 +6,7 @@ import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
-import { playableMapLabel, type TrainingMapId } from '../map/sector-map';
+import type { TrainingMapId } from '../map/sector-map';
 import './lobby.css';
 
 export type LobbyMode = 'create' | 'join';
@@ -16,11 +17,10 @@ const DIFFICULTIES: { value: RivalDifficulty; label: string; hint: string }[] = 
   { value: 'medium', label: 'Media', hint: 'Se expande rápido y pelea por todo.' },
   { value: 'hard', label: 'Difícil', hint: 'Toma dos nodos a la vez y asalta los tuyos.' },
 ];
-const MAPS: { value: TrainingMapId; label: string; hint: string }[] = [
-  { value: 'espiral', label: 'Espiral Estelar', hint: '96×96. Carriles de impulso, nebulosas y núcleo con escudo.' },
-  { value: 'espiral-2', label: 'Caos Estelar', hint: '96×96. Carriles anchos, niebla morada que avanza y satélites que se turnan.' },
-];
-const UPCOMING_MAP = { label: '3.er mapa', hint: 'En preparación. El más épico del sector.' };
+const UPCOMING_MAP = {
+  name: { es: '3.er mapa', en: '3rd map' },
+  description: { es: 'En preparación. El más épico del sector.', en: 'In preparation. The most epic in the sector.' },
+};
 type FleetSide = 'blue' | 'red';
 
 export function PreparationLobby({
@@ -38,13 +38,14 @@ export function PreparationLobby({
   onDeploy(difficulty: RivalDifficulty, map: TrainingMapId, duration: DurationMode): void;
   initialJoinCode?: string;
 }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const sound = useSpaceSound();
   const canvas = useRef<HTMLCanvasElement>(null);
 
   const [duration, setDuration] = useState<DurationMode>('skirmish');
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
-  const [map, setMap] = useState<TrainingMapId>('espiral');
+  const [map, setMap] = useState<TrainingMapId>(DEFAULT_CAMPAIGN_MAP);
+  const selectedMap = PLAYABLE_MAPS.find((option) => option.id === map) ?? PLAYABLE_MAPS[0];
   const [side, setSide] = useState<FleetSide>('blue');
   const [ready, setReady] = useState(false);
   const [joinCode, setJoinCode] = useState(initialJoinCode.toUpperCase());
@@ -126,12 +127,12 @@ export function PreparationLobby({
                 <i className="vi-map-preview__blue" />
                 <i className="vi-map-preview__red" />
               </div>
-              <span>{playableMapLabel(map).toUpperCase()}</span>
+              <span>{selectedMap.name[locale]}</span>
             </div>
             <dl className="vi-briefing__data">
               <div>
                 <dt>{t('map')}</dt>
-                <dd>{playableMapLabel(map)}</dd>
+                <dd>{selectedMap.name[locale]}</dd>
               </div>
               <div>
                 <dt>{t('objective')}</dt>
@@ -158,26 +159,23 @@ export function PreparationLobby({
             </button>
             {mode === 'create' && (
               <fieldset className="vi-difficulty vi-map-select">
-                <legend>Mapa</legend>
-                {MAPS.map((option) => (
+                <legend>{t('map')}</legend>
+                {PLAYABLE_MAPS.map((option) => (
                   <button
-                    key={option.value}
+                    key={option.id}
                     type="button"
-                    className={map === option.value ? 'is-selected' : ''}
-                    aria-pressed={map === option.value}
+                    className={map === option.id ? 'is-selected' : ''}
+                    aria-pressed={map === option.id}
                     onMouseEnter={() => hover(420)}
-                    onClick={() => {
-                      sound.playSelect();
-                      setMap(option.value);
-                    }}
+                    onClick={() => { sound.playSelect(); setMap(option.id); }}
                   >
-                    <strong>{option.label}</strong>
-                    <small>{option.hint}</small>
+                    <strong>{option.name[locale]}</strong>
+                    <small>{option.description[locale]}</small>
                   </button>
                 ))}
                 <button type="button" className="is-soon" disabled aria-disabled="true">
-                  <strong>{UPCOMING_MAP.label}</strong>
-                  <small>{UPCOMING_MAP.hint}</small>
+                  <strong>{UPCOMING_MAP.name[locale]}</strong>
+                  <small>{UPCOMING_MAP.description[locale]}</small>
                 </button>
               </fieldset>
             )}

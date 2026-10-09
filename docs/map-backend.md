@@ -1,5 +1,7 @@
 # Mapas del campo de batalla
 
+Este documento describe el mundo de cuadrícula de la sala `battlefield` (protocolo 2). La campaña multijugador ya no lo usa: juega sus sectores con el motor de partida del entrenamiento; ver [protocolo de campaña](protocol.md).
+
 El servidor simula el campo en una cuadrícula ortogonal de celdas enteras: una unidad de simulación equivale a una celda. `cellSize` es el tamaño nominal del tile en píxeles para el frontend, no una escala de la simulación. Para el campo isométrico actual, el frontend aplica su transformación al dibujar y al convertir un clic de pantalla de vuelta a `(x, y)`.
 
 ## Catálogo y mapa actual
@@ -30,7 +32,7 @@ La visión usa Manhattan con radio de 0 a 32. Una celda opaca se ve y oculta lo 
 
 ## Datos públicos de mapa
 
-Al entrar en un sector, la sala envía primero el mensaje `map` y luego mensajes `view`. Su contenido público está limitado a `protocolVersion`, `mapId`, `version`, `width`, `height`, `cellSize`, `walkable` y `opaque`. Las máscaras son arreglos booleanos row-major con `width * height` elementos. El mensaje no contiene spawns, objetivos, entidades ni estado privado. El cliente puede guardar el mapa por `(mapId, version)` y esperar el mensaje para esa clave antes de interpretar o dibujar una vista.
+Al entrar en un sector, la sala `battlefield` envía primero el mensaje `map` y luego mensajes `view`. Su contenido público está limitado a `protocolVersion`, `mapId`, `version`, `width`, `height`, `cellSize`, `walkable` y `opaque`. Las máscaras son arreglos booleanos row-major con `width * height` elementos. El mensaje no contiene spawns, objetivos, entidades ni estado privado. El cliente puede guardar el mapa por `(mapId, version)` y esperar el mensaje para esa clave antes de interpretar o dibujar una vista.
 
 La transformación isométrica, capas decorativas, sprites, cámara y escalado pertenecen al frontend. La metadata de navegación y visión sirve para dibujar terreno transitable/oculto si la interfaz lo requiere; no es una fuente para reconstruir entidades.
 
@@ -40,5 +42,5 @@ La transformación isométrica, capas decorativas, sprites, cámara y escalado p
 - Importador: [`packages/sim/src/maps/tiled.ts`](../packages/sim/src/maps/tiled.ts) y [`packages/sim/src/maps/tiled.test.ts`](../packages/sim/src/maps/tiled.test.ts).
 - Rutas y visión: [`packages/sim/src/maps/pathfinding.ts`](../packages/sim/src/maps/pathfinding.ts) y [`packages/sim/src/maps/visibility.ts`](../packages/sim/src/maps/visibility.ts).
 - Vista pública y máscaras: [`packages/state/src/battlefield.ts`](../packages/state/src/battlefield.ts) y [`packages/state/src/battlefield.test.ts`](../packages/state/src/battlefield.test.ts).
-- Metadata enviada por sala: [`apps/server/src/map-catalog.ts`](../apps/server/src/map-catalog.ts) y [`apps/server/src/campaign-room.ts`](../apps/server/src/campaign-room.ts).
+- Metadata enviada por sala: [`apps/server/src/map-catalog.ts`](../apps/server/src/map-catalog.ts) y [`apps/server/src/battlefield-room.ts`](../apps/server/src/battlefield-room.ts).
 - Arte visual de terreno actual: [`apps/web/public/visual/maps/terrain.svg`](../apps/web/public/visual/maps/terrain.svg).

@@ -1,18 +1,21 @@
 import { randomInt } from 'node:crypto';
 import { Room, ServerError, type Client } from '@colyseus/core';
-import { AuthService } from './auth';
+import type { AuthService } from './auth';
+import { savedReward } from './rewards';
 import { setAugmentPool, emptyProgress, profileFor, type MatchReward } from '@impulso/sim';
 import { parseCommand } from '@impulso/input';
-import { createSectorWorld, createMatchWorld, initializeAugments, applyCommand, runTrainingRival, stepWorld, effectiveFleetCap, pickAugment, rerollAugments, chooseAiAugment, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId } from '@impulso/sim';
+import { createSectorWorld, createMatchWorld, initializeAugments, applyCommand, runTrainingRival, stepWorld, effectiveFleetCap, pickAugment, rerollAugments, chooseAiAugment, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId, type World } from '@impulso/sim';
 import { viewFor, type MatchLobbyView } from '@impulso/state';
 
 /** Diego's Espiral Estelar is the training map unless the creator asks for Sector 01. */
 const DEFAULT_MAP: TrainingMapId = 'espiral';
 
 export class TrainingRoom extends Room {
-  protected auth = new AuthService();
+  protected auth!: AuthService;
   private accountIds=new Map<PlayerId,string>();
   private rewards=new Map<PlayerId,MatchReward>();
+  /** Players whose reward is being saved; the view carries it once the store confirms. */
+  private settling=new Set<PlayerId>();
   maxClients = 2;
   private world = createSectorWorld(DEFAULT_MAP);
   private seats = new Map<string, PlayerId>();
@@ -102,11 +105,10 @@ export class TrainingRoom extends Room {
       this.world = stepWorld(this.world);
       }
       if(this.world.winner!==null)for(const player of ['p1','p2'] as const) {
-        if(this.rewards.has(player))continue;
-        const accountId=this.accountIds.get(player);
-        const reward=accountId ? this.auth.awardMatch(accountId,this.roomId,this.world,player,this.usedSeats.has('p2')?'pvp':this.difficulty)
-          : {xpGained:0,beforeXp:0,profile:profileFor(emptyProgress()),challenges:[],unlocked:[],guest:true};
-        this.rewards.set(player,reward);
+        if(this.settling.has(player))continue;
+        this.settling.add(player);
+        const mode=rewardModeFor(player,this.aiRival,this.difficulty,{p1:this.holder('p1'),p2:this.holder('p2')});
+        void trainingReward(this.auth,this.accountIds.get(player),this.roomId,this.world,player,mode).then(reward=>this.rewards.set(player,reward));
       }
       if(this.lobby)this.sendLobby();
       for (const client of this.clients) {
@@ -157,6 +159,9 @@ export class TrainingRoom extends Room {
     this.rates.delete(client.sessionId);
     // Do not give a departed player's authority to a new stranger.
   }
+  private holder(player:PlayerId):SeatHolder {
+    return this.usedSeats.has(player) ? (this.accountIds.has(player)?'account':'guest') : null;
+  }
   private sendLobby():void {
     if(!this.lobby)return;
     const seat=(p:PlayerId)=>this.usedSeats.has(p)?{name:this.names.get(p)??'Comandante',ready:this.readyPlayers.has(p)}:null;
@@ -165,6 +170,19 @@ export class TrainingRoom extends Room {
       client.send('matchLobby',view);
     }
   }
+}
+export type SeatHolder='account'|'guest'|null;
+/** What scales a player's reward: the AI difficulty, 'pvp', or null when there is no real rival. */
+export function rewardModeFor(player:PlayerId,aiRival:boolean,difficulty:RivalDifficulty,seats:Record<PlayerId,SeatHolder>):RivalDifficulty|'pvp'|null {
+  const rival=seats[player==='p1'?'p2':'p1'];
+  if(rival)return rival==='account'?'pvp':null;
+  return player==='p1'&&aiRival?difficulty:null;
+}
+/** Guests save nothing; an account in a match without a real rival keeps its profile untouched. */
+export async function trainingReward(auth:AuthService,accountId:string|undefined,matchId:string,world:World,player:PlayerId,mode:RivalDifficulty|'pvp'|null):Promise<MatchReward> {
+  if(!accountId)return {xpGained:0,beforeXp:0,profile:profileFor(emptyProgress()),challenges:[],unlocked:[],guest:true};
+  if(!mode){const profile=auth.profile(accountId);return {xpGained:0,beforeXp:profile.xp,profile,challenges:[],unlocked:[],practice:true};}
+  return savedReward(auth,accountId,()=>auth.awardMatch(accountId,matchId,world,player,mode));
 }
 export function trainingRoomWith(auth:AuthService):typeof TrainingRoom {
   return class extends TrainingRoom {protected auth=auth;};

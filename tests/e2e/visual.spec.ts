@@ -412,9 +412,39 @@ test.describe('visual interface foundation', () => {
 
     await page.getByRole('button', { name: /Polar MK-II/ }).click();
     await expect(page.getByRole('button', { name: /Polar MK-II/ })).toContainText('Equipado');
+    // A guest holds no NFT pieces: the premium voice opens its purchase detail instead of equipping.
+    await page.getByRole('button', { name: 'Comentarista', exact: true }).click();
+    const analystImage = page.getByRole('button', { name: /Voz de Analista/ }).locator('img');
+    await expect(analystImage).toHaveAttribute('src', '/cosmetics/img/voz-analista.svg');
+    await expect.poll(() => analystImage.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth === 512)).toBe(true);
+    await page.getByRole('button', { name: /Voz de Analista/ }).click();
+    await expect(page.getByRole('button', { name: /Voz de Analista/ })).toContainText('4 XLM');
+    await expect(page.locator('.vi-item-detail')).toContainText('Vincula una wallet para comprar.');
+    await expect(page.locator('.vi-wallet-strip')).toContainText('Inicia sesión con tu cuenta');
+    await page.getByRole('button', { name: 'Música', exact: true }).click();
+    const musicImage = page.getByRole('button', { name: /Gravity's Final Path/ }).locator('img');
+    await expect(musicImage).toHaveAttribute('src', '/cosmetics/img/musica-gravity-final-path.svg');
+    await expect.poll(() => musicImage.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth === 512)).toBe(true);
+    await page.getByRole('button', { name: /Iron Vanguard/ }).click();
     await page.getByRole('button', { name: 'Guardar configuración' }).click();
     await expect(page.getByText('Configuración guardada localmente')).toBeVisible();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('impulso.cosmetic-loadout') ?? '{}'));
     expect(stored.hull).toBe('polar');
+    expect(stored.voice).toBe('voz-comandante');
+    expect(stored.music).toBe('musica-iron-vanguard');
+    const tabsFit = await page.locator('.vi-collection > nav').evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return Array.from(element.querySelectorAll('button')).every((button) => {
+        const rect = button.getBoundingClientRect();
+        return rect.left >= bounds.left && rect.right <= bounds.right && button.scrollWidth <= button.clientWidth;
+      });
+    });
+    expect(tabsFit).toBe(true);
+    await page.getByRole('button', { name: /Volver al centro de mando/ }).click();
+    await page.getByRole('button', { name: /Hangar/ }).click();
+    await expect(page.getByRole('button', { name: /Polar MK-II/ })).toContainText('Equipado');
+    await page.getByRole('button', { name: 'Música', exact: true }).click();
+    await expect(page.getByRole('button', { name: /Iron Vanguard/ })).toContainText('Equipado');
+    await page.screenshot({ path: 'test-results/hangar-audio.png' });
   });
 });

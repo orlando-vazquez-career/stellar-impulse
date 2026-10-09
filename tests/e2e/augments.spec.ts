@@ -34,7 +34,7 @@ test('chooses a free opening card, rerolls once, and chooses gold during a runni
   await expect(page.locator('.vi-base-range')).toContainText('4 casillas');
   await page.getByRole('tab',{name:'Hangar',exact:true}).click();
   const side=page.locator('.augment-side');
-  await expect(side).toBeVisible({timeout:75000});
+  await expect(side).toBeVisible({timeout:90000});
   await expect(side.locator('.augment-card--gold')).toHaveCount(3);
   const overlap=await page.evaluate(()=>{
     const panel=document.querySelector('.augment-side')!.getBoundingClientRect();

@@ -14,6 +14,8 @@
 12. [Mapas del campo de batalla](map-backend.md): cuadrícula, importación Tiled y vistas por jugador.
 13. [Protocolo de la sala de campaña](protocol.md): conexión, mensajes, fases y reconexión.
 
+14. [Formaciones, audio y niebla](formations-audio-fog.md): controles, alcance y regresiones.
+
 El repositorio contiene todas las instrucciones necesarias para colaborar. No requiere
 extensiones de editor, herramientas de agentes ni servicios privados de un integrante.
 

@@ -1,0 +1,16 @@
+{
+  "classId": 5,
+  "key": "voz-analista",
+  "slot": "Announcer",
+  "family": "Collection",
+  "name": {
+    "es": "Voz de Analista",
+    "en": "Analyst Voice"
+  },
+  "description": {
+    "es": "Paquete de voces del anunciador, calmo y táctico.",
+    "en": "Calm, tactical announcer voice pack."
+  },
+  "image": "/cosmetics/img/voz-analista.svg",
+  "cosmeticOnly": true
+}

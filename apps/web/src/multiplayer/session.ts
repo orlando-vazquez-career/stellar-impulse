@@ -1,50 +1,43 @@
 import { Client, type Room } from '@colyseus/sdk';
-import type { BattlefieldView, CampaignPhaseView } from '@impulso/state';
+import { DEFAULT_CAMPAIGN_MAP } from '@impulso/input';
+import type { MatchReward } from '@impulso/sim';
+import type { CampaignPhaseView, PlayerView } from '@impulso/state';
 
-const PROTOCOL_VERSION = 2;
+const PROTOCOL_VERSION = 3;
 const STORAGE_KEY = 'impulso.multiplayer-room';
 
-export type CommandIntent =
-  | { type: 'move_group'; squadIds: string[]; x: number; y: number }
-  | { type: 'attack_group'; squadIds: string[]; targetId: string }
-  | { type: 'stop'; squadIds: string[] };
+/** Any order the match engine accepts (move, move_formation, attack, stance, produce, build_module, …). */
+export type CommandIntent = { type: string } & Record<string, unknown>;
+/** The private view of the running sector: the same projection training uses. */
+export type CampaignView = PlayerView & { protocolVersion: 3 };
+export type CampaignMap = NonNullable<CampaignPhaseView['renderMap']>;
 
-export interface CampaignMapMetadata {
-  protocolVersion: 2;
-  mapId: string;
-  version: number;
-  width: number;
-  height: number;
-  cellSize: number;
-  walkable: boolean[];
-  opaque: boolean[];
-  level?: number[];
-  ramp?: boolean[];
-}
 export interface MultiplayerSnapshot {
   connection: 'idle' | 'connecting' | 'online' | 'reconnecting' | 'offline';
   roomId: string | null;
   phase: CampaignPhaseView | null;
-  map: CampaignMapMetadata | null;
-  view: BattlefieldView | null;
+  view: CampaignView | null;
+  /** This player's campaign reward, once the campaign ends. */
+  reward: MatchReward | null;
   error: string | null;
   acknowledgedSequence: number;
 }
 export interface MultiplayerSession {
   getSnapshot(): MultiplayerSnapshot;
   subscribe(listener: () => void): () => void;
-  create(name: string, token: string): Promise<void>;
+  create(name: string, token: string, map?: CampaignMap): Promise<void>;
   join(code: string, name: string, token: string): Promise<void>;
   restore(): Promise<boolean>;
   ready(): void;
   command(command: CommandIntent): void;
-  chooseTech(id: string): void;
+  augmentPick(choice: number, id: string): void;
+  augmentReroll(choice: number): void;
   leave(): Promise<void>;
   destroy(): void;
 }
 type SessionStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 const blank = (): MultiplayerSnapshot => ({
-  connection: 'idle', roomId: null, phase: null, map: null, view: null, error: null, acknowledgedSequence: 0,
+  connection: 'idle', roomId: null, phase: null, view: null, reward: null, error: null, acknowledgedSequence: 0,
 });
 
 const REJECTION_TEXT: Record<string, string> = {
@@ -52,16 +45,13 @@ const REJECTION_TEXT: Record<string, string> = {
   already_in_room: 'Esta cuenta ya está en la sala. Usa otra cuenta para el segundo jugador.',
   unsupported_version: 'El cliente y el servidor usan versiones distintas. Recarga la página.',
   invalid_join: 'Revisa el nombre del jugador y el código de la sala.',
-  unit_unavailable: 'La unidad seleccionada ya no está disponible.',
-  blocked: 'No se puede volar a ese punto.',
-  unreachable: 'No hay ruta hasta ese punto.',
-  target_not_visible: 'El objetivo no está a la vista.',
-  target_unavailable: 'El objetivo ya no está disponible.',
   stale_sequence: 'La conexión se está sincronizando. Intenta la orden de nuevo.',
   paused: 'La partida está pausada mientras un jugador se reconecta.',
   not_in_sector: 'Espera a que comience el sector para dar órdenes.',
+  opening_selection: 'Elige tu aumento para empezar el sector.',
   rate_limit: 'Demasiadas órdenes seguidas.',
-  budget_exceeded: 'El servidor está calculando rutas. Intenta la orden de nuevo.',
+  invalid_augment_pick: 'Esa carta ya no está disponible.',
+  augment_reroll_used_or_expired: 'No quedan renovaciones para esta oferta.',
 };
 function errorText(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -139,31 +129,17 @@ export function createMultiplayerSession(serverUrl: string, storage?: SessionSto
     };
     cleanups.push(active.onMessage('phase', (phase: CampaignPhaseView) => {
       if (!current() || phase.protocolVersion !== PROTOCOL_VERSION) return;
-      if (phase.renderMap !== 'sector-01') {
-        room = null;
-        detach(); forget(); sequence = 0;
-        update({ ...blank(), connection: 'offline',
-          error: 'Esta sala usa un mapa que aún no está disponible en esta interfaz. Crea una sala multijugador desde el centro de mando.' });
-        void leaveConnected(active);
-        return;
-      }
       phaseFresh = true;
-      if (snapshot.phase && phase.sector !== snapshot.phase.sector) {
-        sequence = snapshot.view?.players[snapshot.view.playerId].lastSequence ?? 0;
-        update({ phase, acknowledgedSequence: sequence });
-      } else update({ phase });
+      update({ phase });
       synchronize();
     }));
-    cleanups.push(active.onMessage('map', (map: CampaignMapMetadata) => {
-      if (current() && map.protocolVersion === PROTOCOL_VERSION) update({ map });
-    }));
-    cleanups.push(active.onMessage('view', (view: BattlefieldView) => {
-      if (!current() || view.schemaVersion !== 2 || view.mode !== 'battlefield') return;
+    cleanups.push(active.onMessage('view', (view: CampaignView) => {
+      if (!current() || view.protocolVersion !== PROTOCOL_VERSION || view.mode !== 'training') return;
       viewFresh = true;
+      // Each sector is a new world that counts from zero; this client never reuses a number.
       const accepted = view.players[view.playerId].lastSequence ?? 0;
-      const newSector = snapshot.view !== null && view.tick < snapshot.view.tick;
-      sequence = newSector ? accepted : Math.max(sequence, accepted);
-      update({ view, acknowledgedSequence: newSector ? accepted : Math.max(snapshot.acknowledgedSequence, accepted) });
+      sequence = Math.max(sequence, accepted);
+      update({ view, acknowledgedSequence: Math.max(snapshot.acknowledgedSequence, accepted) });
       synchronize();
     }));
     cleanups.push(active.onMessage('ack', (ack: { protocolVersion: number; seq: number }) => {
@@ -182,7 +158,9 @@ export function createMultiplayerSession(serverUrl: string, storage?: SessionSto
         update({ phase: { ...snapshot.phase, pause: { by: message.by, remainingMs: message.remainingMs } } });
       }
     }));
-    cleanups.push(active.onMessage('campaign_end', () => {}));
+    cleanups.push(active.onMessage('campaign_end', (message: { protocolVersion: number; reward?: MatchReward }) => {
+      if (current() && message.protocolVersion === PROTOCOL_VERSION && message.reward) update({ reward: message.reward });
+    }));
     const drop = () => {
       if (!current()) return;
       phaseFresh = false; viewFresh = false;
@@ -238,11 +216,17 @@ export function createMultiplayerSession(serverUrl: string, storage?: SessionSto
     if (destroyed || snapshot.connection !== 'online' || !room?.connection.isOpen) return;
     room.send(type, { protocolVersion: PROTOCOL_VERSION, body });
   };
+  /** Orders and augment choices only reach a running, unpaused sector. */
+  const running = () => {
+    const phase = snapshot.phase;
+    return snapshot.connection === 'online' && snapshot.view !== null && phase?.phase === 'sector'
+      && phase.pause === null && phase.resumeInMs === null && snapshot.view.winner === null && !destroyed && Boolean(room?.connection.isOpen);
+  };
   return {
     getSnapshot: () => snapshot,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    async create(name, token) {
-      await connect(() => client.create('campaign', { protocolVersion: PROTOCOL_VERSION, name, token, map: 'sector-01' }));
+    async create(name, token, map = DEFAULT_CAMPAIGN_MAP) {
+      await connect(() => client.create('campaign', { protocolVersion: PROTOCOL_VERSION, name, token, map }));
     },
     async join(code, name, token) {
       const normalized = code.trim();
@@ -268,16 +252,17 @@ export function createMultiplayerSession(serverUrl: string, storage?: SessionSto
       if (snapshot.phase?.phase === 'lobby') send('ready', {});
     },
     command(command) {
-      const phase = snapshot.phase;
-      if (snapshot.connection !== 'online' || !snapshot.view || phase?.phase !== 'sector'
-        || phase.pause || phase.resumeInMs !== null || snapshot.view.winner) return;
-      if (!room?.connection.isOpen || destroyed) return;
-      sequence = Math.max(sequence, snapshot.view.players[snapshot.view.playerId].lastSequence ?? 0,
+      // The sector opening waits for both augment picks; orders sent before it would only bounce.
+      if (!running() || !snapshot.view!.augments?.started) return;
+      sequence = Math.max(sequence, snapshot.view!.players[snapshot.view!.playerId].lastSequence ?? 0,
         snapshot.acknowledgedSequence) + 1;
       send('command', { ...command, seq: sequence });
     },
-    chooseTech(id) {
-      if (snapshot.phase?.phase === 'transition' && snapshot.phase.offers?.includes(id)) send('tech', { techId: id });
+    augmentPick(choice, id) {
+      if (running() && snapshot.view!.augments?.offer?.choice === choice) send('augmentPick', { choice, id });
+    },
+    augmentReroll(choice) {
+      if (running() && snapshot.view!.augments?.offer?.choice === choice) send('augmentReroll', { choice });
     },
     async leave() {
       ++generation;

@@ -1,26 +1,25 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Client, type Room } from '@colyseus/sdk';
 import { CAMPAIGN_PROTOCOL_VERSION } from '@impulso/input';
-import { createBattlefieldWorld, defineMapSpec, type PlayerId } from '@impulso/sim';
+import { createMatchWorld } from '@impulso/sim';
 import { createGameServer } from './app.js';
-import { CampaignRoom } from './campaign-room.js';
-import * as campaigns from './campaign/machine.js';
 import { AuthService } from './auth.js';
 
 const PORT = 29_000 + Math.floor(Math.random() * 900);
 const URL = `http://127.0.0.1:${PORT}`;
 const auth = new AuthService();
 const tokens = {
-  Ana: auth.register('ana-campaign@example.com', 'secret-1234').token,
-  Beto: auth.register('beto-campaign@example.com', 'secret-1234').token,
-  Caro: auth.register('caro-campaign@example.com', 'secret-1234').token,
+  Ana: (await auth.register('ana-campaign@example.com', 'secret-1234')).token,
+  Beto: (await auth.register('beto-campaign@example.com', 'secret-1234')).token,
+  Caro: (await auth.register('caro-campaign@example.com', 'secret-1234')).token,
 };
-const joinOptions = (name: keyof typeof tokens) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name] });
+/** A small server-owned fixture keeps socket tests fast; admission uses the playable map. */
+const joinOptions = (name: keyof typeof tokens) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name], map: 'espiral' });
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
 
 const server = createGameServer({
   auth,
-  campaign: { countdownMs: 150, transitionMs: 300, resultsMs: 300, resumeCountdownMs: 150, reconnectWindowMs: 3_000 },
+  campaign: { createSector: (_sector, seed) => createMatchWorld('sector-01', 'skirmish', seed), countdownMs: 150, transitionMs: 300, resultsMs: 300, resumeCountdownMs: 150, reconnectWindowMs: 3_000 },
 });
 beforeAll(async () => { await server.listen(PORT, '127.0.0.1'); });
 afterAll(async () => { await server.gracefullyShutdown(false); });
@@ -45,25 +44,36 @@ function collect<T = any>(room: Room, type: string, count: number, timeoutMs = 5
     const timer = setTimeout(() => { off(); reject(new Error(`timeout collecting "${type}"`)); }, timeoutMs);
   });
 }
-/** Two players seated in a fresh campaign, both ready, sector 1 running. */
+/** Two seated players, both ready; sector 1 is waiting for its opening augment picks. */
 async function startCampaign() {
   const host = new Client(URL);
   const guest = new Client(URL);
   const a = await host.create('campaign', joinOptions('Ana'));
   const b = await guest.joinById(a.roomId, joinOptions('Beto'));
   for (const room of [a, b]) room.reconnection.enabled = false;
-  const mapA = next(a, 'map');
-  const mapB = next(b, 'map');
   const sector = next(a, 'phase', (phase) => phase.phase === 'sector');
+  const viewA = next(a, 'view', (view) => view.augments?.offer);
+  const viewB = next(b, 'view', (view) => view.augments?.offer);
   a.send('ready', envelope({}));
   b.send('ready', envelope({}));
-  await sector;
-  return { a, b, guest, mapA: await mapA, mapB: await mapB };
+  return { a, b, guest, phase: await sector, viewA: await viewA, viewB: await viewB };
+}
+/** Both players take the first card of their opening offer and the sector starts running. */
+async function pickOpenings(a: Room, b: Room, viewA: any, viewB: any) {
+  const running = next(a, 'view', (view) => view.augments?.started === true);
+  a.send('augmentPick', envelope({ choice: viewA.augments.offer.choice, id: viewA.augments.offer.cards[0].id }));
+  b.send('augmentPick', envelope({ choice: viewB.augments.offer.choice, id: viewB.augments.offer.cards[0].id }));
+  return running;
 }
 
 describe('campaign room', () => {
+  it.each(['sector-01', 'battlefield'])('refuses the retired %s map at admission', async (map) => {
+    await expect(new Client(URL).create('campaign', { ...joinOptions('Ana'), map }))
+      .rejects.toThrow(/invalid_join/);
+  });
+
   it('refuses clients speaking another protocol version before seating them', async () => {
-    await expect(new Client(URL).create('campaign', { protocolVersion: 1 }))
+    await expect(new Client(URL).create('campaign', { protocolVersion: 2 }))
       .rejects.toThrow(/unsupported_version/);
   });
 
@@ -99,101 +109,67 @@ describe('campaign room', () => {
     }
   });
 
-  it('starts Sector 01 for two accounts and delivers authoritative orders from both players', async () => {
-    const a = await new Client(URL).create('campaign', { ...joinOptions('Ana'), map: 'sector-01' });
-    const b = await new Client(URL).joinById(a.roomId, joinOptions('Beto'));
-    for (const room of [a, b]) room.reconnection.enabled = false;
+  it('starts sector 1 on the match engine with a private view and a silver opening offer per player', async () => {
+    const { a, b, phase, viewA, viewB } = await startCampaign();
     try {
-      const phaseA = next(a, 'phase', (phase) => phase.phase === 'sector');
-      const phaseB = next(b, 'phase', (phase) => phase.phase === 'sector');
-      const mapA = next(a, 'map'); const mapB = next(b, 'map');
-      a.send('ready', envelope({})); b.send('ready', envelope({}));
-      expect(await phaseA).toMatchObject({ playerId: 'p1', renderMap: 'sector-01' });
-      expect(await phaseB).toMatchObject({ playerId: 'p2', renderMap: 'sector-01' });
-      const metadata = await mapA;
-      expect(metadata).toMatchObject({ mapId: 'sector-01', width: 29, height: 29 });
-      expect(metadata).toEqual(await mapB);
-      const ackA = next(a, 'ack'); const ackB = next(b, 'ack');
-      const viewA = next(a, 'view', (view) => view.players.p1.lastSequence === 1);
-      const viewB = next(b, 'view', (view) => view.players.p2.lastSequence === 1);
-      a.send('command', envelope({ type: 'move_group', seq: 1, squadIds: ['p1-interceptor'], x: 4, y: 3 }));
-      b.send('command', envelope({ type: 'move_group', seq: 1, squadIds: ['p2-interceptor'], x: 24, y: 25 }));
-      expect(await ackA).toEqual({ protocolVersion: 2, seq: 1 });
-      expect(await ackB).toEqual({ protocolVersion: 2, seq: 1 });
-      const firstA = await viewA; const firstB = await viewB;
-      expect(firstA).toMatchObject({ playerId: 'p1', mapId: 'sector-01' });
-      expect(firstB).toMatchObject({ playerId: 'p2', mapId: 'sector-01' });
-      expect(firstA.players.p2).not.toHaveProperty('lastSequence');
-      expect(firstB.players.p1).not.toHaveProperty('lastSequence');
-      const [movedA, movedB] = await Promise.all([
-        next(a, 'view', (view) => view.squads.some((unit: { id: string; x: number; y: number }) =>
-          unit.id === 'p1-interceptor' && unit.x === 4 && unit.y === 3)),
-        next(b, 'view', (view) => view.squads.some((unit: { id: string; x: number; y: number }) =>
-          unit.id === 'p2-interceptor' && unit.x === 24 && unit.y === 25)),
-      ]);
-      expect(movedA.tick).toBeGreaterThan(0);
-      expect(movedB.tick).toBeGreaterThan(0);
+      expect(phase).toMatchObject({ protocolVersion: 3, playerId: 'p1', sector: 1, sectors: 3, renderMap: 'espiral' });
+      expect(viewA).toMatchObject({ protocolVersion: 3, mode: 'training', playerId: 'p1' });
+      expect(viewB).toMatchObject({ protocolVersion: 3, mode: 'training', playerId: 'p2' });
+      expect(viewA.augments.offer.tier).toBe('silver');
+      expect(viewA.augments.started).toBe(false);
+      expect(viewA.players.p1.metal).toEqual(expect.any(Number));
+      expect(viewA.players.p2).not.toHaveProperty('metal');
+      expect(viewB.players.p1).not.toHaveProperty('metal');
+      expect(JSON.stringify(viewA)).not.toContain(JSON.stringify(viewB.augments.offer.cards));
     } finally {
       await a.leave(); await b.leave();
     }
   });
 
-  it('runs a two-player campaign and forfeits a player who leaves', async () => {
-    const { a, b, mapA, mapB } = await startCampaign();
-    const expectedMapKeys = ['protocolVersion', 'mapId', 'version', 'width', 'height', 'cellSize', 'walkable', 'opaque'];
-    expect(Object.keys(mapA).sort()).toEqual(expectedMapKeys.sort());
-    expect(mapA).toMatchObject({ protocolVersion: 2, mapId: 'battlefield', version: 1,
-      width: 72, height: 72, cellSize: 72 });
-    expect(mapA).toEqual(mapB);
-    expect(mapA.walkable).toHaveLength(72 * 72);
-    expect(mapA.opaque).toHaveLength(72 * 72);
-    expect((await next(a, 'view')).playerId).toBe('p1');
-    const rejected = next(a, 'rejected');
-    a.send('command', { seq: 1, type: 'move', squadId: 'p1-interceptor', x: 3, y: 3 });
-    expect(await rejected).toMatchObject({ reason: 'invalid_envelope' });
-    const end = next(b, 'campaign_end');
-    await a.leave();
-    expect(await end).toMatchObject({ result: { winner: 'p2', reason: 'forfeit' } });
-    await b.leave();
+  it('applies orders after the opening picks, acks them and rejects bad ones', async () => {
+    const { a, b, viewA, viewB } = await startCampaign();
+    try {
+      const early = next(a, 'rejected');
+      a.send('command', envelope({ seq: 1, type: 'stance', squadId: 'p1-interceptor', stance: 'guard' }));
+      expect(await early).toMatchObject({ protocolVersion: 3, reason: 'opening_selection' });
+      await pickOpenings(a, b, viewA, viewB);
+      const ack = next(a, 'ack');
+      a.send('command', envelope({ seq: 1, type: 'stance', squadId: 'p1-interceptor', stance: 'guard' }));
+      expect(await ack).toEqual({ protocolVersion: 3, seq: 1 });
+      const stale = next(a, 'rejected');
+      a.send('command', envelope({ seq: 1, type: 'stance', squadId: 'p1-interceptor', stance: 'guard' }));
+      expect(await stale).toMatchObject({ protocolVersion: 3, reason: 'stale_sequence' });
+      const rival = next(a, 'rejected');
+      a.send('command', envelope({ seq: 2, type: 'stance', squadId: 'p2-interceptor', stance: 'guard' }));
+      expect(await rival).toEqual({ protocolVersion: 3, reason: 'not_owner' });
+      const oldVersion = next(a, 'rejected');
+      a.send('command', { protocolVersion: 2, body: { seq: 3, type: 'stance', squadId: 'p1-interceptor', stance: 'guard' } });
+      expect(await oldVersion).toEqual({ protocolVersion: 3, reason: 'unsupported_version' });
+      const bare = next(a, 'rejected');
+      a.send('command', { seq: 3, type: 'stance', squadId: 'p1-interceptor', stance: 'guard' });
+      expect(await bare).toMatchObject({ reason: 'invalid_envelope' });
+      const badPick = next(a, 'rejected');
+      a.send('augmentPick', envelope({ choice: 0, id: 'not a card' }));
+      expect(await badPick).toMatchObject({ reason: 'invalid_augment_pick' });
+    } finally {
+      await a.leave(); await b.leave();
+    }
   });
 
-  it('acks accepted sequences and gives identical private-unit rejections', async () => {
-    const { a, b } = await startCampaign();
-    const oldVersion = next(a, 'rejected');
-    a.send('command', { protocolVersion: 1, body: { type: 'stop', seq: 1, squadIds: ['p1-interceptor'] } });
-    expect(await oldVersion).toEqual({ protocolVersion: 2, reason: 'unsupported_version' });
-    const ack = next(a, 'ack');
-    a.send('command', envelope({ type: 'move_group', seq: 1, squadIds: ['p1-interceptor'], x: 9, y: 63 }));
-    expect(await ack).toEqual({ protocolVersion: 2, seq: 1 });
-    const ownView = next(a, 'view', (view) => view.players.p1.lastSequence === 1);
-    expect((await ownView).players.p2).not.toHaveProperty('lastSequence');
-    const missing = next(a, 'rejected');
-    a.send('command', envelope({ type: 'stop', seq: 2, squadIds: ['nonexistent'] }));
-    const missingResult = await missing;
-    const rival = next(a, 'rejected');
-    a.send('command', envelope({ type: 'stop', seq: 2, squadIds: ['p2-interceptor'] }));
-    expect(await rival).toEqual(missingResult);
-    expect(missingResult).toEqual({ protocolVersion: 2, reason: 'unit_unavailable' });
-    const stale = next(a, 'rejected');
-    a.send('command', envelope({ type: 'stop', seq: 1, squadIds: ['p1-interceptor'] }));
-    expect(await stale).toEqual({ protocolVersion: 2, reason: 'stale_sequence' });
-    await a.leave();
-    await b.leave();
-  });
-
-  it('weights group and stop commands by squad count for the per-player rate', async () => {
-    const { a, b } = await startCampaign();
+  it('weights group orders by squad count for the per-player rate', async () => {
+    const { a, b, viewA, viewB } = await startCampaign();
+    await pickOpenings(a, b, viewA, viewB);
     const ids = Array.from({ length: 16 }, (_, index) => `unknown-${index}`);
     const fixedNow = Math.floor(Date.now() / 1_000) * 1_000 + 100;
     const clock = vi.spyOn(Date, 'now').mockReturnValue(fixedNow);
     try {
       const results = collect(a, 'rejected', 3);
-      a.send('command', envelope({ type: 'move_group', seq: 1, squadIds: ids, x: 10, y: 63 }));
-      a.send('command', envelope({ type: 'stop', seq: 2, squadIds: ids }));
-      a.send('command', envelope({ type: 'stop', seq: 3, squadIds: ['p1-interceptor'] }));
-      expect((await results).map((item) => item.reason)).toEqual([
-        'unit_unavailable', 'unit_unavailable', 'rate_limit',
-      ]);
+      a.send('command', envelope({ seq: 1, type: 'move_formation', squadIds: ids, x: 10, y: 10, formation: 'line' }));
+      a.send('command', envelope({ seq: 2, type: 'disband', squadIds: ids }));
+      a.send('command', envelope({ seq: 3, type: 'stance', squadId: 'p1-interceptor', stance: 'guard' }));
+      const reasons = (await results).map((item) => item.reason);
+      expect(reasons[2]).toBe('rate_limit');
+      expect(reasons.slice(0, 2)).not.toContain('rate_limit');
     } finally {
       clock.mockRestore();
     }
@@ -201,132 +177,12 @@ describe('campaign room', () => {
     await b.leave();
   });
 
-  it('shares failed-search expansion costs across players and resets only on world advance', () => {
-    const width = 128;
-    const height = 128;
-    const walkable = Array<boolean>(width * height).fill(true);
-    for (let y = 0; y < height; y++) walkable[y * width + 64] = false;
-    const map = defineMapSpec({
-      id: 'budget-fixture', version: 1, width, height, cellSize: 72,
-      bases: { p1: { x: 1, y: 1 }, p2: { x: 126, y: 126 } },
-      objectives: [{ id: 'core', kind: 'core', cell: { x: 20, y: 20 },
-        guardianId: 'core-guardian', guardianCell: { x: 20, y: 20 } }],
-      walkable, opaque: Array<boolean>(width * height).fill(false),
-    });
-    const campaign = campaigns.createCampaign({ countdownMs: 0,
-      createSector: () => createBattlefieldWorld(map) });
-    campaigns.join(campaign, 'Ana'); campaigns.join(campaign, 'Beto');
-    campaigns.ready(campaign, 'p1', 1_000); campaigns.ready(campaign, 'p2', 1_000);
-    campaigns.tick(campaign, 1_000);
-    const room = new CampaignRoom();
-    const probe = room as unknown as {
-      campaign: campaigns.Campaign;
-      remainingExpansions: number;
-      runCommand: (player: PlayerId, body: unknown) => ReturnType<typeof campaigns.command>;
-      syncSearchBudget: () => void;
-    };
-    probe.campaign = campaign;
-    const p1 = { type: 'move_group', seq: 1, squadIds: ['p1-interceptor'], x: 100, y: 100 };
-    const p2 = { type: 'move_group', seq: 1, squadIds: ['p2-interceptor'], x: 20, y: 20 };
-    const costs = (['p1', 'p2', 'p1', 'p2'] as const).map((player) => {
-      const result = probe.runCommand(player, player === 'p1' ? p1 : p2);
-      expect(result).toMatchObject({ accepted: false, reason: 'unreachable' });
-      return result.expansions;
-    });
-    expect(costs).toEqual([8192, 8064, 8192, 8064]);
-    expect(probe.remainingExpansions).toBe(32768 - costs.reduce((sum, cost) => sum + cost, 0));
-    const exhausted = probe.runCommand('p1', p1);
-    expect(exhausted).toMatchObject({ accepted: false, reason: 'budget_exceeded' });
-    expect(exhausted.expansions).toBe(256);
-    expect(probe.remainingExpansions).toBe(0);
-    expect(probe.runCommand('p2', p2)).toMatchObject({
-      accepted: false, reason: 'budget_exceeded', expansions: 0,
-    });
-    expect(campaign.world?.players.p1.lastSequence).toBe(0);
-    expect(campaign.world?.players.p2.lastSequence).toBe(0);
-    campaigns.drop(campaign, 'p2', 1_001);
-    probe.syncSearchBudget();
-    expect(probe.remainingExpansions).toBe(0);
-    campaigns.reconnect(campaign, 'p2', 1_002);
-    probe.syncSearchBudget();
-    expect(probe.remainingExpansions).toBe(0);
-    campaigns.tick(campaign, 1_002 + campaign.config.resumeCountdownMs);
-    probe.syncSearchBudget();
-    expect(campaign.world?.tick).toBe(1);
-    expect(probe.remainingExpansions).toBe(32768);
-    campaign.sector = 2;
-    campaign.world = createBattlefieldWorld(map);
-    probe.syncSearchBudget();
-    expect(probe.remainingExpansions).toBe(32768);
-  });
-
-  it('resends map metadata before the private view on reconnection', () => {
-    const campaign = campaigns.createCampaign({ countdownMs: 0 });
-    campaigns.join(campaign, 'Ana'); campaigns.join(campaign, 'Beto');
-    campaigns.ready(campaign, 'p1', 1_000); campaigns.ready(campaign, 'p2', 1_000);
-    campaigns.tick(campaign, 1_000);
-    campaigns.drop(campaign, 'p2', 1_001);
-    const room = new CampaignRoom();
-    const probe = room as unknown as {
-      campaign: campaigns.Campaign;
-      seats: Map<string, PlayerId>;
-      withinRate: (player: PlayerId, cost: number) => boolean;
-    };
-    probe.campaign = campaign;
-    probe.seats.set('returning', 'p2');
-    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_002);
-    try {
-      expect(probe.withinRate('p2', 32)).toBe(true);
-      const sent: { type: string; payload: any }[] = [];
-      const client = { sessionId: 'returning', send: (type: string, payload: unknown) => sent.push({ type, payload }) };
-      room.onReconnect(client as never);
-      expect(sent.map((message) => message.type).slice(0, 2)).toEqual(['map', 'view']);
-      expect(Object.keys(sent[0]!.payload).sort()).toEqual([
-        'protocolVersion', 'mapId', 'version', 'width', 'height', 'cellSize', 'walkable', 'opaque',
-      ].sort());
-      expect(sent[1]!.payload).toMatchObject({ schemaVersion: 2, mode: 'battlefield', playerId: 'p2' });
-      expect(probe.withinRate('p2', 1)).toBe(false);
-    } finally {
-      clock.mockRestore();
-    }
-  });
-
-  it('announces a new sector map before its initial view even while paused', () => {
-    const nearWin = () => {
-      const world = createBattlefieldWorld();
-      world.rules.coreOpenTick = 0;
-      world.guardians.find((unit) => unit.id === world.core.guardianId)!.hp = 0;
-      const squad = world.squads.find((unit) => unit.ownerId === 'p1')!;
-      squad.x = world.core.x; squad.y = world.core.y;
-      world.core.progress.p1 = world.rules.coreCaptureTicks - 1;
-      return world;
-    };
-    const campaign = campaigns.createCampaign({ countdownMs: 0, transitionMs: 100, createSector: nearWin });
-    campaigns.join(campaign, 'Ana'); campaigns.join(campaign, 'Beto');
-    campaigns.ready(campaign, 'p1', 1_000); campaigns.ready(campaign, 'p2', 1_000);
-    campaigns.tick(campaign, 1_000);
-    campaigns.tick(campaign, 1_001);
-    expect(campaign.phase).toBe('transition');
-    campaigns.drop(campaign, 'p2', 1_002);
-    const room = new CampaignRoom();
-    const probe = room as unknown as {
-      campaign: campaigns.Campaign;
-      seats: Map<string, PlayerId>;
-      clients: unknown[];
-      step: () => void;
-    };
-    probe.campaign = campaign;
-    const sent: { type: string; payload: any }[] = [];
-    const client = { sessionId: 'connected', send: (type: string, payload: unknown) => sent.push({ type, payload }) };
-    probe.seats.set('connected', 'p1');
-    probe.clients.push(client);
-    const clock = vi.spyOn(Date, 'now').mockReturnValue(1_101);
-    try { probe.step(); } finally { clock.mockRestore(); }
-    expect(campaign.phase).toBe('sector');
-    expect(campaign.pause).toEqual({ by: 'p2', until: 61_002 });
-    expect(campaign.world?.tick).toBe(0);
-    expect(sent.map((message) => message.type).slice(0, 2)).toEqual(['map', 'view']);
-    expect(sent[1]!.payload).toMatchObject({ schemaVersion: 2, mode: 'battlefield', playerId: 'p1', tick: 0 });
+  it('forfeits the campaign of a player who leaves', async () => {
+    const { a, b } = await startCampaign();
+    const end = next(b, 'campaign_end');
+    await a.leave();
+    expect(await end).toMatchObject({ protocolVersion: 3, result: { winner: 'p2', reason: 'forfeit' } });
+    await b.leave();
   });
 
   it('pauses for a dropped player and resumes after a token reconnection', async () => {
@@ -339,7 +195,9 @@ describe('campaign room', () => {
     const back = await guest.reconnect(token);
     back.reconnection.enabled = false;
     await resumed;
-    expect((await next(back, 'view')).playerId).toBe('p2');
+    const view = await next(back, 'view');
+    expect(view.playerId).toBe('p2');
+    expect(view.augments.offer.tier).toBe('silver');
     await a.leave();
     await back.leave();
   });

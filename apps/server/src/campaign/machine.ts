@@ -1,13 +1,15 @@
+import { DEFAULT_CAMPAIGN_MAP } from '@impulso/input';
 import {
-  applyBattlefieldCommand, createBattlefieldWorld, stepBattlefieldWorld,
-  type BattlefieldRejection, type BattlefieldWorld, type PlayerId,
+  applyCommand, challengeProgress, createMatchWorld, pickAugment, prepareCampaignSector, rerollAugments, stepWorld,
+  type ChallengeId, type CommandRejection, type PlayerId, type World,
 } from '@impulso/sim';
 import type { CampaignPhase, CampaignPhaseView, CampaignSectorResult, CampaignResult } from '@impulso/state';
-import { campaignMapForSector } from '../map-catalog.js';
 
 /**
  * Campaign lifecycle: lobby → countdown → sector 1..N (with transitions) → results → closed.
- * Pure orchestration around the simulator. Time always comes in as `now` (ms); nothing here reads a clock.
+ * Each sector is a fresh skirmish match; the augments picked in earlier sectors are applied again
+ * and each sector offers one more. Pure orchestration around the simulator: time always comes in
+ * as `now` (ms); nothing here reads a clock.
  */
 export type Phase = CampaignPhase;
 
@@ -19,42 +21,44 @@ export interface CampaignConfig {
   resumeCountdownMs: number;
   reconnectWindowMs: number;
   maxPausesPerPlayer: number;
-  /** Safety cap per sector. Sector timing and tiebreak rules belong to the simulator (D03). */
+  /** Safety cap per sector; the skirmish sudden death (8 min) normally decides it first. */
   sectorLimitTicks: number;
   maxCampaignMs: number;
-  /** Options offered after sector n are `techOffers[n - 1]`; the first one is the visible default. */
-  techOffers: readonly (readonly string[])[];
-  createSector: (sector: number) => BattlefieldWorld;
+  createSector: (sector: number, seed: number) => World;
 }
 
-/** Technology ids remain placeholders until the sector templates and D06 land. */
 export const DEFAULT_CONFIG: Readonly<CampaignConfig> = Object.freeze({
   sectors: 3,
   countdownMs: 5_000,
-  transitionMs: 25_000,
+  transitionMs: 15_000,
   resultsMs: 60_000,
   resumeCountdownMs: 3_000,
   reconnectWindowMs: 60_000,
   maxPausesPerPlayer: 2,
-  sectorLimitTicks: 8 * 60 * 10,
-  maxCampaignMs: 30 * 60_000,
-  techOffers: [['interceptor-speed', 'frigate-shield', 'bomber-siege'], ['vision-range', 'field-repair', 'node-activation']],
-  createSector: (sector: number) => createBattlefieldWorld(campaignMapForSector(sector)),
+  sectorLimitTicks: 12 * 60 * 10,
+  maxCampaignMs: 45 * 60_000,
+  createSector: (_sector: number, seed: number) => createMatchWorld(DEFAULT_CAMPAIGN_MAP, 'skirmish', seed),
 });
 
 export interface Seat { name: string; ready: boolean; connected: boolean; pausesUsed: number; droppedAt: number | null }
 export type SectorResult = CampaignSectorResult;
 export type { CampaignResult } from '@impulso/state';
+export type SectorProgress = Record<PlayerId, Partial<Record<ChallengeId, number>>>;
 export interface Campaign {
   config: CampaignConfig;
+  seed: number;
   phase: Phase;
   sector: number;
   phaseEndsAt: number | null;
   seats: Record<PlayerId, Seat | null>;
-  world: BattlefieldWorld | null;
+  world: World | null;
   sectorResults: SectorResult[];
-  techChoices: Record<PlayerId, string[]>;
-  pendingTech: Record<PlayerId, string | null>;
+  /** Augments each player picked in earlier sectors, in order; applied again at every sector start. */
+  augments: Record<PlayerId, string[]>;
+  /** Augments each account has unlocked, set at admission. */
+  pools: Partial<Record<PlayerId, readonly string[]>>;
+  /** Challenge progress of every finished sector, for the campaign rewards. */
+  sectorProgress: SectorProgress[];
   pause: { by: PlayerId; until: number } | null;
   resumeAt: number | null;
   startedAt: number | null;
@@ -65,15 +69,14 @@ export type PhaseView = Omit<CampaignPhaseView, 'protocolVersion'>;
 const PLAYERS: readonly PlayerId[] = ['p1', 'p2'];
 const rivalOf = (player: PlayerId): PlayerId => (player === 'p1' ? 'p2' : 'p1');
 const inCampaign = (campaign: Campaign): boolean => campaign.phase === 'sector' || campaign.phase === 'transition';
-const currentOffers = (campaign: Campaign): readonly string[] => campaign.config.techOffers[campaign.sector - 1] ?? [];
 
-export function createCampaign(overrides: Partial<CampaignConfig> = {}): Campaign {
+export function createCampaign(overrides: Partial<CampaignConfig> = {}, seed = 1): Campaign {
   return {
-    config: { ...DEFAULT_CONFIG, ...overrides },
+    config: { ...DEFAULT_CONFIG, ...overrides }, seed,
     phase: 'lobby', sector: 0, phaseEndsAt: null,
     seats: { p1: null, p2: null },
     world: null, sectorResults: [],
-    techChoices: { p1: [], p2: [] }, pendingTech: { p1: null, p2: null },
+    augments: { p1: [], p2: [] }, pools: {}, sectorProgress: [],
     pause: null, resumeAt: null, startedAt: null, result: null,
   };
 }
@@ -96,22 +99,41 @@ export function ready(campaign: Campaign, player: PlayerId, now: number): void {
   }
 }
 
-export function command(campaign: Campaign, player: PlayerId, raw: unknown, remainingExpansions = 32768):
-  { accepted: true; expansions: number } |
-  { accepted: false; reason: BattlefieldRejection | 'not_in_sector' | 'paused'; expansions: number } {
-  if (campaign.phase !== 'sector' || !campaign.world) return { accepted: false, reason: 'not_in_sector', expansions: 0 };
-  if (campaign.pause || campaign.resumeAt !== null) return { accepted: false, reason: 'paused', expansions: 0 };
-  const result = applyBattlefieldCommand(campaign.world, player, raw, remainingExpansions);
-  if (!result.accepted) return { accepted: false, reason: result.reason, expansions: result.expansions };
-  campaign.world = result.world;
-  return { accepted: true, expansions: result.expansions };
+type Blocked = 'not_in_sector' | 'paused';
+/** Orders and augment choices only reach a running sector. */
+function blocked(campaign: Campaign): Blocked | null {
+  if (campaign.phase !== 'sector' || !campaign.world) return 'not_in_sector';
+  if (campaign.pause || campaign.resumeAt !== null) return 'paused';
+  return null;
 }
 
-export function chooseTech(campaign: Campaign, player: PlayerId, techId: string):
-  { ok: true } | { ok: false; reason: 'not_in_transition' | 'unknown_tech' } {
-  if (campaign.phase !== 'transition') return { ok: false, reason: 'not_in_transition' };
-  if (!currentOffers(campaign).includes(techId)) return { ok: false, reason: 'unknown_tech' };
-  campaign.pendingTech[player] = techId;
+export function command(campaign: Campaign, player: PlayerId, raw: unknown):
+  { accepted: true } | { accepted: false; reason: CommandRejection | Blocked } {
+  const refused = blocked(campaign);
+  if (refused) return { accepted: false, reason: refused };
+  const result = applyCommand(campaign.world!, player, raw);
+  if (!result.accepted) return { accepted: false, reason: result.reason };
+  campaign.world = result.world;
+  return { accepted: true };
+}
+
+export function augmentPick(campaign: Campaign, player: PlayerId, choice: number, id: string):
+  { ok: true } | { ok: false; reason: string } {
+  const refused = blocked(campaign);
+  if (refused) return { ok: false, reason: refused };
+  const result = pickAugment(campaign.world!, player, choice, id);
+  if (!result.accepted) return { ok: false, reason: result.reason };
+  campaign.world = result.world;
+  return { ok: true };
+}
+
+export function augmentReroll(campaign: Campaign, player: PlayerId, choice: number):
+  { ok: true } | { ok: false; reason: string } {
+  const refused = blocked(campaign);
+  if (refused) return { ok: false, reason: refused };
+  const result = rerollAugments(campaign.world!, player, choice);
+  if (!result.accepted) return { ok: false, reason: result.reason };
+  campaign.world = result.world;
   return { ok: true };
 }
 
@@ -133,13 +155,13 @@ export function tick(campaign: Campaign, now: number): void {
       if (expired) { forfeit(campaign, expired, now); return; }
       if (campaign.pause) { if (now >= campaign.pause.until) forfeit(campaign, campaign.pause.by, now); return; }
       if (campaign.resumeAt !== null) { if (now < campaign.resumeAt) return; campaign.resumeAt = null; }
-      const world = stepBattlefieldWorld(campaign.world!);
+      const world = stepWorld(campaign.world!);
       campaign.world = world;
       if (world.winner !== null || world.tick >= campaign.config.sectorLimitTicks) endSector(campaign, world.winner, now);
       return;
     }
     case 'transition':
-      if (now >= campaign.phaseEndsAt!) { commitTechnologies(campaign); startSector(campaign, campaign.sector + 1, now); }
+      if (now >= campaign.phaseEndsAt!) startSector(campaign, campaign.sector + 1, now);
       return;
     case 'results':
       if (now >= campaign.phaseEndsAt!) { campaign.phase = 'closed'; campaign.phaseEndsAt = null; }
@@ -209,10 +231,6 @@ export function phaseView(campaign: Campaign, player: PlayerId, now: number): Ph
     pause: campaign.pause ? { by: campaign.pause.by, remainingMs: Math.max(0, campaign.pause.until - now) } : null,
     resumeInMs: campaign.resumeAt === null ? null : Math.max(0, campaign.resumeAt - now),
     sectorResults: campaign.sectorResults.map((result) => ({ ...result })),
-    offers: campaign.phase === 'transition' ? [...currentOffers(campaign)] : null,
-    myTech: campaign.pendingTech[player],
-    rivalChoseTech: campaign.pendingTech[rivalOf(player)] !== null,
-    myTechnologies: [...campaign.techChoices[player]],
     result: campaign.result ? { ...campaign.result } : null,
   };
 }
@@ -237,8 +255,14 @@ function startSector(campaign: Campaign, sector: number, now: number): void {
   campaign.phase = 'sector';
   campaign.sector = sector;
   campaign.phaseEndsAt = null;
-  campaign.world = campaign.config.createSector(sector);
-  campaign.pendingTech = { p1: null, p2: null };
+  const world = campaign.config.createSector(sector, (campaign.seed + sector * 7_919) >>> 0);
+  // The previous sector winner gets one extra reroll on this sector's offer.
+  const previousWinner = campaign.sectorResults.at(-1)?.winner ?? null;
+  prepareCampaignSector(world, {
+    choice: Math.min(sector - 1, 2), carried: campaign.augments, pools: campaign.pools,
+    extraRerolls: previousWinner ? { [previousWinner]: 1 } : {},
+  });
+  campaign.world = world;
   campaign.resumeAt = null;
   const absent = PLAYERS.filter((player) => campaign.seats[player] && !campaign.seats[player]!.connected)
     .sort((left, right) => (campaign.seats[left]!.droppedAt ?? now) - (campaign.seats[right]!.droppedAt ?? now))[0];
@@ -252,7 +276,12 @@ function startSector(campaign: Campaign, sector: number, now: number): void {
 }
 
 function endSector(campaign: Campaign, winner: PlayerId | null, now: number): void {
+  const world = campaign.world!;
   campaign.sectorResults.push({ sector: campaign.sector, winner });
+  campaign.sectorProgress.push({ p1: challengeProgress(world, 'p1', 'pvp'), p2: challengeProgress(world, 'p2', 'pvp') });
+  for (const player of PLAYERS) {
+    campaign.augments[player] = [...(world.augmentMatch?.players[player].chosen ?? campaign.augments[player])];
+  }
   if (campaign.sector >= campaign.config.sectors) {
     // The final core decides the campaign; earlier sectors are not victory points.
     finish(campaign, { winner, reason: winner ? 'core' : 'draw' }, now);
@@ -260,15 +289,6 @@ function endSector(campaign: Campaign, winner: PlayerId | null, now: number): vo
   }
   campaign.phase = 'transition';
   campaign.phaseEndsAt = now + campaign.config.transitionMs;
-  campaign.pendingTech = { p1: null, p2: null };
-}
-
-function commitTechnologies(campaign: Campaign): void {
-  const fallback = currentOffers(campaign)[0];
-  for (const player of PLAYERS) {
-    const choice = campaign.pendingTech[player] ?? fallback;
-    if (choice) campaign.techChoices[player].push(choice);
-  }
 }
 
 function forfeit(campaign: Campaign, absent: PlayerId, now: number): void {
