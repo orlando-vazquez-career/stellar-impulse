@@ -11,6 +11,7 @@ export interface CosmeticItem {
   name: Record<Locale, string>;
   description: Record<Locale, string>;
   tone: string;
+  image?: string | null;
   unlocked: boolean;
   musicFile?: string;
   announcer?: AnnouncerProfile;
@@ -64,4 +65,11 @@ export function formatXlm(stroops: bigint): string {
   const whole = stroops / 10_000_000n;
   const fraction = (stroops % 10_000_000n).toString().padStart(7, '0').replace(/0+$/, '');
   return `${whole}${fraction ? `.${fraction}` : ''} XLM`;
+}
+
+const ILLUSTRATED_KEYS = new Set(['aurora-andina', 'pulso-violeta', 'primera-victoria', 'exploracion',
+  'voz-comandante', 'voz-analista', 'musica-iron-vanguard', 'musica-gravity-final-path']);
+
+export function imageForCosmetic(item: Pick<CosmeticItem, 'id' | 'image'>): string | null {
+  return item.image ?? (ILLUSTRATED_KEYS.has(item.id) ? `/cosmetics/img/${item.id}.svg` : null);
 }

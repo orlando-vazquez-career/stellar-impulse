@@ -580,7 +580,8 @@
   background: rgba(4, 10, 16, 0.7);
 }
 
-.vi-cosmetic-grid > button > i {
+.vi-cosmetic-grid > button > i,
+.vi-cosmetic-grid > button > .vi-cosmetic-image {
   width: 40px;
   height: 40px;
   border: 2px solid rgba(113, 229, 220, 0.6);
@@ -1019,7 +1020,7 @@
 
 .vi-item-detail > header {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
 }
@@ -1028,6 +1029,12 @@
   width: 28px;
   height: 28px;
   clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.vi-item-detail > header > .vi-swatch-image {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(113, 229, 220, 0.6);
 }
 
 .vi-item-detail > header strong {
@@ -1115,7 +1122,7 @@
   background: rgba(6, 18, 28, 0.88);
   clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto;
   gap: 10px;
   align-items: center;
 }
@@ -1128,6 +1135,12 @@
   width: 24px;
   height: 24px;
   clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.vi-market__grid article > .vi-swatch-image {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(113, 229, 220, 0.6);
 }
 
 .vi-market__grid strong {
@@ -1151,7 +1164,7 @@
 
 @media (max-width: 720px) {
   .vi-market__grid article {
-    grid-template-columns: 24px minmax(0, 1fr);
+    grid-template-columns: 32px minmax(0, 1fr);
   }
   .vi-market__grid article > b,
   .vi-market__grid article > button {

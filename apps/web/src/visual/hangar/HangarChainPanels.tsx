@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { MarketListing } from '@impulso/chain';
 import { useI18n } from '../i18n';
-import { formatBalance, formatXlm, itemForClass, type CosmeticItem } from './catalog';
+import { formatBalance, formatXlm, imageForCosmetic, itemForClass, type CosmeticItem } from './catalog';
 import { short, type ChainBusy, type ChainNotice } from './useHangarChain';
 
 const EXPLORER = 'https://stellar.expert/explorer/testnet';
@@ -14,6 +14,12 @@ export function parseXlm(value: string): bigint | null {
   if (!match) return null;
   const stroops = BigInt(match[1]!) * 10_000_000n + BigInt((match[2] ?? '').padEnd(7, '0'));
   return stroops > 0n ? stroops : null;
+}
+
+/** The piece's illustration, or its colour when it has none. */
+function Swatch({ item }: { item: CosmeticItem }) {
+  const image = imageForCosmetic(item);
+  return image ? <img className="vi-swatch-image" src={image} alt="" /> : <i style={{ background: item.tone }} />;
 }
 
 export function ChainNoticeBar({ notice, onDismiss }: { notice: ChainNotice; onDismiss(): void }) {
@@ -64,7 +70,7 @@ export function ItemDetail({ item, wallet, tokens, listingByToken, busy, onBuy, 
   const unlisted = tokens.find((token) => !listingByToken.has(token));
   return <section className="vi-item-detail" aria-label={item.name[locale]}>
     <header>
-      <i style={{ background: item.tone }} />
+      <Swatch item={item} />
       <div><strong>{item.name[locale]}</strong><small>{item.description[locale]}</small></div>
       <span className="vi-nft-tag">{t('chainNft')}</span>
     </header>
@@ -107,7 +113,7 @@ export function MarketView({ listings, wallet, busy, onBuy, onCancel }: {
         const item = itemForClass(listing.classId);
         const mine = listing.seller === wallet;
         return <article key={listing.listingId} className={mine ? 'is-mine' : ''}>
-          <i style={{ background: item?.tone ?? '#5b6b80' }} />
+          {item ? <Swatch item={item} /> : <i style={{ background: '#5b6b80' }} />}
           <div>
             <strong>{item?.name[locale] ?? `#${listing.tokenId}`}</strong>
             <small>{mine ? t('marketYours') : t('marketSeller', { seller: short(listing.seller) })}</small>

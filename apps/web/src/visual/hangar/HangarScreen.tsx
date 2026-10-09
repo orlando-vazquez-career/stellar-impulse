@@ -5,7 +5,7 @@ import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
 import type { AccountUser } from '../../auth/client';
-import { canEquip, cosmeticCatalog, formatXlm, hangarCategories, itemsForCategory, type HangarCategory } from './catalog';
+import { canEquip, cosmeticCatalog, formatXlm, hangarCategories, imageForCosmetic, itemsForCategory, type HangarCategory } from './catalog';
 import { defaultCosmeticLoadout, loadCosmeticLoadout, saveCosmeticLoadout, type CosmeticLoadout } from './loadout';
 import { ChainNoticeBar, ItemDetail, MarketView, WalletStrip } from './HangarChainPanels';
 import { useHangarChain } from './useHangarChain';
@@ -226,6 +226,7 @@ export function HangarScreen({ onBack, account = null, onAccountChange = () => {
                 const status = !item.unlocked ? t('comingSoon') : equipped ? t('equipped')
                   : !item.chain ? t('available') : usable ? t('chainOwned')
                   : item.chain.family === 'merit' ? t('chainMerit') : formatXlm(item.chain.priceStroops);
+                const image = imageForCosmetic(item);
                 return (
                   <button
                     key={item.id}
@@ -236,7 +237,7 @@ export function HangarScreen({ onBack, account = null, onAccountChange = () => {
                       if (item.unlocked) hover(460);
                     }}
                   >
-                    <i style={{ background: item.tone }} />
+                    {image ? <img className="vi-cosmetic-image" src={image} alt="" /> : <i style={{ background: item.tone }} />}
                     <span>
                       <strong>{item.name[locale]}</strong>
                       <small>{item.description[locale]}</small>

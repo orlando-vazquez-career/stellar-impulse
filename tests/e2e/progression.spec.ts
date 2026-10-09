@@ -13,7 +13,7 @@ test('shows an authenticated official match reward and the saved account profile
   await page.getByLabel('Estoy listo para desplegar').check();
   await page.getByRole('button',{name:'Iniciar operación'}).click();
   await chooseOpening(page);
-  // End through a real command after the shield expires, without waiting for an AI win.
+  // End through a real command once the 2:30 shield expires, instead of waiting for an AI win.
   const surrender=page.locator('.vi-surrender');
   await expect(surrender).toBeEnabled({timeout:60000});
   await surrender.dblclick();
