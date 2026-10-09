@@ -155,10 +155,22 @@ function VisualPrototypeContent() {
     preferences.accessibility.largeText && 'is-large-text',
   ].filter(Boolean).join(' ');
 
+  const updateLoginMusic = (change: Partial<Pick<typeof preferences.audio, 'music' | 'musicMuted'>>) => {
+    const audio = { ...preferences.audio, ...change };
+    const next = { ...preferences, audio };
+    saveVisualPreferences(next);
+    setPreferences(next);
+    setAudioMix(audio);
+  };
+
   return <div className={`visual-app ${accessibilityClasses}`} data-color-profile={preferences.accessibility.colorProfile}>
     {screen === 'access' && <AccessScreen
       sessionBusy={sessionBusy}
       sessionNotice={sessionNotice ? t(sessionNotice) : ''}
+      musicVolume={preferences.audio.music}
+      musicMuted={preferences.audio.musicMuted}
+      onMusicVolumeChange={(music) => updateLoginMusic({ music })}
+      onMusicMuteChange={(musicMuted) => updateLoginMusic({ musicMuted })}
       onSignedIn={(user, value) => { setAccount(user); setAlias(value); setSessionNotice(''); setScreen(pendingMultiplayer ? 'multiplayer' : 'command'); setPendingMultiplayer(null); }}
       onContinue={(value) => { setAlias(value); setPendingMultiplayer(null); setSessionNotice(''); setMultiplayerMatch(false); setScreen('command'); }}
       onCreateTraining={(value) => { setAlias(value); setPendingMultiplayer(null); setSessionNotice(''); setMultiplayerMatch(false); setLobbyMode('create'); setScreen('lobby'); }}

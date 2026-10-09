@@ -5,13 +5,11 @@ import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
 import { freshDefaultVisualPreferences, type ControlAction, type VisualPreferences } from './preferences';
+import { CONTROL_SECTIONS, findBindingConflict, formatKeyBinding, keyBindingFromEvent, type ControlBindings } from './control-bindings';
 import { AudioControls } from './AudioControls';
 import './settings.css';
 
 type SettingsCategory = 'audio' | 'controls' | 'language' | 'accessibility';
-
-const controlActions: ControlAction[] = ['move', 'attack', 'hold', 'capture', 'cancel', 'camera'];
-const keyOptions = ['M', 'H', 'C', 'Q', 'E', 'R', 'F', 'Space', 'Esc']; // WASD is reserved for the camera.
 
 function ToggleSetting({ title, detail, checked, onChange }: { title: string; detail: string; checked: boolean; onChange(checked: boolean): void }) {
   return <label className="vi-setting-toggle"><span><strong>{title}</strong><small>{detail}</small></span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /></label>;
@@ -28,6 +26,8 @@ export function SettingsScreen({ preferences, onBack, onSave, onPreviewAudio }: 
   }));
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [recording, setRecording] = useState<{ action: ControlAction; replacing: string | null } | null>(null);
+  const [bindingError, setBindingError] = useState<{ action: ControlAction; message: string } | null>(null);
 
   useEffect(() => {
     if (!canvas.current) return;
@@ -60,14 +60,70 @@ export function SettingsScreen({ preferences, onBack, onSave, onPreviewAudio }: 
     markDirty();
   };
 
+  useEffect(() => {
+    if (!recording) return;
+    const capture = (event: KeyboardEvent) => {
+      const binding = keyBindingFromEvent(event);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!binding) {
+        setBindingError({ action: recording.action, message: t('pressNonModifierKey') });
+        return;
+      }
+      const conflict = findBindingConflict(draft.controls, binding, recording.action, recording.replacing ?? undefined);
+      if (conflict) {
+        setBindingError({ action: recording.action, message: t('bindingConflict', { action: controlLabel(conflict) }) });
+        return;
+      }
+      const current = draft.controls[recording.action];
+      const next = recording.replacing
+        ? current.map((existing) => existing === recording.replacing ? binding : existing)
+        : [...current, binding];
+      const controls = { ...draft.controls, [recording.action]: [...new Set(next)] } as ControlBindings;
+      setDraft({ ...draft, controls });
+      setRecording(null);
+      setBindingError(null);
+      setSaved(false);
+      setDirty(true);
+    };
+    window.addEventListener('keydown', capture, true);
+    return () => window.removeEventListener('keydown', capture, true);
+  }, [recording, draft, locale]);
+
   const categories: Array<{ id: SettingsCategory; label: string; glyph: string }> = [
     { id: 'audio', label: t('audio'), glyph: '◖' },
     { id: 'controls', label: t('controls'), glyph: '⌁' },
     { id: 'language', label: t('language'), glyph: '文' },
     { id: 'accessibility', label: t('accessibility'), glyph: '◎' },
   ];
-  const controlLabels: Record<ControlAction, string> = {
-    move: t('move'), attack: t('attack'), hold: t('hold'), capture: t('capture'), cancel: t('cancel'), camera: t('resetCamera'),
+  const controlSectionTitles = {
+    orders: t('controlSectionOrders'), camera: t('controlSectionCamera'), production: t('controlSectionProduction'),
+    formation: t('controlSectionFormation'), groups: t('controlSectionGroups'),
+  };
+  function controlLabel(action: ControlAction): string {
+    const assign = /^groupAssign([1-9])$/.exec(action);
+    if (assign) return `${t('assignGroup')} ${assign[1]}`;
+    const recall = /^groupRecall([1-9])$/.exec(action);
+    if (recall) return `${t('recallGroup')} ${recall[1]}`;
+    const labels: Partial<Record<ControlAction, string>> = {
+      move: t('move'), attack: t('attack'), hold: t('hold'), capture: t('capture'), cancel: t('cancel'),
+      cameraFocus: t('resetCamera'), panUp: t('panUp'), panDown: t('panDown'), panLeft: t('panLeft'), panRight: t('panRight'),
+      produceInterceptor: t('produceInterceptor'), produceFrigate: t('produceFrigate'), produceBomber: t('produceBomber'), produceExplorer: t('produceExplorer'),
+      cycleFormation: t('cycleFormation'), disband: t('disbandSelected'),
+    };
+    return labels[action] ?? action;
+  }
+
+  const changeBindings = (action: ControlAction, bindings: string[]) => {
+    setDraft({ ...draft, controls: { ...draft.controls, [action]: bindings } });
+    setSaved(false);
+    setDirty(true);
+    setBindingError(null);
+  };
+
+  const beginRecording = (action: ControlAction, replacing: string | null) => {
+    setBindingError(null);
+    setRecording({ action, replacing });
   };
 
   const markDirty = () => { setSaved(false); setDirty(true); };
@@ -111,8 +167,31 @@ export function SettingsScreen({ preferences, onBack, onSave, onPreviewAudio }: 
           {category === 'controls' && <>
             <header><span>02</span><div><h2 id="settings-controls">{t('controls')}</h2><p>{t('controlsDescription')}</p></div></header>
             <div className="vi-settings-panel__body vi-control-settings">
-              <div className="vi-control-settings__head"><span>{t('action')}</span><span>{t('assignedKey')}</span></div>
-              {controlActions.map((action) => <label key={action}><strong>{controlLabels[action]}</strong><select aria-label={controlLabels[action]} value={draft.controls[action]} onChange={(event) => { setDraft({ ...draft, controls: { ...draft.controls, [action]: event.target.value } }); markDirty(); }}>{keyOptions.map((key) => <option key={key} value={key}>{key}</option>)}</select></label>)}
+              {CONTROL_SECTIONS.map((section) => {
+                const title = controlSectionTitles[section.id];
+                return <section className="vi-control-settings__section" key={section.id} aria-label={title}>
+                  <h3>{title}</h3>
+                  {section.actions.map((action) => {
+                    const label = controlLabel(action);
+                    const isRecording = recording?.action === action;
+                    return <div className="vi-control-settings__row" key={action} role="group" aria-label={label}>
+                      <strong>{label}</strong>
+                      <div className="vi-control-settings__bindings">
+                        {draft.controls[action].map((binding) => {
+                          const display = formatKeyBinding(binding, locale === 'es' ? 'Espacio' : 'Space');
+                          return <span className="vi-control-binding" key={binding}>
+                            <button type="button" className="vi-control-binding__key" aria-label={t('changeKeyFor', { key: display, action: label })} onClick={() => beginRecording(action, binding)}><kbd>{display}</kbd></button>
+                            <button type="button" className="vi-control-binding__remove" aria-label={t('removeKeyFor', { key: display, action: label })} onClick={() => changeBindings(action, draft.controls[action].filter((item) => item !== binding))}>×</button>
+                          </span>;
+                        })}
+                        <button type="button" className="vi-control-binding__add" aria-label={`${t('addKeyFor')} ${label}`} onClick={() => beginRecording(action, null)}>+ {t('addKey')}</button>
+                      </div>
+                      {isRecording && <div className="vi-control-settings__recording" role="status"><span>{t('pressAnyKey')}</span><button type="button" onClick={() => setRecording(null)}>{t('stopRecording')}</button></div>}
+                      {bindingError?.action === action && <small className="vi-control-settings__error" role="alert">{bindingError.message}</small>}
+                    </div>;
+                  })}
+                </section>;
+              })}
             </div>
           </>}
 

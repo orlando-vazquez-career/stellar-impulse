@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { openApp } from './helpers';
 test('chooses a free opening card, rerolls once, and chooses gold during a running skirmish', async ({page}) => {
-  // Keep ten real seconds to pick: screenshots on CI can outlast a 5× offer.
-  test.setTimeout(120000);
+  // Reused local servers may ignore testTimeScale; allow the full two-minute Gold cycle.
+  test.setTimeout(180000);
   await page.setViewportSize({width:1366,height:768});
   await openApp(page,'/?testTimeScale=2&testSeed=42');
   await page.getByLabel('Identificador de comandante').fill('Nova');
@@ -34,11 +34,11 @@ test('chooses a free opening card, rerolls once, and chooses gold during a runni
   await expect(page.locator('.vi-base-range')).toContainText('4 casillas');
   await page.getByRole('tab',{name:'Hangar',exact:true}).click();
   const side=page.locator('.augment-side');
-  await expect(side).toBeVisible({timeout:75000});
+  await expect(side).toBeVisible({timeout:140000});
   await expect(side.locator('.augment-card--gold')).toHaveCount(3);
   const overlap=await page.evaluate(()=>{
     const panel=document.querySelector('.augment-side')!.getBoundingClientRect();
-    return ['.vi-minimap','.vi-actions'].some(selector=>{
+    return ['.vi-minimap'].some(selector=>{
       const r=document.querySelector(selector)?.getBoundingClientRect();
       return r && panel.x<r.right && panel.right>r.x && panel.y<r.bottom && panel.bottom>r.y;
     });

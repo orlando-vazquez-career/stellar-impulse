@@ -1,5 +1,6 @@
 export type ColorProfile = 'default' | 'deuteranopia' | 'tritanopia';
-export type ControlAction = 'move' | 'attack' | 'hold' | 'capture' | 'cancel' | 'camera';
+import { DEFAULT_CONTROL_BINDINGS, readControlBindings, type ControlBindings } from './control-bindings';
+export type { ControlAction } from './control-bindings';
 
 export interface VisualPreferences {
   audio: {
@@ -11,8 +12,9 @@ export interface VisualPreferences {
     /** Menu clicks and hovers. */
     interface: number;
     muted: boolean;
+    musicMuted: boolean;
   };
-  controls: Record<ControlAction, string>;
+  controls: ControlBindings;
   accessibility: {
     highContrast: boolean;
     reducedMotion: boolean;
@@ -22,8 +24,8 @@ export interface VisualPreferences {
 }
 
 export const defaultVisualPreferences: VisualPreferences = {
-  audio: { master: 80, effects: 85, music: 60, voice: 90, interface: 60, muted: false },
-  controls: { move: 'M', attack: 'Q', hold: 'H', capture: 'C', cancel: 'Esc', camera: 'Space' },
+  audio: { master: 80, effects: 85, music: 60, voice: 90, interface: 60, muted: false, musicMuted: false },
+  controls: DEFAULT_CONTROL_BINDINGS,
   accessibility: { highContrast: false, reducedMotion: false, largeText: false, colorProfile: 'default' },
 };
 
@@ -32,7 +34,7 @@ const storageKey = 'impulso.visual-preferences';
 function cloneDefaults(): VisualPreferences {
   return {
     audio: { ...defaultVisualPreferences.audio },
-    controls: { ...defaultVisualPreferences.controls },
+    controls: Object.fromEntries(Object.entries(defaultVisualPreferences.controls).map(([action, bindings]) => [action, [...bindings]])) as ControlBindings,
     accessibility: { ...defaultVisualPreferences.accessibility },
   };
 }
@@ -47,7 +49,12 @@ function readAudio(stored: unknown): VisualPreferences['audio'] {
     if (typeof value === 'number' && Number.isFinite(value)) audio[channel] = Math.min(100, Math.max(0, Math.round(value)));
   }
   if (typeof fields.muted === 'boolean') audio.muted = fields.muted;
+  if (typeof fields.musicMuted === 'boolean') audio.musicMuted = fields.musicMuted;
   return audio;
+}
+
+function readControls(stored: unknown): VisualPreferences['controls'] {
+  return readControlBindings(stored);
 }
 
 export function loadVisualPreferences(): VisualPreferences {
@@ -57,10 +64,7 @@ export function loadVisualPreferences(): VisualPreferences {
     const parsed = JSON.parse(stored) as Partial<VisualPreferences>;
     return {
       audio: readAudio(parsed.audio),
-      controls: { ...defaultVisualPreferences.controls, ...Object.fromEntries(
-        Object.entries(parsed.controls ?? {}).map(([action, binding]) => [action,
-          typeof binding === 'string' && /^[wasd]$/i.test(binding) ? defaultVisualPreferences.controls[action as ControlAction] : binding]),
-      ) },
+      controls: readControls(parsed.controls),
       accessibility: { ...defaultVisualPreferences.accessibility, ...parsed.accessibility },
     };
   } catch {

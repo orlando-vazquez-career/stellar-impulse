@@ -9,6 +9,7 @@ import { createMockGameplayAdapter } from './mock-adapter';
 import { createServerGameplayAdapter } from './server-adapter';
 import { campaignTransport } from '../../multiplayer/campaign-transport';
 import { nextFormation } from './formation';
+import { assignControlGroup, controlGroupForAction, focusSelectedSquads, productionKindForControl, recallControlGroup, type ControlGroupAssignments } from './control-shortcuts';
 import type { MultiplayerSession } from '../../multiplayer/session';
 import { MatchAudio, playEvent, type Announcement } from './audio';
 import { useI18n } from '../i18n';
@@ -17,13 +18,13 @@ import type { RivalDifficulty } from '../lobby/PreparationLobby';
 import { DEFAULT_PLAYABLE_MAP, selectMap, type TrainingMapId } from '../map/sector-map';
 import type { CameraView, GameplayPresentationAdapter } from './model';
 import type { PhaserBattlefieldHandle } from './phaser/PhaserBattlefield';
+import { controlActionForEvent, keyBindingFromEvent, panDirectionForControl, shouldReleaseKeyBinding, type CameraPanDirection, type ControlAction } from '../settings/control-bindings';
 
 const PhaserBattlefield = lazy(() => import('./phaser/PhaserBattlefield').then((module) => ({ default: module.PhaserBattlefield })));
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567';
 /** `?adapter=mock` keeps the offline visual sandbox (used by the visual E2E tests). */
 const wantsLocalMock = () => new URLSearchParams(window.location.search).get('adapter') === 'mock';
-const PRODUCTION_KEYS: Record<string, 'explorer' | 'interceptor' | 'frigate' | 'bomber'> = { '1': 'interceptor', '2': 'frigate', '3': 'bomber', '4': 'explorer' };
 const emptySubscribe = () => () => {};
 const emptyMultiplayer = () => null;
 
@@ -51,6 +52,10 @@ function GameplayMatch({ preferences, difficulty, map, duration, multiplayerSess
 
 function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRestart, onAudioChange }: { adapter: GameplayPresentationAdapter; preferences: VisualPreferences; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const view = useSyncExternalStore(adapter.subscribe, adapter.getSnapshot);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const controlGroupsRef = useRef<ControlGroupAssignments>({});
+  const pressedPanBindings = useRef(new Set<string>());
   const roomState = useSyncExternalStore(multiplayerSession?.subscribe ?? emptySubscribe, multiplayerSession?.getSnapshot ?? emptyMultiplayer);
   const { locale } = useI18n();
   const english = locale === 'en';
@@ -88,26 +93,87 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
-      const key = event.key === ' ' ? 'Space' : event.key === 'Escape' ? 'Esc' : event.key;
-      if (key === 'Delete' && !event.repeat) {
-        event.preventDefault();
+      if (event.key === ' ' && event.target instanceof HTMLElement && event.target.closest('button, a')) return;
+      const action = controlActionForEvent(event, preferences.controls);
+      if (!action) return;
+      event.preventDefault();
+      const panDirection = panDirectionForControl(action);
+      if (panDirection) {
+        const binding = keyBindingFromEvent(event);
+        if (binding) {
+          pressedPanBindings.current.add(binding);
+          battlefieldRef.current?.setCameraPan(panDirection, true);
+        }
+        return;
+      }
+      if (event.repeat) return;
+      const current = viewRef.current;
+      const groupShortcut = controlGroupForAction(action);
+      if (groupShortcut) {
+        if (groupShortcut.mode === 'assign') {
+          controlGroupsRef.current = assignControlGroup(controlGroupsRef.current, groupShortcut.group,
+            current.selectedSquadIds, current.squads);
+        } else if (controlGroupsRef.current[groupShortcut.group]) {
+          adapter.dispatch({ type: 'select-squads', squadIds: recallControlGroup(controlGroupsRef.current,
+            groupShortcut.group, current.squads) });
+        }
+        return;
+      }
+      if (action === 'move' || action === 'attack' || action === 'hold' || action === 'capture') {
+        adapter.dispatch({ type: 'set-action', action });
+        return;
+      }
+      if (action === 'cancel') {
+        adapter.dispatch({ type: 'set-action', action: null });
+        return;
+      }
+      if (action === 'cameraFocus') {
+        const focus = focusSelectedSquads(current.squads, current.selectedSquadIds);
+        if (focus) battlefieldRef.current?.centerOnCell(focus.x, focus.y);
+        else battlefieldRef.current?.resetCamera();
+        return;
+      }
+      if (action === 'cycleFormation') {
+        if (current.formation && current.selectedSquadIds.length > 1) adapter.dispatch({ type: 'set-formation', formation: nextFormation(current.formation) });
+        return;
+      }
+      if (action === 'disband') {
         adapter.dispatch({ type: 'disband-selected' });
         return;
       }
-      if (/^[wasd]$/i.test(key)) return; // Camera navigation is never an action shortcut.
-      if (key.toLowerCase() === 'f' && !event.repeat && view.formation
-        && view.selectedSquadIds.length > 1
-        && !Object.values(preferences.controls).some((binding) => binding.toLowerCase() === 'f')) { adapter.dispatch({ type: 'set-formation', formation: nextFormation(view.formation) }); return; }
-      if (view.canProduce !== false && PRODUCTION_KEYS[key] && !event.repeat) { adapter.dispatch({ type: 'produce', kind: PRODUCTION_KEYS[key] }); return; }
-      if (key.toLowerCase() === preferences.controls.cancel.toLowerCase()) adapter.dispatch({ type: 'set-action', action: null });
-      else if (key.toLowerCase() === preferences.controls.move.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'move' });
-      else if (key.toLowerCase() === preferences.controls.attack.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'attack' });
-      else if (key.toLowerCase() === preferences.controls.hold.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'hold' });
+      const productionKind = productionKindForControl(action);
+      if (productionKind && current.canProduce !== false) {
+        adapter.dispatch({ type: 'produce', kind: productionKind });
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (!pressedPanBindings.current.size) return;
+      for (const binding of pressedPanBindings.current) {
+        if (shouldReleaseKeyBinding(binding, event)) pressedPanBindings.current.delete(binding);
+      }
+      const panControls: Array<[ControlAction, CameraPanDirection]> = [
+        ['panUp', 'up'], ['panDown', 'down'], ['panLeft', 'left'], ['panRight', 'right'],
+      ];
+      for (const [control, direction] of panControls) {
+        const active = preferences.controls[control].some((binding) => pressedPanBindings.current.has(binding));
+        battlefieldRef.current?.setCameraPan(direction, active);
+      }
+    };
+    const clearCameraPan = () => {
+      pressedPanBindings.current.clear();
+      for (const direction of ['up', 'down', 'left', 'right'] as const) battlefieldRef.current?.setCameraPan(direction, false);
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [adapter, preferences.controls, view.canProduce, view.formation, view.selectedSquadIds.length]);
-  return <main className="vi-gameplay vi-screen" data-room-id={roomState?.roomId} data-player-id={roomState?.phase?.playerId} data-connection={roomState?.connection} data-sequence={roomState?.acknowledgedSequence} data-tick={view.tick}>
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', clearCameraPan);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('blur', clearCameraPan);
+      clearCameraPan();
+    };
+  }, [adapter, preferences.controls]);
+  return <main className="vi-gameplay vi-screen" data-room-id={roomState?.roomId} data-player-id={roomState?.phase?.playerId} data-connection={roomState?.connection} data-sequence={roomState?.acknowledgedSequence} data-tick={view.tick} data-active-action={view.activeAction ?? ''}>
     <Suspense fallback={<div className="vi-phaser" aria-busy="true" />}>
       <PhaserBattlefield ref={battlefieldRef} view={view}
         onSelectSquads={(squadIds) => adapter.dispatch({ type: 'select-squads', squadIds })}
