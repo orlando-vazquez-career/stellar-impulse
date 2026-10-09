@@ -1,6 +1,7 @@
 # Cosméticos NFT, mercado y Freighter (Testnet)
 
-Rama `feat/blockchain-marketplace`. Estado al 8 de octubre de 2026, noche.
+Rama `feat/blockchain-marketplace`. Estado al 9 de octubre de 2026. Resumen técnico y registro de despliegue en
+[blockchain.md](blockchain.md).
 
 ## Qué hay
 
@@ -81,5 +82,4 @@ fondos, anuncio vencido, etc.).
 
 - Probar los pasos 4 a 8 con Freighter real (no se puede automatizar sin la extensión).
 - Que el rival vea la librea equipada (hoy cada uno ve sus propios cosméticos).
-- Actualizar `docs/blockchain.md` con los IDs nuevos y unificar con este documento.
 - Abrir el PR cuando Hans lo pida.
