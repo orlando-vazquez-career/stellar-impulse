@@ -2,11 +2,15 @@ import mapa from '../tiled-maps/espiral-estelar/espiral-estelar.json';
 import type { SectorLeido } from './leer-tiled.js';
 import type { DropZoneSpec } from '../mecanicas/satellites.js';
 import type { NebulaCloudSpec, NebulaSpec } from '../mecanicas/nebulosas.js';
+import type { BeltGateSpec } from '../mecanicas/cinturon.js';
+import { TURRET_DEFAULTS, type TurretSpec } from '../mecanicas/torretas.js';
+import type { BarrierSpec } from '../mecanicas/barreras.js';
 import { defaultObstacleModel, isObstacleModel, obstacleCells, OBSTACLE_MODELS, scatterObstacles, type MapObstacle, type ObstacleArea } from './obstaculos.js';
 import { isLogicaTilesetSource, LOGICA_TERRAIN_BY_TILE_ID } from './tsx-tileset.js';
 
 const WALKABLE_TERRAIN = new Set(['empty', 'nebula', 'boost', 'slow']);
-const GAMEPLAY_MARKER_KINDS = new Set(['spawn', 'pilar', 'recurso', 'pronexo']);
+const GAMEPLAY_MARKER_KINDS = new Set(['spawn', 'pilar', 'recurso', 'pronexo', 'torreta', 'estacion', 'barrera_destruible']);
+const MAX_BARRIER_CELLS = 64;
 const FLIP_MASK = 0x1fffffff;
 const MAX_SIDE = 128;
 const MAX_CAPTURE_RADIUS = 8;
@@ -38,10 +42,19 @@ export function leerEspiral(source: unknown): SectorLeido {
   const metals = marks.filter((mark) => mark.kind === 'recurso').sort(byMark).map(cellOf);
   const captures = marks.filter((mark) => mark.kind === 'pronexo').sort(byMark).map(captureOf);
   if (metals.length === 0 || captures.length === 0) throw new Error('Missing map objectives');
-  const goals = [bases.p1, bases.p2, core, ...metals, ...captures];
+  const turrets = marks.filter((mark) => mark.kind === 'torreta').sort(byMark).map(turretOf);
+  const stations = marks.filter((mark) => mark.kind === 'estacion').sort(byMark).map(stationOf);
+  const barriers = marks.filter((mark) => mark.kind === 'barrera_destruible').sort(byMark).map((mark, index) => barrierOf(mark, index, width, height));
+  // A turret holds an open cell ships can reach, like any objective.
+  const goals = [bases.p1, bases.p2, core, ...metals, ...captures, ...turrets, ...stations];
   const obstaculos = readObstacles(map, tileSize, width, height);
   for (const obstacle of obstaculos) for (const cell of obstacle.cells) walkable[cell.y * width + cell.x] = false;
+  const belt = readBelt(map, tileSize, width, height);
+  // The map is read with every passage closed; the match opens them by cycles.
+  for (const gate of belt) for (const cell of gate.cells) walkable[cell.y * width + cell.x] = false;
   for (const cell of goals) walkable[cell.y * width + cell.x] = true;
+  // Barriers seal their cells whatever the logic layer says, so the map and the match cannot disagree.
+  for (const barrier of barriers) for (const cell of barrier.cells) walkable[cell.y * width + cell.x] = false;
   // Rectangles are furnished after the points, and never at the price of cutting a base off from an objective.
   const reach = () => reachableGoals(walkable, width, height, bases.p1, goals) + reachableGoals(walkable, width, height, bases.p2, goals);
   let reached = reach();
@@ -63,6 +76,10 @@ export function leerEspiral(source: unknown): SectorLeido {
     width, height, walkable, level: terrain.map(() => 0), ramp: terrain.map(() => null),
     bases, core, metals, captures, dropZones: readDropZones(map, tileSize, width, height), obstaculos,
     ...(nebula ? { nebula } : {}),
+    ...(belt.length ? { belt } : {}),
+    ...(turrets.length ? { turrets } : {}),
+    ...(stations.length ? { stations } : {}),
+    ...(barriers.length ? { barriers } : {}),
   };
 }
 
@@ -76,6 +93,86 @@ function captureOf(mark: Mark): { x: number; y: number; radius?: number } {
   return { ...cellOf(mark), radius };
 }
 
+/** An `estacion` may carry `radio` (capture area, like a pronexo) and `factorPrecio` (price multiplier, 3 by default). */
+function stationOf(mark: Mark): { x: number; y: number; radius?: number; priceFactor: number } {
+  const priceFactor = mark.props.factorPrecio ?? 3;
+  if (typeof priceFactor !== 'number' || !Number.isFinite(priceFactor) || priceFactor < 1 || priceFactor > 20) throw new Error('Invalid map marker');
+  return { ...captureOf(mark), priceFactor };
+}
+
+/** A `barrera_destruible` carries `hp`, `material` and `celdas`: the cells it seals, as `x,y;x,y;…`. */
+function barrierOf(mark: Mark, index: number, width: number, height: number): BarrierSpec {
+  const { hp, material, celdas } = mark.props;
+  if (typeof hp !== 'number' || !Number.isSafeInteger(hp) || hp < 1 || hp > 100000) throw new Error('Invalid map marker');
+  if (typeof celdas !== 'string' || (material !== undefined && typeof material !== 'string')) throw new Error('Invalid map marker');
+  const cells = celdas.split(';').map((pair) => {
+    const [x, y, ...rest] = pair.split(',').map(Number);
+    if (rest.length || !Number.isSafeInteger(x) || !Number.isSafeInteger(y) || x! < 0 || y! < 0 || x! >= width || y! >= height) throw new Error('Invalid map marker');
+    return { x: x!, y: y! };
+  });
+  if (cells.length > MAX_BARRIER_CELLS) throw new Error('Invalid map marker');
+  return { id: `barrera-${index + 1}`, ...cellOf(mark), material: material ?? 'hielo', hp, cells };
+}
+
+/** A `torreta` may carry `hp`, `damage` and `range` (cells it reaches). */
+function turretOf(mark: Mark, index: number): TurretSpec {
+  const amount = (name: keyof typeof TURRET_DEFAULTS, max: number) => {
+    const value = mark.props[name] ?? TURRET_DEFAULTS[name];
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || value > max) throw new Error('Invalid map marker');
+    return value;
+  };
+  return { id: `torreta-${index + 1}`, ...cellOf(mark), hp: amount('hp', 5000), damage: amount('damage', 200), range: amount('range', MAX_CAPTURE_RADIUS) };
+}
+
+/**
+ * `asteroid_gate` rectangles of `objetos`: cells the asteroid belt fills by cycles. Rectangles that touch and
+ * share their timing are one passage. Properties: `cycleSeconds`, `openSeconds` and `warningSeconds`.
+ */
+function readBelt(map: Record<string, unknown>, tileSize: number, width: number, height: number): BeltGateSpec[] {
+  const layer = record(findLayer(map, 'objetos'));
+  const cells = new Map<number, { id: number; timing: string; cycleSeconds: number; openSeconds: number; warningSeconds: number }>();
+  for (const object of list(layer.objects ?? [])) {
+    const source = record(object);
+    if (markerKind(source) !== 'asteroid_gate') continue;
+    const seconds = (name: string, fallback: number) => {
+      const value = property(source.properties, name) ?? fallback;
+      if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || value > 3600) throw new Error('Invalid asteroid gate');
+      return value;
+    };
+    const cycleSeconds = seconds('cycleSeconds', 60), openSeconds = seconds('openSeconds', 40), warningSeconds = seconds('warningSeconds', 5);
+    if (openSeconds >= cycleSeconds || warningSeconds > openSeconds) throw new Error('Invalid asteroid gate');
+    const left = Math.floor(pixel(source.x) / tileSize), top = Math.floor(pixel(source.y) / tileSize);
+    const right = Math.ceil((pixel(source.x) + pixel(source.width)) / tileSize), bottom = Math.ceil((pixel(source.y) + pixel(source.height)) / tileSize);
+    if (right <= left || bottom <= top || right > width || bottom > height) throw new Error('Invalid asteroid gate');
+    const gate = { id: nonNegative(source.id), timing: `${cycleSeconds}:${openSeconds}:${warningSeconds}`, cycleSeconds, openSeconds, warningSeconds };
+    for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) if (!cells.has(y * width + x)) cells.set(y * width + x, gate);
+  }
+  const gates: BeltGateSpec[] = [];
+  const grouped = new Set<number>();
+  for (const start of [...cells.keys()].sort((a, b) => a - b)) {
+    if (grouped.has(start)) continue;
+    const first = cells.get(start)!;
+    const group = [start];
+    let id = first.id;
+    grouped.add(start);
+    for (let head = 0; head < group.length; head += 1) {
+      const x = group[head]! % width, y = Math.floor(group[head]! / width);
+      for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+        const nx = x + dx, ny = y + dy, next = ny * width + nx;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height || grouped.has(next) || cells.get(next)?.timing !== first.timing) continue;
+        grouped.add(next);
+        group.push(next);
+        id = Math.min(id, cells.get(next)!.id);
+      }
+    }
+    gates.push({
+      id: `paso-${id}`, cells: group.sort((a, b) => a - b).map((cell) => ({ x: cell % width, y: Math.floor(cell / width) })),
+      cycleSeconds: first.cycleSeconds, openSeconds: first.openSeconds, warningSeconds: first.warningSeconds,
+    });
+  }
+  return gates.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
 function readTerrain(map: Record<string, unknown>, cells: number): string[] {
   const lookup = terrainByGid(map.tilesets);
   const data = layerData(map, 'logica');
@@ -87,7 +184,8 @@ function terrainByGid(value: unknown): Map<number, string> {
   const lookup = new Map<number, string>();
   for (const tileset of list(value)) {
     const source = record(tileset);
-    const firstGid = side(source.firstgid);
+    // Only the map side is bounded; a map with many tilesets has first gids well past it.
+    const firstGid = nonNegative(source.firstgid);
     if (source.source) {
       if (isLogicaTilesetSource(source.source)) applyLogicaTerrains(lookup, firstGid);
       continue;

@@ -2,6 +2,9 @@ import { isRampDirection, type RampDirection } from './alturas.js';
 import type { DropZoneSpec } from '../mecanicas/satellites.js';
 import type { MapObstacle } from './obstaculos.js';
 import type { NebulaSpec } from '../mecanicas/nebulosas.js';
+import type { BeltGateSpec } from '../mecanicas/cinturon.js';
+import type { TurretSpec } from '../mecanicas/torretas.js';
+import type { BarrierSpec } from '../mecanicas/barreras.js';
 
 const MAX_SIDE = 128;
 const FLIP_MASK = 0xe0000000;
@@ -27,6 +30,14 @@ export interface SectorLeido extends Superficie {
   obstaculos?: MapObstacle[];
   /** Purple nebula that slows and hides ships, and the clouds that drift out of it. */
   nebula?: NebulaSpec;
+  /** `asteroid_gate` passages the asteroid belt closes by cycles: their cells are closed in `walkable`. */
+  belt?: BeltGateSpec[];
+  /** `torreta` points: neutral guns that fire at any ship in range. */
+  turrets?: TurretSpec[];
+  /** `estacion` points: capturable stations that sell ships at once, at `priceFactor` times their cost. */
+  stations?: { x: number; y: number; radius?: number; priceFactor: number }[];
+  /** `barrera_destruible` points: their `cells` are closed in `walkable` until the barrier falls. */
+  barriers?: BarrierSpec[];
 }
 
 interface TileFace {
