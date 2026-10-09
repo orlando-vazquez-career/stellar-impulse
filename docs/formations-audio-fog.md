@@ -8,8 +8,8 @@ el servidor asigna destinos diferentes según la dirección y el terreno.
 La preferencia de forma se guarda en el dispositivo. Funciona en entrenamiento
 contra la IA y en las salas multijugador cuando hay una selección de varias naves.
 
-F cambia de formación si ninguna acción configurada usa esa tecla. Las teclas
-configuradas tienen prioridad. El selector ocupa una fila propia en el panel
+F cambia de formación; como todas las teclas, se puede cambiar en Ajustes → Controles
+(ver [controls.md](controls.md)). El selector ocupa una fila propia en el panel
 compacto y no se superpone al Hangar ni al minimapa a partir de 1024 px.
 
 El protocolo admite hasta 128 integrantes por selección, incluyendo las naves

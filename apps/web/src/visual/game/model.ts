@@ -170,6 +170,8 @@ export type PresentationIntent =
   | { type: 'set-clock-running'; running: boolean }
   | { type: 'produce'; kind: SquadType }
   | { type: 'disband-selected' }
+  /** Esc: the selected ships drop their move or attack order and stay where they are. */
+  | { type: 'stop-selected' }
   | { type: 'upgrade-base'; upgrade: BaseUpgradeKind }
   | { type: 'build-module'; module: ModuleKind }
   | { type: 'surrender' }

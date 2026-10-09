@@ -649,6 +649,16 @@
 .vi-actions__list button:disabled { opacity: .35; }
 .vi-action-glyph { width: 27px; height: 27px; border: 1px solid var(--vi-border); display: grid; place-items: center; color: var(--vi-blue-light); font-size: 15px; }
 .vi-actions kbd { min-width: 20px; padding: 2px 4px; border: 1px solid var(--vi-border); border-radius: 2px; color: var(--vi-muted); font-family: var(--vi-body); font-size: 12px; text-align: center; }
+.vi-actions__label--groups { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--vi-border); }
+.vi-groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.vi-groups button { min-height: 34px; padding: 3px 5px; border: 1px solid var(--vi-border); display: flex; align-items: baseline; justify-content: space-between; gap: 4px; background: transparent; color: var(--vi-text); }
+.vi-groups button b { font-family: var(--vi-display); font-size: 15px; }
+.vi-groups button small { color: var(--vi-muted); font-size: 12px; }
+.vi-groups button:hover, .vi-groups button.is-active { border-color: var(--vi-blue); background: var(--vi-surface-raised); }
+.vi-groups button.is-active small { color: var(--vi-blue-light); }
+.vi-groups__empty { margin: 0; padding: 0 5px; color: var(--vi-muted); font-size: 12px; line-height: 1.35; }
+.vi-shortcut-toast { position: absolute; left: 50%; bottom: 150px; z-index: 30; padding: 7px 14px; border: 1px solid var(--vi-blue); background: var(--vi-panel); color: var(--vi-text); font-family: var(--vi-display); font-size: 14px; letter-spacing: .05em; transform: translateX(-50%); pointer-events: none; animation: vi-shortcut-toast 1.6s ease forwards; }
+@keyframes vi-shortcut-toast { 0% { opacity: 0; transform: translate(-50%, 6px); } 12%, 75% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 
 .vi-development { position: absolute; z-index: 20; top: 0; right: 0; bottom: 0; width: min(390px, 38vw); padding: 22px; overflow-y: auto; border-left: 1px solid var(--vi-warning); background: #0d1522f5; box-shadow: -20px 0 45px rgb(0 0 0 / 32%); }
 .vi-development header { margin-bottom: 24px; padding-bottom: 17px; border-bottom: 1px solid var(--vi-border); display: flex; justify-content: space-between; gap: 15px; }

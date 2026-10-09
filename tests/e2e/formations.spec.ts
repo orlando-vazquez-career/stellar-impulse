@@ -8,7 +8,8 @@ test('a selected group picks a formation and marches as one order', async ({ pag
   const sent: string[] = [];
   page.on('websocket', (socket) => socket.on('framesent', (frame) => {
     const text = typeof frame.payload === 'string' ? frame.payload : frame.payload.toString('latin1');
-    if (text.includes('move_formation')) sent.push('move_formation');
+    if (text.includes('stop')) sent.push('stop');
+    else if (text.includes('move_formation')) sent.push('move_formation');
     else if (/move/.test(text)) sent.push('move');
   }));
   await openApp(page);
@@ -52,7 +53,6 @@ test('a selected group picks a formation and marches as one order', async ({ pag
   expect(selection!.x).toBeGreaterThanOrEqual(minimap!.x + minimap!.width);
   await page.screenshot({ path: 'test-results/formation-layout-1024.png' });
   await page.setViewportSize({ width: 1366, height: 768 });
-  // Configured actions take precedence over the formation shortcut.
   // One click sends one group order and every ship sets off.
   const starts = await allies.evaluateAll((markers) => markers.map((marker) => `${marker.getAttribute('cx')},${marker.getAttribute('cy')}`));
   const centre = { x: xs.reduce((a, b) => a + b, 0) / xs.length, y: ys.reduce((a, b) => a + b, 0) / ys.length };
@@ -66,11 +66,34 @@ test('a selected group picks a formation and marches as one order', async ({ pag
     const now = await allies.evaluateAll((markers) => markers.map((marker) => `${marker.getAttribute('cx')},${marker.getAttribute('cy')}`));
     return now.filter((position, index) => position !== starts[index]).length;
   }, { timeout: 20000 }).toBe(3);
+
+  // Ctrl+1 saves the three ships as squad 1.
+  await page.keyboard.press('Control+1');
+  await expect(page.locator('.vi-groups').getByRole('button', { name: 'Escuadra 1, 3 naves' })).toBeVisible();
+  // Esc cancels the march: one stop per ship, and the fleet stays put.
+  await page.keyboard.press('Escape');
+  await expect.poll(() => sent.filter((command) => command === 'stop').length, { timeout: 5000 }).toBe(3);
+  const positions = () => allies.evaluateAll((markers) => markers.map((marker) => `${marker.getAttribute('cx')},${marker.getAttribute('cy')}`));
+  // Each ship finishes the cell step it is on, then holds there instead of reaching its seat.
+  let halted = await positions();
+  await expect.poll(async () => {
+    const now = await positions();
+    const still = now.every((position, index) => position === halted[index]);
+    halted = now;
+    return still;
+  }, { intervals: [700], timeout: 6000 }).toBe(true);
+  await page.waitForTimeout(1500);
+  expect(await positions()).toEqual(halted);
+  // A click on empty space drops the selection; 1 brings the whole squad back.
+  await page.mouse.click(10, 400);
+  await expect(page.getByText('3 unidades seleccionadas')).toHaveCount(0);
+  await page.keyboard.press('1');
+  await expect(page.getByText('3 unidades seleccionadas')).toBeVisible();
 });
 
 
-test('a configured F action and live audio settings work during a match', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('impulso.visual-preferences', JSON.stringify({ controls: { attack: 'F' } })));
+test('a rebound shortcut and live audio settings work during a match', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('impulso.visual-preferences', JSON.stringify({ keybindings: { 'select-all': 'KeyG' } })));
   await openApp(page);
   await page.getByLabel('Identificador de comandante').fill('Audio');
   await page.getByRole('button', { name: 'Continuar como invitado' }).click();
@@ -79,8 +102,8 @@ test('a configured F action and live audio settings work during a match', async 
   await page.getByLabel('Estoy listo para desplegar').check();
   await page.getByRole('button', { name: 'Iniciar operación' }).click();
   await chooseOpening(page);
-  await page.keyboard.press('f');
-  await expect(page.locator('.vi-actions').getByRole('button', { name: /Atacar/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('g');
+  await expect(page.getByText(/^[2-9] unidades seleccionadas$/)).toBeVisible();
   await page.getByRole('button', { name: 'Sonido', exact: true }).click();
   await page.locator('#audio-effects-range').fill('17');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences')!).audio.effects)).toBe(17);

@@ -4,6 +4,15 @@ Actualizado: 8 de octubre de 2026. Base de producto: 0.1.0.
 
 ## Implementado
 
+### Teclas configurables, escuadras y cámara (9 de octubre de 2026)
+
+Todas las teclas de la partida se cambian en Ajustes → Controles, con combinaciones y
+intercambio automático si una tecla ya está en uso. Ctrl+1…9 guarda escuadras, 1…9 las
+selecciona y un doble toque lleva la cámara; Espacio va a la selección, Inicio a la base y
+Ctrl+F5…F8 / F5…F8 guardan y recuperan vistas. Se quitan Mover, Atacar y Capturar (el clic
+derecho ya mueve y ataca); Mantener pasa a Z y Esc detiene a las naves seleccionadas. Detalle
+en [controls.md](controls.md).
+
 ### Campaña multijugador con el motor de partida (8 de octubre de 2026)
 
 El multijugador ya no usa el mundo de prueba: la sala `campaign` (protocolo 3) juega tres

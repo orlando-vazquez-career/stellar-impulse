@@ -67,7 +67,8 @@ test.describe('visual interface foundation', () => {
     await expect(page.locator('.vi-phaser canvas')).toBeVisible();
     await expect(page.getByLabel('HUD táctico')).toBeVisible();
     await expect(page.getByText('Acciones', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Cancelar Esc' })).toBeDisabled();
+    // Alpha starts selected, so cancelling its order is available.
+    await expect(page.getByRole('button', { name: 'Cancelar Esc' })).toBeEnabled();
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'sector-01.tmj');
     await expect(page.locator('.vi-phaser')).toHaveAttribute('data-atlas-ready', 'true');
@@ -217,7 +218,6 @@ test.describe('visual interface foundation', () => {
     await page.keyboard.down('a');
     await expect.poll(() => camera.getAttribute('x')).not.toBe(initialX);
     await page.keyboard.up('a');
-    await expect(page.getByRole('button', { name: 'Atacar Q' })).toHaveAttribute('aria-pressed', 'false');
     const afterA = await camera.getAttribute('x');
     await page.keyboard.down('d');
     await expect.poll(() => camera.getAttribute('x')).not.toBe(afterA);
@@ -230,6 +230,67 @@ test.describe('visual interface foundation', () => {
     await page.keyboard.down('s');
     await expect.poll(() => camera.getAttribute('y')).not.toBe(afterW);
     await page.keyboard.up('s');
+  });
+
+  test('saves squads under number keys and jumps the camera with shortcuts', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true');
+    const actions = page.locator('.vi-actions');
+    // Only hold and cancel remain: right click moves and attacks, and ships capture by standing on a node.
+    await expect(actions.getByRole('button')).toHaveText([/Mantener\s*Z/, /Cancelar\s*Esc/]);
+    await expect(actions).toContainText('Selecciona naves y pulsa Ctrl+1');
+
+    await expect(page.getByRole('heading', { name: 'Escuadrón Alpha' })).toBeVisible();
+    await page.keyboard.press('Control+1');
+    await expect(page.getByText('Escuadra 1: 1 nave')).toBeVisible();
+    await page.keyboard.press('Control+a');
+    await expect(page.getByText('3 unidades seleccionadas')).toBeVisible();
+    await page.keyboard.press('Control+2');
+    await expect(actions.getByRole('button', { name: 'Escuadra 2, 3 naves' })).toBeVisible();
+    await page.keyboard.press('1');
+    await expect(page.getByRole('heading', { name: 'Escuadrón Alpha' })).toBeVisible();
+    await page.keyboard.press('Shift+2');
+    await page.keyboard.press('2');
+    await expect(page.getByText('3 unidades seleccionadas')).toBeVisible();
+
+    const camera = page.locator('.map-camera');
+    const at = async () => `${await camera.getAttribute('x')},${await camera.getAttribute('y')}`;
+    const home = await at();
+    // Save this view, pan away, and come back to it.
+    await page.keyboard.press('Control+F5');
+    await expect(page.getByText('Vista 1 guardada')).toBeVisible();
+    await page.mouse.move(680, 400);
+    await page.keyboard.down('d');
+    await expect.poll(at).not.toBe(home);
+    await page.keyboard.up('d');
+    await page.keyboard.press('F5');
+    await expect.poll(at).toBe(home);
+    await page.keyboard.press('F6');
+    await expect(page.getByText('La vista 2 está vacía: guárdala con Ctrl+F6')).toBeVisible();
+    // Space goes to the selected ships, a double tap on a squad key to that squad, Inicio to the base.
+    await page.keyboard.down('d');
+    await expect.poll(at).not.toBe(home);
+    await page.keyboard.up('d');
+    const away = await at();
+    await page.keyboard.press('Space');
+    await expect.poll(at).not.toBe(away);
+    const onFleet = await at();
+    await page.keyboard.down('s');
+    await expect.poll(at).not.toBe(onFleet);
+    await page.keyboard.up('s');
+    const panned = await at();
+    await page.keyboard.press('1');
+    await page.keyboard.press('1');
+    await expect(page.getByRole('heading', { name: 'Escuadrón Alpha' })).toBeVisible();
+    await expect.poll(at).not.toBe(panned);
+    await page.keyboard.press('Home');
+    await expect.poll(at).toBe(home);
   });
 
   test('selects with left click and moves with right click', async ({ page }) => {
@@ -253,7 +314,6 @@ test.describe('visual interface foundation', () => {
     const betaMarker = page.locator('.map-ally').nth(1);
     const startingX = await betaMarker.getAttribute('cx');
     const startingY = await betaMarker.getAttribute('cy');
-    await expect(page.getByRole('button', { name: 'Mover M' })).toHaveAttribute('aria-pressed', 'false');
     const blocked = await gamePoint(page, 9, 13);
     await page.mouse.click(blocked.x, blocked.y, { button: 'right' });
     await expect(page.locator('.map-move-route')).toHaveCount(0);
@@ -367,7 +427,19 @@ test.describe('visual interface foundation', () => {
     expect(panelBox.clearsFooter).toBe(true);
 
     await page.getByRole('button', { name: /Controles/ }).click();
-    await page.getByLabel('Mover').selectOption('Q');
+    // Click a key, press the new one; a key in use trades places with the other action.
+    await page.getByRole('button', { name: 'Mantener posición: Z' }).click();
+    await page.keyboard.press('x');
+    await expect(page.getByRole('button', { name: 'Mantener posición: X' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Producir interceptor: Z' })).toBeVisible();
+    await expect(page.getByText('X estaba en «Producir interceptor»: esa acción ahora usa Z.')).toBeVisible();
+    await page.getByRole('button', { name: 'Guardar escuadra 1: Ctrl+1' }).click();
+    await page.keyboard.press('Alt+1');
+    await expect(page.getByRole('button', { name: 'Guardar escuadra 1: Alt+1' })).toBeVisible();
+    // Esc while listening cancels without changing anything.
+    await page.getByRole('button', { name: 'Ir a mi base: Inicio' }).click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Ir a mi base: Inicio' })).toBeVisible();
     await page.getByRole('button', { name: /Accesibilidad/ }).click();
     await page.getByLabel(/Contraste reforzado/).check();
     await page.getByRole('button', { name: 'Guardar ajustes' }).click();
@@ -375,7 +447,7 @@ test.describe('visual interface foundation', () => {
     await expect(page.locator('.visual-app')).toHaveClass(/is-high-contrast/);
     await expect(page.getByText('Ajustes guardados localmente')).toBeVisible();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences') ?? '{}'));
-    expect(stored.controls.move).toBe('Q');
+    expect(stored.keybindings).toMatchObject({ hold: 'KeyX', 'produce-interceptor': 'KeyZ', 'group-set-1': 'Alt+Digit1', 'camera-base': 'Home' });
     expect(stored.accessibility.highContrast).toBe(true);
   });
 

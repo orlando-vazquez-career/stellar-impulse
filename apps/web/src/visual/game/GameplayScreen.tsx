@@ -1,5 +1,5 @@
 import type { DurationMode } from '@impulso/sim';
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { DevelopmentControls } from './DevelopmentControls';
 import { Hud } from './Hud';
 import { AugmentHud } from './AugmentHud';
@@ -7,7 +7,7 @@ import { MatchProgress } from '../profile/MatchProgress';
 import { createMockGameplayAdapter } from './mock-adapter';
 import { createServerGameplayAdapter } from './server-adapter';
 import { campaignTransport } from '../../multiplayer/campaign-transport';
-import { nextFormation } from './formation';
+import { useMatchShortcuts } from './useMatchShortcuts';
 import type { MultiplayerSession } from '../../multiplayer/session';
 import { MatchAudio, playEvent, type Announcement } from './audio';
 import { useI18n } from '../i18n';
@@ -22,7 +22,6 @@ const PhaserBattlefield = lazy(() => import('./phaser/PhaserBattlefield').then((
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567';
 /** `?adapter=mock` keeps the offline visual sandbox (used by the visual E2E tests). */
 const wantsLocalMock = () => new URLSearchParams(window.location.search).get('adapter') === 'mock';
-const PRODUCTION_KEYS: Record<string, 'explorer' | 'interceptor' | 'frigate' | 'bomber'> = { '1': 'interceptor', '2': 'frigate', '3': 'bomber', '4': 'explorer' };
 const emptySubscribe = () => () => {};
 const emptyMultiplayer = () => null;
 
@@ -84,39 +83,22 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
     if (!own || !battlefieldRef.current) return;
     centered.current = battlefieldRef.current.focusFleet(Math.round(own.gridX), Math.round(own.gridY));
   }, [view]);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLElement && event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
-      const key = event.key === ' ' ? 'Space' : event.key === 'Escape' ? 'Esc' : event.key;
-      if (key === 'Delete' && !event.repeat) {
-        event.preventDefault();
-        adapter.dispatch({ type: 'disband-selected' });
-        return;
-      }
-      if (/^[wasd]$/i.test(key)) return; // Camera navigation is never an action shortcut.
-      if (key.toLowerCase() === 'f' && !event.repeat && view.formation
-        && view.selectedSquadIds.length > 1
-        && !Object.values(preferences.controls).some((binding) => binding.toLowerCase() === 'f')) { adapter.dispatch({ type: 'set-formation', formation: nextFormation(view.formation) }); return; }
-      if (view.canProduce !== false && PRODUCTION_KEYS[key] && !event.repeat) { adapter.dispatch({ type: 'produce', kind: PRODUCTION_KEYS[key] }); return; }
-      if (key.toLowerCase() === preferences.controls.cancel.toLowerCase()) adapter.dispatch({ type: 'set-action', action: null });
-      else if (key.toLowerCase() === preferences.controls.move.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'move' });
-      else if (key.toLowerCase() === preferences.controls.attack.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'attack' });
-      else if (key.toLowerCase() === preferences.controls.hold.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'hold' });
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [adapter, preferences.controls, view.canProduce, view.formation, view.selectedSquadIds.length]);
+  const bindings = preferences.keybindings;
+  const { groups, selectGroup, toast } = useMatchShortcuts({ adapter, view, bindings, battlefield: battlefieldRef });
+  const panKeys = useMemo(() => ({ up: bindings['camera-up'], down: bindings['camera-down'], left: bindings['camera-left'], right: bindings['camera-right'] }),
+    [bindings]);
   return <main className="vi-gameplay vi-screen" data-room-id={roomState?.roomId} data-player-id={roomState?.phase?.playerId} data-connection={roomState?.connection} data-sequence={roomState?.acknowledgedSequence} data-tick={view.tick}>
     <Suspense fallback={<div className="vi-phaser" aria-busy="true" />}>
       <PhaserBattlefield ref={battlefieldRef} view={view}
         onSelectSquads={(squadIds) => adapter.dispatch({ type: 'select-squads', squadIds })}
         onMoveSelected={(x, y) => adapter.dispatch({ type: 'move-selected', x, y })}
         onAttackSelected={(targetId) => adapter.dispatch({ type: 'attack-selected', targetId })}
-        onCameraChange={setCameraView} />
+        onCameraChange={setCameraView} panKeys={panKeys} />
     </Suspense>
-    <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onBaseRange={previewBaseRange} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)} onResetCamera={() => battlefieldRef.current?.resetCamera()} onDevelopment={() => setDevelopmentOpen(true)} onLeave={onLeave} multiplayer={Boolean(multiplayerSession)} audio={preferences.audio} onAudioChange={onAudioChange} />
+    <Hud view={view} adapter={adapter} keybindings={bindings} groups={groups} onSelectGroup={selectGroup} cameraView={cameraView} onBaseRange={previewBaseRange} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)} onResetCamera={() => battlefieldRef.current?.resetCamera()} onDevelopment={() => setDevelopmentOpen(true)} onLeave={onLeave} multiplayer={Boolean(multiplayerSession)} audio={preferences.audio} onAudioChange={onAudioChange} />
     {developmentOpen && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}
     <AugmentHud view={view} adapter={adapter} sound={!preferences.audio.muted && preferences.audio.effects > 0 && preferences.audio.master > 0} />
+    {toast && <div key={toast.id} className="vi-shortcut-toast" role="status">{toast.text}</div>}
     {announcement && !view.result && <div key={announcement.id} className={`vi-announcement vi-announcement--${announcement.tone}`} role="status">{announcement.text}</div>}
     {roomState?.phase?.phase === 'transition' && <div className="vi-result" role="dialog" aria-label={english ? 'Next sector' : 'Siguiente sector'}><div className="vi-result__card">
       <h2>{english ? 'Preparing sector' : 'Preparando sector'} {roomState.phase.sector + 1}</h2>

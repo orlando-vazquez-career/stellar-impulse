@@ -6,7 +6,9 @@ import { formatStat } from './format-stat';
 import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
 import { AudioControls } from '../settings/AudioControls';
-import type { CameraView, CoreState, GameplayAction, GameplayPresentationAdapter, GameplayViewModel } from './model';
+import { CONTROL_GROUPS, formatCombo, type ControlGroup, type Keybindings } from '../settings/keybindings';
+import { groupMembers, type ControlGroups } from './control-groups';
+import type { CameraView, CoreState, GameplayPresentationAdapter, GameplayViewModel } from './model';
 import { activeMapId, sectorMap, sectorSurface } from '../map/sector-map';
 import { cellToIso, isoToPoint, ISO_ORIGIN_X, ISO_ORIGIN_Y, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, projectedWorldBounds, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, VIEW_YAW_RADIANS } from './phaser/isometric';
 
@@ -78,9 +80,14 @@ function SoundButton({ audio, onAudioChange }: { audio: VisualPreferences['audio
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
-    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
-    window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
+    // Esc closes the panel first, before it reaches the match and stops the selected ships.
+    const close = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      setOpen(false);
+    };
+    window.addEventListener('keydown', close, true);
+    return () => window.removeEventListener('keydown', close, true);
   }, [open]);
   const silent = audio.muted || audio.master === 0;
   return <>
@@ -262,32 +269,42 @@ function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: Gamepla
   </Panel>;
 }
 
-const actionGlyphs: Record<Exclude<GameplayAction, null> | 'cancel', string> = { move: '↗', attack: '⌖', hold: 'Ⅱ', capture: '◇', cancel: '×' };
-
-function ActionHud({ view, adapter, controls }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls'] }) {
-  const { t } = useI18n();
-  const actions: Array<{ action: Exclude<GameplayAction, null>; label: string; key: string }> = [
-    { action: 'move', label: t('move'), key: controls.move },
-    { action: 'attack', label: t('attack'), key: controls.attack },
-    { action: 'hold', label: t('hold'), key: controls.hold },
-    { action: 'capture', label: t('capture'), key: controls.capture },
-  ];
+/** Hold and cancel are the only orders without a click: right click already moves and attacks,
+ * and ships capture a node by staying on it. Below them, the squads saved with Ctrl+number. */
+function ActionHud({ view, adapter, keybindings, groups, onSelectGroup }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; keybindings: Keybindings; groups: ControlGroups; onSelectGroup(group: ControlGroup, center?: boolean): void }) {
+  const { t, locale } = useI18n();
+  const none = !view.squads.some((squad) => squad.selected && squad.owner === 'blue' && squad.healthPercent > 0);
+  const saved = CONTROL_GROUPS.map((group) => ({ group, count: groupMembers(groups, group, view.squads).length })).filter(({ count }) => count > 0);
   return <Panel className="vi-actions"><span className="vi-actions__label">{t('actions')}</span>
     <div className="vi-actions__list">
-      {actions.map(({ action, label, key }) => <button key={action} className={view.activeAction === action ? 'is-active' : ''} onClick={() => adapter.dispatch({ type: 'set-action', action })} aria-pressed={view.activeAction === action}>
-        <span className="vi-action-glyph" aria-hidden="true">{actionGlyphs[action]}</span><span>{label}</span><kbd>{key}</kbd>
-      </button>)}
-      <button disabled={!view.activeAction} onClick={() => adapter.dispatch({ type: 'set-action', action: null })}><span className="vi-action-glyph" aria-hidden="true">{actionGlyphs.cancel}</span><span>{t('cancel')}</span><kbd>{controls.cancel}</kbd></button>
+      <button disabled={none} title={t('holdHelp')} onClick={() => adapter.dispatch({ type: 'set-action', action: 'hold' })}>
+        <span className="vi-action-glyph" aria-hidden="true">Ⅱ</span><span>{t('hold')}</span><kbd>{formatCombo(keybindings.hold, locale)}</kbd>
+      </button>
+      <button disabled={none} title={t('stopHelp')} onClick={() => adapter.dispatch({ type: 'stop-selected' })}>
+        <span className="vi-action-glyph" aria-hidden="true">×</span><span>{t('cancel')}</span><kbd>{formatCombo(keybindings.stop, locale)}</kbd>
+      </button>
     </div>
+    <span className="vi-actions__label vi-actions__label--groups">{t('squadGroups')}</span>
+    {saved.length
+      ? <div className="vi-groups">{saved.map(({ group, count }) => {
+        const selected = groupMembers(groups, group, view.squads).every((squad) => squad.selected);
+        return <button key={group} className={selected ? 'is-active' : ''} title={t('squadGroupHelp')}
+          aria-label={t(count === 1 ? 'squadGroupLabelOne' : 'squadGroupLabel', { group, count })}
+          onClick={(event) => onSelectGroup(group, event.detail > 1)}>
+          <b>{formatCombo(keybindings[`group-select-${group}`], locale)}</b><small>{count}</small>
+        </button>;
+      })}</div>
+      : <p className="vi-groups__empty">{t('squadGroupsEmpty', { key: formatCombo(keybindings['group-set-1'], locale) })}</p>}
   </Panel>;
 }
 
 const PRODUCTION_ORDER = [
-  { kind: 'interceptor', key: '1' }, { kind: 'frigate', key: '2' }, { kind: 'bomber', key: '3' }, { kind: 'explorer', key: '4' },
+  { kind: 'interceptor', action: 'produce-interceptor' }, { kind: 'frigate', action: 'produce-frigate' },
+  { kind: 'bomber', action: 'produce-bomber' }, { kind: 'explorer', action: 'produce-explorer' },
 ] as const;
 
 /** Base hangar: one ship at a time, paid in Metal. Hidden in the offline mock. */
-function ProductionHud({ view, adapter,onBaseRange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter;onBaseRange?:(show:boolean)=>void }) {
+function ProductionHud({ view, adapter, keybindings, onBaseRange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; keybindings: Keybindings; onBaseRange?:(show:boolean)=>void }) {
   const { t,locale } = useI18n();
   const [tab, setTab] = useState<'hangar' | 'modules' | 'base'>('hangar');
   const [hovered,setHovered]=useState<keyof typeof UNIT_COSTS|null>(null);
@@ -322,7 +339,7 @@ function ProductionHud({ view, adapter,onBaseRange }: { view: GameplayViewModel;
       ? <p className="vi-production__queue">{unitNames[view.production.kind]} · {view.production.remainingSeconds} s</p>
       : <p className="vi-production__queue">{full ? 'Flota completa' : 'Listo para construir'}</p>}
     <div className="vi-production__list">
-      {PRODUCTION_ORDER.map(({ kind, key }) => {
+      {PRODUCTION_ORDER.map(({ kind, action }) => {
         const cost = view.unitStats?.[kind]?.cost ?? UNIT_COSTS[kind];
         const disabled = !!view.production || !!view.productionForbidden?.includes(kind) || full || view.resources.metal < cost || !!view.result;
         const stats=view.unitStats?.[kind];
@@ -330,7 +347,7 @@ function ProductionHud({ view, adapter,onBaseRange }: { view: GameplayViewModel;
         const names=(strong:boolean)=>counters.filter(([,multiplier])=>strong?multiplier>1:multiplier<1).map(([target,multiplier])=>`${target==='guardian'?t('guardiansCore'):unitNames[target as keyof typeof unitNames]} ×${multiplier}`).join(', ');
         return <div className="vi-production__unit" key={kind} onMouseEnter={()=>setHovered(kind)} onMouseLeave={()=>setHovered(null)} onFocus={()=>setHovered(kind)} onBlur={()=>setHovered(null)}>
           <button disabled={disabled} onClick={() => adapter.dispatch({ type: 'produce', kind })} aria-describedby={hovered===kind?`build-guide-${kind}`:undefined}>
-            <span>{unitNames[kind]}</span><small>{cost} M · {t('attackRange')} {stats?.range??'—'}</small><kbd>{key}</kbd>
+            <span>{unitNames[kind]}</span><small>{cost} M · {t('attackRange')} {stats?.range??'—'}</small><kbd>{formatCombo(keybindings[action], locale)}</kbd>
           </button>
           {hovered===kind&&stats&&<div className="vi-unit-guide" role="tooltip" id={`build-guide-${kind}`}>
             <header><strong>{unitNames[kind]}</strong><span>{cost} Metal · {stats.buildTicks/10} s</span></header>
@@ -417,7 +434,7 @@ function NoticeHud({ view }: { view: GameplayViewModel }) {
   return <div className={`vi-notice vi-notice--${view.connection}`} role="status">{view.notice}</div>;
 }
 
-export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave,onBaseRange, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void;onBaseRange?:(show:boolean)=>void; multiplayer?:boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
+export function Hud({ view, adapter, keybindings, groups, onSelectGroup, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave,onBaseRange, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; keybindings: Keybindings; groups: ControlGroups; onSelectGroup(group: ControlGroup, center?: boolean): void; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void;onBaseRange?:(show:boolean)=>void; multiplayer?:boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const { t } = useI18n();
   return <div className="vi-hud" aria-label={t('hud')}>
     <ResourceHud view={view} />
@@ -425,8 +442,8 @@ export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCame
     <TopControls view={view} adapter={adapter} onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} multiplayer={multiplayer} audio={audio} onAudioChange={onAudioChange} />
     <Minimap view={view} cameraView={cameraView} onPanMap={onPanMap} />
     <SquadHud view={view} adapter={adapter} />
-    <ActionHud view={view} adapter={adapter} controls={controls} />
-    <ProductionHud view={view} adapter={adapter} onBaseRange={onBaseRange}/>
+    <ActionHud view={view} adapter={adapter} keybindings={keybindings} groups={groups} onSelectGroup={onSelectGroup} />
+    <ProductionHud view={view} adapter={adapter} keybindings={keybindings} onBaseRange={onBaseRange}/>
     <NoticeHud view={view} />
   </div>;
 }
