@@ -597,14 +597,6 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         emit();
         return;
       }
-      if (intent.type === 'stop-selected') {
-        const squads = selectedOwn();
-        if (!squads.length) return;
-        for (const squad of squads) send({ type: 'stop', squadId: squad.id });
-        snapshot = { ...snapshot, activeAction: null, moveOrder: null, notice: null };
-        emit();
-        return;
-      }
       if (intent.type === 'set-action') {
         if (intent.action === 'hold') {
           for (const squad of selectedOwn()) send({ type: 'stance', squadId: squad.id, stance: 'guard' });

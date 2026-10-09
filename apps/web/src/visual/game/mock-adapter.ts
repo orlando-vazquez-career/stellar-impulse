@@ -248,12 +248,6 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
           ? { ...squad, selected: false, healthPercent: 0, visible: false, status: 'destroyed' as const, attackTargetId: null } : squad);
         snapshot = { ...snapshot, squads, selectedSquadIds: [], selectedSquadId: null, moveOrder: null, activeAction: null,
           resources: { ...snapshot.resources, fleet: squads.filter((squad) => squad.owner === 'blue' && squad.healthPercent > 0).length } };
-      } else if (intent.type === 'stop-selected') {
-        const ids = new Set(selectedAllies().map((squad) => squad.id));
-        if (!ids.size) return;
-        for (const id of ids) { stopMovement(id); stopAttack(id); orders.delete(id); }
-        snapshot = { ...snapshot, moveOrder: null, activeAction: null,
-          squads: snapshot.squads.map((squad) => ids.has(squad.id) ? { ...squad, status: 'idle' as const, attackTargetId: null } : squad) };
       } else if (intent.type === 'upgrade-base') {
         const cost = baseUpgradeCost(intent.upgrade, baseUpgrades);
         if (cost === null || snapshot.resources.metal < cost) return;

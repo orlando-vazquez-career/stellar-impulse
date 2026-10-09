@@ -1,6 +1,5 @@
-import { freshKeybindings, readKeybindings, type Keybindings } from './keybindings';
-
 export type ColorProfile = 'default' | 'deuteranopia' | 'tritanopia';
+export type ControlAction = 'move' | 'attack' | 'hold' | 'capture' | 'cancel' | 'camera';
 
 export interface VisualPreferences {
   audio: {
@@ -13,8 +12,7 @@ export interface VisualPreferences {
     interface: number;
     muted: boolean;
   };
-  /** Every match shortcut; see keybindings.ts. */
-  keybindings: Keybindings;
+  controls: Record<ControlAction, string>;
   accessibility: {
     highContrast: boolean;
     reducedMotion: boolean;
@@ -25,7 +23,7 @@ export interface VisualPreferences {
 
 export const defaultVisualPreferences: VisualPreferences = {
   audio: { master: 80, effects: 85, music: 60, voice: 90, interface: 60, muted: false },
-  keybindings: freshKeybindings(),
+  controls: { move: 'M', attack: 'Q', hold: 'H', capture: 'C', cancel: 'Esc', camera: 'Space' },
   accessibility: { highContrast: false, reducedMotion: false, largeText: false, colorProfile: 'default' },
 };
 
@@ -34,7 +32,7 @@ const storageKey = 'impulso.visual-preferences';
 function cloneDefaults(): VisualPreferences {
   return {
     audio: { ...defaultVisualPreferences.audio },
-    keybindings: freshKeybindings(),
+    controls: { ...defaultVisualPreferences.controls },
     accessibility: { ...defaultVisualPreferences.accessibility },
   };
 }
@@ -59,8 +57,10 @@ export function loadVisualPreferences(): VisualPreferences {
     const parsed = JSON.parse(stored) as Partial<VisualPreferences>;
     return {
       audio: readAudio(parsed.audio),
-      // The old `controls` field (move, attack and capture modes) is dropped: those actions no longer exist.
-      keybindings: readKeybindings(parsed.keybindings),
+      controls: { ...defaultVisualPreferences.controls, ...Object.fromEntries(
+        Object.entries(parsed.controls ?? {}).map(([action, binding]) => [action,
+          typeof binding === 'string' && /^[wasd]$/i.test(binding) ? defaultVisualPreferences.controls[action as ControlAction] : binding]),
+      ) },
       accessibility: { ...defaultVisualPreferences.accessibility, ...parsed.accessibility },
     };
   } catch {

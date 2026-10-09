@@ -95,10 +95,6 @@ function polygon(vertices: { x: number; y: number }[]) {
   return vertices.map(({ x, y }) => new Phaser.Math.Vector2(x, y));
 }
 
-export interface PanKeys { up: string; down: string; left: string; right: string }
-/** World point at the centre of the screen, and the zoom. */
-export interface CameraState { x: number; y: number; zoom: number }
-
 export class MainScene extends Phaser.Scene {
   private snapshot: GameplayViewModel;
   private readonly onSelectSquads: (squadIds: string[]) => void;
@@ -136,10 +132,7 @@ export class MainScene extends Phaser.Scene {
   private serverTickAt = 0;
   private readonly unitVisuals = new Map<string, UnitVisual>();
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
-  /** Physical keys (`KeyboardEvent.code`) that pan the camera; the arrows always pan too. */
-  private panKeys: PanKeys = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' };
-  /** Keys held right now, fed by the React host so they follow the player's bindings. */
-  private readonly heldKeys = new Set<string>();
+  private movementKeys?: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private dragOrigin?: { x: number; y: number; scrollX: number; scrollY: number };
   private selectionDrag?: { start: { x: number; y: number }; current: { x: number; y: number }; clickedId: string | null };
   private lastClick: { id: string; at: number; group: boolean } | null = null;
@@ -261,11 +254,11 @@ export class MainScene extends Phaser.Scene {
       const depth = position < EDGE_ZONE ? -(1 - position / EDGE_ZONE) : position > size - EDGE_ZONE ? 1 - (size - position) / EDGE_ZONE : 0;
       return Math.sign(depth) * Phaser.Math.Easing.Quadratic.Out(Math.abs(depth));
     };
-    const held = (direction: keyof PanKeys) => this.heldKeys.has(this.panKeys[direction]);
+    const cameraKey = (key: Phaser.Input.Keyboard.Key | undefined) => key?.isDown;
     const keys = (positive: boolean | undefined, negative: boolean | undefined) => Number(Boolean(positive)) - Number(Boolean(negative));
     const wanted = {
-      x: Phaser.Math.Clamp(keys(this.cursors?.right.isDown || held('right'), this.cursors?.left.isDown || held('left')) + drift(pointer.x, this.scale.width), -1, 1),
-      y: Phaser.Math.Clamp(keys(this.cursors?.down.isDown || held('down'), this.cursors?.up.isDown || held('up')) + drift(pointer.y, this.scale.height), -1, 1),
+      x: Phaser.Math.Clamp(keys(this.cursors?.right.isDown || cameraKey(this.movementKeys?.right), this.cursors?.left.isDown || cameraKey(this.movementKeys?.left)) + drift(pointer.x, this.scale.width), -1, 1),
+      y: Phaser.Math.Clamp(keys(this.cursors?.down.isDown || cameraKey(this.movementKeys?.down), this.cursors?.up.isDown || cameraKey(this.movementKeys?.up)) + drift(pointer.y, this.scale.height), -1, 1),
     };
     const ease = 1 - Math.exp(-seconds / PAN_EASE);
     this.panVelocity.x += (wanted.x * PAN_SPEED - this.panVelocity.x) * ease;
@@ -312,50 +305,6 @@ export class MainScene extends Phaser.Scene {
     this.refreshCameraView();
   }
 
-  setPanKeys(keys: PanKeys) {
-    this.panKeys = { ...keys };
-  }
-
-  pressKey(code: string) {
-    this.heldKeys.add(code);
-  }
-
-  releaseKey(code: string) {
-    this.heldKeys.delete(code);
-  }
-
-  /** The window lost focus: a key released elsewhere must not keep the camera drifting. */
-  releaseAllKeys() {
-    this.heldKeys.clear();
-  }
-
-  /** A jump lands where it was aimed: the glide left over from panning must not carry it further. */
-  private stopPan() {
-    this.panVelocity.x = 0;
-    this.panVelocity.y = 0;
-  }
-
-  /** The view a camera shortcut can come back to later. Null while the scene is still loading. */
-  cameraState(): CameraState | null {
-    const camera = this.cameras?.main;
-    if (!camera || !this.created) return null;
-    return { x: camera.scrollX + camera.width / 2, y: camera.scrollY + camera.height / 2, zoom: camera.zoom };
-  }
-
-  restoreCamera(state: CameraState): boolean {
-    const camera = this.cameras?.main;
-    if (!camera || !this.created) return false;
-    const limits = this.zoomLimits();
-    const zoom = Phaser.Math.Clamp(state.zoom, limits.min, limits.max);
-    camera.setZoom(zoom);
-    this.zoomTarget = zoom;
-    this.zoomAnchor = null;
-    this.stopPan();
-    camera.centerOn(state.x, state.y);
-    this.refreshCameraView();
-    return true;
-  }
-
   /** Opening focus on the player's fleet. False while the scene is still loading. */
   focusFleet(x: number, y: number): boolean {
     return this.created && this.centerOnCell(x, y);
@@ -371,7 +320,6 @@ export class MainScene extends Phaser.Scene {
     const camera = this.cameras?.main;
     if (!camera || !this.created) return false;
     const cell = cellToIso(Phaser.Math.Clamp(x, 0, sectorMap.width - 1), Phaser.Math.Clamp(y, 0, sectorMap.height - 1));
-    this.stopPan();
     camera.centerOn(cell.x, cell.y);
     this.refreshCameraView();
     return true;
@@ -981,6 +929,7 @@ export class MainScene extends Phaser.Scene {
     this.input.setTopOnly(false);
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
+      this.movementKeys = this.input.keyboard.addKeys({ up: 'W', down: 'S', left: 'A', right: 'D' }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
     }
     this.input.mouse?.disableContextMenu();
     this.input.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {

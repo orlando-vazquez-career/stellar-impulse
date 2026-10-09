@@ -21,22 +21,19 @@ describe('visual preferences', () => {
   it('persists and restores visual preferences', () => {
     const preferences = loadVisualPreferences();
     preferences.accessibility.highContrast = true;
-    preferences.keybindings.hold = 'KeyH';
+    preferences.controls.move = 'Q';
     saveVisualPreferences(preferences);
     expect(loadVisualPreferences().accessibility.highContrast).toBe(true);
-    expect(loadVisualPreferences().keybindings.hold).toBe('KeyH');
+    expect(loadVisualPreferences().controls.move).toBe('Q');
   });
 
   it('falls back safely when storage is malformed', () => {
     localStorage.setItem('impulso.visual-preferences', '{not-json');
     expect(loadVisualPreferences()).toEqual(defaultVisualPreferences);
   });
-  it('drops the old move, attack and capture controls and starts from the new defaults', () => {
-    localStorage.setItem('impulso.visual-preferences', JSON.stringify({ controls: { move: 'M', attack: 'Q', hold: 'H', cancel: 'Esc' } }));
-    const preferences = loadVisualPreferences();
-    expect(preferences).not.toHaveProperty('controls');
-    expect(preferences.keybindings.hold).toBe('KeyZ');
-    expect(preferences.keybindings.stop).toBe('Escape');
+  it('migrates a saved attack shortcut that conflicts with WASD camera controls', () => {
+    localStorage.setItem('impulso.visual-preferences', JSON.stringify({ controls: { attack: 'A' } }));
+    expect(loadVisualPreferences().controls.attack).toBe('Q');
   });
   it('adds the voice and menu channels to older saved settings and keeps volumes in range', () => {
     localStorage.setItem('impulso.visual-preferences', JSON.stringify({ audio: { master: 140, music: -5, effects: 'loud', muted: true } }));

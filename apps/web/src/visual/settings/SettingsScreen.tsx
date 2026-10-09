@@ -4,13 +4,14 @@ import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
-import { freshDefaultVisualPreferences, type VisualPreferences } from './preferences';
-import { KeybindingsPanel } from './KeybindingsPanel';
+import { freshDefaultVisualPreferences, type ControlAction, type VisualPreferences } from './preferences';
 import { AudioControls } from './AudioControls';
 import './settings.css';
 
 type SettingsCategory = 'audio' | 'controls' | 'language' | 'accessibility';
 
+const controlActions: ControlAction[] = ['move', 'attack', 'hold', 'capture', 'cancel', 'camera'];
+const keyOptions = ['M', 'H', 'C', 'Q', 'E', 'R', 'F', 'Space', 'Esc']; // WASD is reserved for the camera.
 
 function ToggleSetting({ title, detail, checked, onChange }: { title: string; detail: string; checked: boolean; onChange(checked: boolean): void }) {
   return <label className="vi-setting-toggle"><span><strong>{title}</strong><small>{detail}</small></span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /></label>;
@@ -23,7 +24,7 @@ export function SettingsScreen({ preferences, onBack, onSave, onPreviewAudio }: 
   const canvas = useRef<HTMLCanvasElement>(null);
   const [category, setCategory] = useState<SettingsCategory>('audio');
   const [draft, setDraft] = useState<VisualPreferences>(() => ({
-    audio: { ...preferences.audio }, keybindings: { ...preferences.keybindings }, accessibility: { ...preferences.accessibility },
+    audio: { ...preferences.audio }, controls: { ...preferences.controls }, accessibility: { ...preferences.accessibility },
   }));
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -65,6 +66,9 @@ export function SettingsScreen({ preferences, onBack, onSave, onPreviewAudio }: 
     { id: 'language', label: t('language'), glyph: '文' },
     { id: 'accessibility', label: t('accessibility'), glyph: '◎' },
   ];
+  const controlLabels: Record<ControlAction, string> = {
+    move: t('move'), attack: t('attack'), hold: t('hold'), capture: t('capture'), cancel: t('cancel'), camera: t('resetCamera'),
+  };
 
   const markDirty = () => { setSaved(false); setDirty(true); };
   const save = () => {
@@ -106,7 +110,10 @@ export function SettingsScreen({ preferences, onBack, onSave, onPreviewAudio }: 
 
           {category === 'controls' && <>
             <header><span>02</span><div><h2 id="settings-controls">{t('controls')}</h2><p>{t('controlsDescription')}</p></div></header>
-            <KeybindingsPanel value={draft.keybindings} onChange={(keybindings) => { setDraft({ ...draft, keybindings }); markDirty(); }} />
+            <div className="vi-settings-panel__body vi-control-settings">
+              <div className="vi-control-settings__head"><span>{t('action')}</span><span>{t('assignedKey')}</span></div>
+              {controlActions.map((action) => <label key={action}><strong>{controlLabels[action]}</strong><select aria-label={controlLabels[action]} value={draft.controls[action]} onChange={(event) => { setDraft({ ...draft, controls: { ...draft.controls, [action]: event.target.value } }); markDirty(); }}>{keyOptions.map((key) => <option key={key} value={key}>{key}</option>)}</select></label>)}
+            </div>
           </>}
 
           {category === 'language' && <>

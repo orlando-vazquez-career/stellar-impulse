@@ -20,22 +20,6 @@ describe('visual presentation adapter', () => {
         .toEqual(['blue-gamma']);
     } finally { adapter.destroy(); vi.useRealTimers(); }
   });
-  it('stops the selected ships where they are and keeps them selected', () => {
-    vi.useFakeTimers();
-    const adapter = createMockGameplayAdapter();
-    try {
-      adapter.dispatch({ type: 'select-squads', squadIds: ['blue-alpha'] });
-      adapter.dispatch({ type: 'move-selected', x: 14, y: 14 });
-      vi.advanceTimersByTime(400);
-      adapter.dispatch({ type: 'stop-selected' });
-      const stopped = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')!;
-      vi.advanceTimersByTime(3000);
-      const later = adapter.getSnapshot().squads.find((squad) => squad.id === 'blue-alpha')!;
-      expect(adapter.getSnapshot().moveOrder).toBeNull();
-      expect(later).toMatchObject({ gridX: stopped.gridX, gridY: stopped.gridY, status: 'idle', selected: true });
-      expect({ x: later.gridX, y: later.gridY }).not.toEqual({ x: 14, y: 14 });
-    } finally { adapter.destroy(); vi.useRealTimers(); }
-  });
   it('updates base levels and capacity from Metal and stops at the maximum', () => {
     const adapter = createMockGameplayAdapter();
     try {

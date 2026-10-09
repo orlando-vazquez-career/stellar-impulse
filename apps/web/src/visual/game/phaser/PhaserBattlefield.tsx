@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import Phaser from 'phaser';
 import { useI18n } from '../../i18n';
 import type { CameraView, GameplayViewModel } from '../model';
-import { MainScene, type CameraState, type PanKeys } from './MainScene';
+import { MainScene } from './MainScene';
 import { activeMapId, activeMapSourceFile } from '../../map/sector-map';
 
 export interface PhaserBattlefieldHandle {
@@ -12,9 +12,6 @@ export interface PhaserBattlefieldHandle {
   centerOnCell(x: number, y: number): boolean;
   /** Opening view on the player's fleet (kept whole when the sector fits). False while loading. */
   focusFleet(x: number, y: number): boolean;
-  /** Null while loading. */
-  cameraState(): CameraState | null;
-  restoreCamera(state: CameraState): boolean;
 }
 
 interface PhaserBattlefieldProps {
@@ -23,11 +20,9 @@ interface PhaserBattlefieldProps {
   onMoveSelected(x: number, y: number): void;
   onAttackSelected(targetId: string): void;
   onCameraChange(view: CameraView): void;
-  /** Keys that pan the camera while held. */
-  panKeys: PanKeys;
 }
 
-export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattlefieldProps>(function PhaserBattlefield({ view, onSelectSquads, onMoveSelected, onAttackSelected, onCameraChange, panKeys }, forwardedRef) {
+export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattlefieldProps>(function PhaserBattlefield({ view, onSelectSquads, onMoveSelected, onAttackSelected, onCameraChange }, forwardedRef) {
   const { t } = useI18n();
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -45,32 +40,12 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
   snapshotRef.current = view;
 
   useEffect(() => { sceneRef.current?.sync(view); }, [view]);
-  const panKeysRef = useRef(panKeys);
-  panKeysRef.current = panKeys;
-  useEffect(() => { sceneRef.current?.setPanKeys(panKeys); }, [panKeys]);
-  // Held keys pan the camera. Typing in a field never does, and a key let go outside the window is released.
-  useEffect(() => {
-    const typing = (event: KeyboardEvent) => event.target instanceof HTMLElement && Boolean(event.target.closest('input, select, textarea, [contenteditable="true"]'));
-    const down = (event: KeyboardEvent) => { if (!typing(event) && !event.ctrlKey && !event.altKey && !event.metaKey) sceneRef.current?.pressKey(event.code); };
-    const up = (event: KeyboardEvent) => sceneRef.current?.releaseKey(event.code);
-    const blur = () => sceneRef.current?.releaseAllKeys();
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
-    window.addEventListener('blur', blur);
-    return () => {
-      window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup', up);
-      window.removeEventListener('blur', blur);
-    };
-  }, []);
 
   useImperativeHandle(forwardedRef, () => ({
     resetCamera: () => sceneRef.current?.resetCamera(),
     previewBaseRange:enabled=>sceneRef.current?.previewBaseRange(enabled),
     centerOnCell: (x, y) => sceneRef.current?.centerOnCell(x, y) ?? false,
     focusFleet: (x, y) => sceneRef.current?.focusFleet(x, y) ?? false,
-    cameraState: () => sceneRef.current?.cameraState() ?? null,
-    restoreCamera: (state) => sceneRef.current?.restoreCamera(state) ?? false,
   }), []);
 
   useEffect(() => {
@@ -92,7 +67,6 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
       },
       (message) => { if (!disposed) setLoadError(message); },
     );
-    scene.setPanKeys(panKeysRef.current);
     sceneRef.current = scene;
     const game = new Phaser.Game({
       type: Phaser.AUTO,
