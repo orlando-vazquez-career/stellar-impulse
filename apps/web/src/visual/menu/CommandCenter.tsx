@@ -8,6 +8,7 @@ import { createCommandSpaceScene } from './command-space';
 import { HangarPanel } from '../hangar/HangarScreen';
 import { SettingsPanel } from '../settings/SettingsScreen';
 import { loadVisualPreferences, saveVisualPreferences, type VisualPreferences } from '../settings/preferences';
+import { setAudioMix } from '../audio-mix';
 
 function MenuCard({
   title,
@@ -111,6 +112,7 @@ export function CommandCenter({
   const handleSavePreferences = (next: VisualPreferences) => {
     saveVisualPreferences(next);
     setInternalPreferences(next);
+    setAudioMix(next.audio);
     onSavePreferences?.(next);
   };
 
@@ -141,12 +143,21 @@ export function CommandCenter({
   }
 
   function toggleSettings() {
-    setUnfoldedPanel((current) => (current === 'settings' ? null : 'settings'));
+    setUnfoldedPanel((current) => {
+      if (current === 'settings') {
+        setAudioMix(effectivePreferences.audio);
+        return null;
+      }
+      return 'settings';
+    });
   }
 
   function handleBack() {
     sound.playSelect();
     if (unfoldedPanel) {
+      if (unfoldedPanel === 'settings') {
+        setAudioMix(effectivePreferences.audio);
+      }
       setUnfoldedPanel(null);
     } else if (onBack) {
       onBack();
@@ -228,7 +239,11 @@ export function CommandCenter({
               <SettingsPanel
                 preferences={effectivePreferences}
                 onSave={handleSavePreferences}
-                onBack={() => setUnfoldedPanel(null)}
+                onPreviewAudio={setAudioMix}
+                onBack={() => {
+                  setAudioMix(effectivePreferences.audio);
+                  setUnfoldedPanel(null);
+                }}
                 isEmbedded
               />
             )}

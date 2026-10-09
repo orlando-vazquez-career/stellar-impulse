@@ -1,10 +1,16 @@
-.vi-settings {
+:root,
+.vi-settings,
+.vi-settings__content,
+.vi-settings-panel {
   --settings-accent: #71e5dc;
   --settings-accent-light: #a3f6ee;
   --settings-border: rgba(113, 229, 220, .38);
   --settings-line: rgba(113, 229, 220, .16);
   --settings-muted: #8faec2;
   --settings-panel: linear-gradient(160deg, rgba(8, 22, 33, .94), rgba(4, 15, 23, .9));
+}
+
+.vi-settings {
   position: fixed;
   inset: 0;
   display: flex;
@@ -78,17 +84,197 @@
 .vi-settings__save:hover { background: var(--settings-accent-light); box-shadow: 0 0 24px rgba(113, 229, 220, .35); }
 .vi-settings__save span { transition: transform .18s; }
 .vi-settings__save:hover span { transform: translateX(4px); }
-.vi-setting-range { padding: 14px 4px 19px; border-bottom: 1px solid var(--settings-line); display: grid; gap: 12px; }
-.vi-setting-range > span { display: flex; justify-content: space-between; }
-.vi-setting-range strong { font-size: 13px; }
-.vi-setting-range output { color: var(--settings-accent); font-family: var(--vi-display); font-size: 17px; }
-.vi-setting-range input { width: 100%; accent-color: var(--settings-accent); }
-.vi-setting-range input:disabled { opacity: .3; }
-.vi-setting-toggle { min-height: 68px; padding: 12px 4px; border-bottom: 1px solid var(--settings-line); display: flex; align-items: center; justify-content: space-between; gap: 20px; cursor: pointer; }
+.vi-setting-range {
+  padding: 12px 4px 16px;
+  border-bottom: 1px solid var(--settings-line);
+  display: grid;
+  gap: 8px;
+}
+.vi-setting-range > span {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.vi-setting-range strong {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.vi-setting-range output {
+  color: var(--settings-accent);
+  font-family: var(--vi-display);
+  font-size: 16px;
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(113, 229, 220, .4);
+}
+
+/* Custom Sci-Fi Range Slider */
+.vi-setting-range input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: rgba(113, 229, 220, .14);
+  border: 1px solid rgba(113, 229, 220, .3);
+  border-radius: 3px;
+  outline: none;
+  margin: 6px 0;
+  cursor: pointer;
+  accent-color: var(--settings-accent);
+  transition: background .18s, border-color .18s, box-shadow .18s;
+}
+
+.vi-setting-range input[type="range"]:hover:not(:disabled) {
+  background: rgba(113, 229, 220, .22);
+  border-color: rgba(113, 229, 220, .55);
+  box-shadow: 0 0 8px rgba(113, 229, 220, .25);
+}
+
+.vi-setting-range input[type="range"]:focus-visible {
+  outline: none;
+  border-color: var(--settings-accent);
+  box-shadow: 0 0 12px rgba(113, 229, 220, .45);
+}
+
+.vi-setting-range input[type="range"]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+}
+
+.vi-setting-range input[type="range"]::-moz-range-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(113, 229, 220, .14);
+  border: 1px solid rgba(113, 229, 220, .3);
+  border-radius: 3px;
+}
+
+.vi-setting-range input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 22px;
+  margin-top: -8px;
+  background: linear-gradient(135deg, var(--settings-accent-light) 0%, var(--settings-accent) 100%);
+  border: 1px solid #ffffff;
+  border-radius: 2px;
+  box-shadow: 0 0 10px rgba(113, 229, 220, .85), inset 0 0 4px rgba(255, 255, 255, .6);
+  cursor: pointer;
+  transition: transform .15s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow .15s;
+}
+
+.vi-setting-range input[type="range"]:hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.18);
+  box-shadow: 0 0 16px rgba(113, 229, 220, 1), 0 0 6px var(--settings-accent-light), inset 0 0 6px #ffffff;
+}
+
+.vi-setting-range input[type="range"]:active:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.24);
+  background: #ffffff;
+  box-shadow: 0 0 20px rgba(113, 229, 220, 1), 0 0 10px var(--settings-accent);
+}
+
+.vi-setting-range input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 22px;
+  background: linear-gradient(135deg, var(--settings-accent-light) 0%, var(--settings-accent) 100%);
+  border: 1px solid #ffffff;
+  border-radius: 2px;
+  box-shadow: 0 0 10px rgba(113, 229, 220, .85), inset 0 0 4px rgba(255, 255, 255, .6);
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s;
+}
+
+.vi-setting-range input[type="range"]:hover:not(:disabled)::-moz-range-thumb {
+  transform: scale(1.18);
+  box-shadow: 0 0 16px rgba(113, 229, 220, 1), 0 0 6px var(--settings-accent-light);
+}
+
+.vi-setting-range input:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+
+.vi-setting-range input[type="range"]:disabled::-webkit-slider-thumb {
+  cursor: not-allowed;
+  box-shadow: none;
+  background: var(--settings-muted);
+}
+
+/* Custom Sci-Fi Toggle Switch */
+.vi-setting-toggle {
+  min-height: 64px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--settings-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  cursor: pointer;
+}
+
 .vi-setting-toggle > span { display: grid; gap: 3px; }
 .vi-setting-toggle strong { font-size: 13px; }
 .vi-setting-toggle small { color: var(--settings-muted); font-size: 12px; }
-.vi-setting-toggle input { width: 38px; height: 20px; accent-color: var(--settings-accent); }
+
+.vi-setting-toggle input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 44px;
+  height: 22px;
+  background: rgba(8, 22, 33, .88);
+  border: 1px solid rgba(113, 229, 220, .35);
+  border-radius: 11px;
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+  transition: background .24s ease, border-color .24s ease, box-shadow .24s ease;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, .6);
+}
+
+.vi-setting-toggle input[type="checkbox"]::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--settings-muted);
+  transition: transform .24s cubic-bezier(0.34, 1.56, 0.64, 1), background .24s ease, box-shadow .24s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+}
+
+.vi-setting-toggle:hover input[type="checkbox"] {
+  border-color: rgba(113, 229, 220, .6);
+  box-shadow: 0 0 10px rgba(113, 229, 220, .2), inset 0 0 6px rgba(0, 0, 0, .6);
+}
+
+.vi-setting-toggle:hover input[type="checkbox"]::before {
+  background: var(--settings-accent-light);
+}
+
+.vi-setting-toggle input[type="checkbox"]:checked {
+  background: rgba(113, 229, 220, .24);
+  border-color: var(--settings-accent);
+  box-shadow: 0 0 14px rgba(113, 229, 220, .35), inset 0 0 8px rgba(113, 229, 220, .15);
+}
+
+.vi-setting-toggle input[type="checkbox"]:checked::before {
+  transform: translateX(22px);
+  background: var(--settings-accent);
+  box-shadow: 0 0 8px var(--settings-accent), 0 0 14px rgba(113, 229, 220, .8), inset 0 0 3px #ffffff;
+}
+
+.vi-setting-toggle input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--settings-accent);
+  outline-offset: 2px;
+}
+
 .vi-audio-settings { padding-right: 30px; padding-left: 30px; }
 /* Five channels and the mute switch fit a 768 px tall screen without scrolling. */
 .vi-audio-settings { padding-top: 6px; padding-bottom: 4px; }
@@ -97,7 +283,31 @@
 .vi-audio-settings .vi-setting-range output { font-size: 15px; }
 .vi-audio-settings .vi-setting-toggle { min-height: 50px; padding: 6px 4px; border-bottom: 0; }
 .vi-audio-settings .vi-audio-unsaved { margin-top: 8px; }
-.vi-audio-settings .vi-audio-test { padding: 0 7px; line-height: 18px; font-size: 10px; }
+.vi-audio-settings .vi-audio-test {
+  padding: 2px 10px;
+  line-height: 18px;
+  font-size: 10px;
+  font-family: var(--vi-display);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  border: 1px solid var(--settings-border);
+  background: rgba(113, 229, 220, .08);
+  color: var(--settings-accent);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all .18s ease;
+}
+.vi-audio-settings .vi-audio-test:hover:not(:disabled) {
+  border-color: var(--settings-accent-light);
+  background: rgba(113, 229, 220, .22);
+  color: var(--settings-accent-light);
+  box-shadow: 0 0 12px rgba(113, 229, 220, .45);
+}
+.vi-audio-settings .vi-audio-test:disabled {
+  opacity: .3;
+  cursor: not-allowed;
+}
 .vi-audio-settings .vi-setting-range strong { line-height: 18px; }
 .vi-audio-settings .vi-setting-range output { line-height: 18px; }
 .vi-control-settings { padding: 8px 24px; }
@@ -105,8 +315,29 @@
 .vi-control-settings__head { padding: 9px 12px; color: var(--settings-muted); font-family: var(--vi-display); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
 .vi-control-settings > label { min-height: 49px; padding: 6px 12px; border-top: 1px solid var(--settings-line); }
 .vi-control-settings > label strong { font-size: 13px; }
-.vi-control-settings select, .vi-color-profile select { height: 35px; padding: 0 9px; border: 1px solid var(--settings-border); background: #081621; color: var(--vi-text); }
-.vi-control-settings select:hover, .vi-color-profile select:hover { border-color: var(--settings-accent); }
+.vi-control-settings select, .vi-color-profile select {
+  height: 35px;
+  padding: 0 10px;
+  border: 1px solid var(--settings-border);
+  border-radius: 2px;
+  background: #081621;
+  color: var(--vi-text);
+  font-family: var(--vi-display);
+  font-size: 14px;
+  letter-spacing: .04em;
+  outline: none;
+  cursor: pointer;
+  transition: border-color .18s, box-shadow .18s;
+}
+.vi-control-settings select:hover, .vi-color-profile select:hover,
+.vi-control-settings select:focus, .vi-color-profile select:focus {
+  border-color: var(--settings-accent);
+  box-shadow: 0 0 10px rgba(113, 229, 220, .3);
+}
+.vi-control-settings select option, .vi-color-profile select option {
+  background: #081621;
+  color: #f2f6fa;
+}
 .vi-language-settings h3 { margin: 0 0 13px; color: var(--settings-muted); font-family: var(--vi-display); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
 .vi-language-settings > div { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .vi-language-settings button { min-height: 102px; padding: 18px; border: 1px solid var(--settings-border); border-radius: 0; display: grid; grid-template-columns: 54px 1fr auto; gap: 14px; align-items: center; background: rgba(3, 7, 12, .35); text-align: left; }
