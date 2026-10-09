@@ -99,6 +99,9 @@ importers:
       '@impulso/chain':
         specifier: workspace:*
         version: link:../../packages/chain
+      '@impulso/input':
+        specifier: workspace:*
+        version: link:../../packages/input
       '@impulso/sim':
         specifier: workspace:*
         version: link:../../packages/sim

@@ -46,7 +46,7 @@ la red; el servidor libera la reserva al vencer la ventana de reconexión.
    - `PUT /auth/profile` con la misma cabecera y JSON `{ "displayName": "Vega" }` cambia el alias y responde `200` con `{ user }`. Un alias no válido o ausente responde `400` (`invalid_display_name`); sin sesión válida, `401` (`authentication_required`). No consume el presupuesto de comprobaciones de contraseña.
    - `GET /auth/profile` devuelve la progresión de la cuenta ([progresión](progression.md)) y, junto a ella, `displayName`.
    - El alias admite de 1 a 24 letras (con tildes), números, espacios, guion, punto o guion bajo, después de quitar los espacios de los extremos. Es la misma regla del nombre de sala.
-3. Crear una sala con `client.create('campaign', { protocolVersion: 3, name: alias, token })`. `map` es opcional: `'espiral'` (predeterminado) o `'sector-01'`, más chico, para pruebas. El `room.roomId` es el código privado de 12 caracteres hexadecimales que se muestra al anfitrión.
+3. Crear una sala con `client.create('campaign', { protocolVersion: 3, name: alias, token })`. `map` es opcional y usa el catálogo `PLAYABLE_MAPS` compartido con el lobby de campaña/práctica: actualmente `'espiral'` (predeterminado). Sector 01 y el campo de batalla antiguo no se admiten como mapas de campaña multijugador. El `room.roomId` es el código privado de 12 caracteres hexadecimales que se muestra al anfitrión.
 4. El segundo usuario inicia sesión con otra cuenta y usa `client.joinById(code.trim().toUpperCase(), { protocolVersion: 3, name: alias, token })`. El código admite dos jugadores y deja de aceptar nuevos participantes cuando empieza la campaña.
 5. Cada cliente recibe `phase` con su `playerId`, el estado de ambos asientos y el mapa elegido en `renderMap`. El asiento propio no se deduce del alias. Cada cliente envía `ready` con `{ protocolVersion: 3, body: {} }`; cuando ambos están listos comienza la cuenta regresiva. Desde ahí se usa el protocolo de [campaña](protocol.md) para fases, vistas, aumentos, órdenes y reconexión.
 
@@ -59,3 +59,18 @@ Con `DATABASE_URL` (Railway; ver [despliegue](deployment.md)), las cuentas viven
 Sin `DATABASE_URL`, las contraseñas se guardan como hashes `scrypt` con salt aleatorio en `AUTH_DATA_FILE` (por defecto `./data/users.json`, ignorado por Git), junto al alias de comandante de cada cuenta. Cada escritura se vuelca a disco en un archivo temporal que reemplaza al anterior de forma atómica, y la versión previa queda como `users.json.bak`. Si el archivo principal no se puede leer al arrancar, el servidor carga el respaldo; si ninguno se puede leer, no arranca, en lugar de empezar sin cuentas y pisarlas. Si una escritura falla durante una partida, la sala sigue y el resultado llega con `saveFailed: true`. Login y registro comparten un presupuesto de 20 comprobaciones de contraseña, que se recupera a 2 por segundo; al agotarse responden `429` con `{ "error": "rate_limited" }` y `Retry-After: 1`. El presupuesto es global, no por IP. El correo se normaliza a minúsculas. La contraseña debe medir entre 8 y 128 caracteres. Los tokens aleatorios duran 24 horas y viven en memoria: reiniciar el servidor obliga a iniciar sesión otra vez, aunque las cuentas sobreviven en la base o en el archivo. Sin base de datos, configurar `AUTH_DATA_FILE` en un volumen persistente; en ambos casos, usar HTTPS/WSS en el acceso público. La sala y las sesiones viven en un solo proceso para esta demo de hasta 20 testers.
 
 No hay billetera obligatoria, fondos XLM, compras ni contratos en este flujo.
+
+## Pruebas en paralelo con el servidor de desarrollo
+
+Los lobbies de campaña/práctica y multijugador leen `PLAYABLE_MAPS` de `packages/input/src/playable-maps.ts`. El servidor valida la misma lista y anuncia el mapa elegido a ambos jugadores; el invitado y la reconexión conservan esa elección. Los tres sectores usan `createMatchWorld`, con el terreno y las mecánicas habituales del mapa.
+
+Para ejecutar los E2E sin ocupar los puertos de otro desarrollador:
+
+```powershell
+$env:IMPULSO_E2E_SERVER_PORT='2587'
+$env:IMPULSO_E2E_WEB_PORT='5187'
+$env:CI='1'
+pnpm test:e2e
+```
+
+Si no se especifican puertos, siguen siendo 2567 y 5173. Las peticiones de prueba y los clientes Colyseus usan el servidor de esa corrida, con cuentas en un archivo temporal. `CI=1` obliga a abrir servidores propios en lugar de reutilizar uno activo.

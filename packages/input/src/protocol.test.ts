@@ -23,11 +23,10 @@ describe('campaign message envelope', () => {
 });
 
 describe('campaign v3, battlefield v2 and legacy v1', () => {
-  it('accepts only the Espiral and Sector 01 map options', () => {
+  it('accepts only the maps available in the campaign lobby', () => {
     expect(parseCampaignJoinOptions({ protocolVersion: 3, name: 'Ana', token: 'abc', map: 'espiral' }))
       .toEqual({ ok: true, name: 'Ana', token: 'abc', map: 'espiral' });
-    expect(parseCampaignJoinOptions({ protocolVersion: 3, map: 'sector-01' })).toEqual({ ok: true, name: 'Comandante', map: 'sector-01' });
-    for (const map of ['other-map', '', {}, { width: 29 }, null]) {
+    for (const map of ['sector-01', 'battlefield', 'other-map', '', {}, { width: 29 }, null]) {
       expect(parseCampaignJoinOptions({ protocolVersion: 3, map })).toEqual({ ok: false, reason: 'invalid_join' });
     }
   });

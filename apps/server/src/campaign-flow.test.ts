@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { Client, type Room } from '@colyseus/sdk';
 import { CAMPAIGN_PROTOCOL_VERSION } from '@impulso/input';
+import { createMatchWorld } from '@impulso/sim';
 import { createGameServer } from './app.js';
 import { AuthService } from './auth.js';
 
@@ -13,7 +14,7 @@ const nova = await auth.register('nova-flow@example.com', 'secret-1234');
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
 const server = createGameServer({
   auth,
-  campaign: { countdownMs: 100, transitionMs: 300, resultsMs: 2_000, sectorLimitTicks: 20 },
+  campaign: { createSector: (_sector, seed) => createMatchWorld('sector-01', 'skirmish', seed), countdownMs: 100, transitionMs: 300, resultsMs: 2_000, sectorLimitTicks: 20 },
 });
 beforeAll(async () => { await server.listen(PORT, '127.0.0.1'); });
 afterAll(async () => { await server.gracefullyShutdown(false); });
@@ -29,7 +30,7 @@ function next<T = any>(room: Room, type: string, accept: (message: T) => boolean
 }
 
 it('carries each pick into the next sector and opens it with the next tier', async () => {
-  const a = await new Client(URL).create('campaign', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name: 'Vega', token: vega.token, map: 'sector-01' });
+  const a = await new Client(URL).create('campaign', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name: 'Vega', token: vega.token, map: 'espiral' });
   const b = await new Client(URL).joinById(a.roomId, { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name: 'Nova', token: nova.token });
   for (const room of [a, b]) { room.reconnection.enabled = false; room.onMessage('*', () => {}); }
   try {
