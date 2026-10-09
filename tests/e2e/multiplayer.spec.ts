@@ -79,7 +79,8 @@ test('two accounts play the campaign on Espiral and recover the same match after
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-player-id', 'p2');
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-connection', 'online');
     await expect(guest.locator('.vi-resources')).toContainText('3/12', { timeout: 20000 });
-    await expect(guest.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'espiral-estelar.json');
+    await expect(guest.locator('.vi-phaser')).toHaveAttribute('data-map-source', 'espiral-estelar.json', { timeout: 20000 });
+    await expect(guest.locator('.vi-phaser')).toHaveAttribute('data-ready', 'true', { timeout: 20000 });
     await expect(guest.locator('.vi-gameplay')).toHaveAttribute('data-sequence', '1', { timeout: 20000 });
     await expect(host.locator('.vi-gameplay')).toHaveAttribute('data-room-id', roomId);
     await host.getByRole('button', { name: 'Salir de partida', exact: true }).click();

@@ -200,6 +200,7 @@ export function PreparationLobby({
                     type="button"
                     className={`${map === option.id ? 'is-selected' : ''}${option.id === 'trascendencia' ? ' is-anomaly-option' : ''}`}
                     aria-pressed={map === option.id}
+                    aria-label={`${option.name[locale]}. ${option.description[locale]}`}
                     onMouseEnter={() => hover(420)}
                     onClick={() => { sound.playSelect(); setMap(option.id); }}
                   >

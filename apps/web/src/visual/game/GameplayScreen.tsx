@@ -14,7 +14,7 @@ import { MatchAudio, playEvent, type Announcement } from './audio';
 import { useI18n } from '../i18n';
 import type { VisualPreferences } from '../settings/preferences';
 import type { RivalDifficulty } from '../lobby/PreparationLobby';
-import { DEFAULT_PLAYABLE_MAP, selectMap, type TrainingMapId } from '../map/sector-map';
+import { activeMapSourceFile, DEFAULT_PLAYABLE_MAP, selectMap, type TrainingMapId } from '../map/sector-map';
 import type { CameraView, GameplayPresentationAdapter } from './model';
 import type { PhaserBattlefieldHandle } from './phaser/PhaserBattlefield';
 import { RunOutcome, type RunLink } from '../run/RunOutcome';
@@ -110,7 +110,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [adapter, preferences.controls, view.canProduce, view.formation, view.selectedSquadIds.length]);
   return <main className="vi-gameplay vi-screen" data-room-id={roomState?.roomId} data-player-id={roomState?.phase?.playerId} data-connection={roomState?.connection} data-sequence={roomState?.acknowledgedSequence} data-tick={view.tick}>
-    <Suspense fallback={<div className="vi-phaser" aria-busy="true" />}>
+    <Suspense fallback={<div className="vi-phaser" aria-busy="true" data-map-source={activeMapSourceFile()} />}>
       <PhaserBattlefield ref={battlefieldRef} view={view}
         onSelectSquads={(squadIds) => adapter.dispatch({ type: 'select-squads', squadIds })}
         onMoveSelected={(x, y) => adapter.dispatch({ type: 'move-selected', x, y })}
