@@ -8,6 +8,8 @@ export interface LoginFormProps {
   onAliasChange?: (alias: string) => void;
   onContinueGuest?: (alias: string) => void;
   onLogin?: (email: string, password: string) => Promise<void>;
+  /** Si existe, el acceso con cuenta ofrece también crear una con correo, contraseña y alias. */
+  onRegister?: (email: string, password: string, alias: string) => Promise<void>;
   onLoginError?: () => void;
   busy: boolean;
   notice: string;
@@ -29,6 +31,7 @@ export function LoginForm(props: LoginFormProps) {
     onAliasChange,
     onContinueGuest,
     onLogin,
+    onRegister,
     onLoginError,
     busy,
     notice,
@@ -39,6 +42,8 @@ export function LoginForm(props: LoginFormProps) {
   const sound = useSpaceSound();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const registering = mode === 'register' && onRegister !== undefined;
   const locked = busy;
 
   function hover() {
@@ -65,16 +70,52 @@ export function LoginForm(props: LoginFormProps) {
 
       <h1 className="li-title" data-text="IMPULSO STELLAR">IMPULSO STELLAR</h1>
       <h2 className="li-heading-call">{t('accessTitle')}</h2>
+      <p className="li-subtitle">{t('accessBody')}</p>
+
+      {onLogin && onRegister && (
+        <div className="li-account-modes" role="tablist" aria-label={t('accountModes')}>
+          <button
+            type="button"
+            role="tab"
+            id="account-login-tab"
+            className="li-account-mode"
+            aria-selected={!registering}
+            aria-controls="account-panel"
+            disabled={busy}
+            onClick={() => setMode('login')}
+            onMouseEnter={hover}
+          >
+            {t('accountLogin')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="account-register-tab"
+            className="li-account-mode"
+            aria-selected={registering}
+            aria-controls="account-panel"
+            disabled={busy}
+            onClick={() => setMode('register')}
+            onMouseEnter={hover}
+          >
+            {t('accountCreate')}
+          </button>
+        </div>
+      )}
 
       {onLogin && (
         <form
+          id="account-panel"
           className="li-account"
+          role={onRegister ? 'tabpanel' : undefined}
+          aria-labelledby={onRegister ? (registering ? 'account-register-tab' : 'account-login-tab') : undefined}
           onSubmit={async (event) => {
             event.preventDefault();
             if (locked) return;
             sound.playSelect();
             try {
-              await onLogin(email, password);
+              if (registering) await onRegister(email, password, alias);
+              else await onLogin(email, password);
             } catch {
               onLoginError?.();
             } finally {
@@ -99,21 +140,39 @@ export function LoginForm(props: LoginFormProps) {
             id="account-password"
             className="li-input"
             type="password"
-            autoComplete="current-password"
+            autoComplete={registering ? 'new-password' : 'current-password'}
             required
             minLength={8}
             maxLength={128}
+            aria-describedby={registering ? 'account-create-hint' : undefined}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             disabled={busy}
           />
+          {registering && (
+            <>
+              <label className="li-alias-label" htmlFor="account-alias">{t('accountAlias')}</label>
+              <input
+                id="account-alias"
+                className="li-input"
+                required
+                maxLength={24}
+                autoComplete="nickname"
+                value={alias}
+                onChange={(event) => onAliasChange?.(event.target.value)}
+                disabled={busy}
+              />
+              <p id="account-create-hint" className="li-fineprint">{t('accountCreateHint')}</p>
+            </>
+          )}
           <button className="li-btn li-btn--primary" type="submit" disabled={locked} onMouseEnter={hover}>
-            {busy ? t('accountConnecting') : t('accountLogin')} →
+            {busy ? t('accountConnecting') : t(registering ? 'accountCreate' : 'accountLogin')} →
           </button>
         </form>
       )}
 
-      <form onSubmit={handleContinueGuest}>
+      {/* Al crear una cuenta, el alias se escribe arriba; la entrada como invitado vuelve con "Iniciar sesión". */}
+      <form onSubmit={handleContinueGuest} hidden={registering}>
         <div className="li-alias-box">
           <label htmlFor="commander-alias" className="li-alias-label">{t('callsign')}</label>
           <input
@@ -145,4 +204,3 @@ export function LoginForm(props: LoginFormProps) {
     </div>
   );
 }
-

@@ -11,18 +11,18 @@
   },
   "dependencies": {
     "@colyseus/sdk": "0.18.3",
-    "@impulso/chain": "workspace:*",
-    "@impulso/state": "workspace:*",
-    "@impulso/sim": "workspace:*",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/rajdhani": "^5.3.0",
+    "@impulso/chain": "workspace:*",
+    "@impulso/input": "workspace:*",
+    "@impulso/sim": "workspace:*",
+    "@impulso/state": "workspace:*",
     "phaser": "4.2.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "@impulso/chain": "workspace:*"
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "vite": "8.3.0",
-    "@vitejs/plugin-react": "6.1.1"
+    "@vitejs/plugin-react": "6.1.1",
+    "vite": "8.3.0"
   }
 }

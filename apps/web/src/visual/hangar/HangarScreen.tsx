@@ -4,23 +4,55 @@ import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
-import { cosmeticCatalog, itemsForCategory, type HangarCategory } from './catalog';
-import { loadCosmeticLoadout, saveCosmeticLoadout, type CosmeticLoadout } from './loadout';
+import type { AccountUser } from '../../auth/client';
+import { canEquip, cosmeticCatalog, formatXlm, hangarCategories, imageForCosmetic, itemsForCategory, type HangarCategory } from './catalog';
+import { defaultCosmeticLoadout, loadCosmeticLoadout, saveCosmeticLoadout, type CosmeticLoadout } from './loadout';
+import { ChainNoticeBar, ItemDetail, MarketView, WalletStrip } from './HangarChainPanels';
+import { useHangarChain } from './useHangarChain';
 import './hangar.css';
 
-export function HangarPanel({ onBack, isEmbedded = false }: { onBack(): void; isEmbedded?: boolean }) {
-  const { locale, t } = useI18n();
+export function HangarPanel({
+  onBack,
+  isEmbedded = false,
+  account = null,
+  onAccountChange = () => {},
+}: {
+  onBack(): void;
+  isEmbedded?: boolean;
+  account?: AccountUser | null;
+  onAccountChange?(user: AccountUser): void;
+}) {
+  const i18n = useI18n();
+  const { locale, t } = i18n;
+  const chain = useHangarChain(account, onAccountChange, i18n);
+  const [view, setView] = useState<'collection' | 'market'>('collection');
+  const [selected, setSelected] = useState<string | null>(null);
   const sound = useSpaceSound();
 
   const [category, setCategory] = useState<HangarCategory>('hull');
   const [loadout, setLoadout] = useState<CosmeticLoadout>(loadCosmeticLoadout);
   const [saved, setSaved] = useState(false);
 
+  // A piece the wallet no longer holds (sold, or another wallet linked) falls back to the default.
+  useEffect(() => {
+    if (!chain.loaded) return;
+    setLoadout((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const slot of hangarCategories) {
+        const item = cosmeticCatalog.find((candidate) => candidate.id === current[slot]);
+        if (item && !canEquip(item, chain.ownedClasses)) { next[slot] = defaultCosmeticLoadout[slot]; changed = true; }
+      }
+      return changed ? next : current;
+    });
+  }, [chain.loaded, chain.ownedClasses]);
   const equippedItems = useMemo(
     () => ({
       hull: cosmeticCatalog.find((item) => item.id === loadout.hull)!,
       trail: cosmeticCatalog.find((item) => item.id === loadout.trail)!,
       insignia: cosmeticCatalog.find((item) => item.id === loadout.insignia)!,
+      voice: cosmeticCatalog.find((item) => item.id === loadout.voice)!,
+      music: cosmeticCatalog.find((item) => item.id === loadout.music)!,
     }),
     [loadout],
   );
@@ -29,6 +61,8 @@ export function HangarPanel({ onBack, isEmbedded = false }: { onBack(): void; is
     hull: t('hullFinish'),
     trail: t('engineTrail'),
     insignia: t('insignia'),
+    voice: t('announcerPack'),
+    music: t('musicTrack'),
   };
 
   const previewStyle = {
@@ -42,6 +76,17 @@ export function HangarPanel({ onBack, isEmbedded = false }: { onBack(): void; is
     setLoadout({ ...loadout, [category]: itemId });
     setSaved(false);
   };
+
+  /** Equips what the player may use; an NFT piece they do not hold only opens its detail. */
+  const choose = (itemId: string) => {
+    const item = cosmeticCatalog.find((candidate) => candidate.id === itemId);
+    if (!item) return;
+    setSelected(item.chain ? item.id : null);
+    if (canEquip(item, chain.ownedClasses)) equip(item.id);
+    else sound.playSelect();
+  };
+  const selectedItem = cosmeticCatalog.find((item) => item.id === selected && item.category === category);
+  const tokensOf = (classId: number) => chain.owned.filter((piece) => piece.classId === classId).map((piece) => piece.tokenId);
 
   const save = () => {
     sound.playEnter();
@@ -107,7 +152,7 @@ export function HangarPanel({ onBack, isEmbedded = false }: { onBack(): void; is
             <div className="vi-loadout-summary">
               <strong>{t('currentLoadout')}</strong>
               <div>
-                {(['hull', 'trail', 'insignia'] as HangarCategory[]).map((slot) => (
+                {hangarCategories.map((slot) => (
                   <span key={slot}>
                     <small>{categoryLabels[slot]}</small>
                     <b>{equippedItems[slot].name[locale]}</b>
@@ -122,12 +167,24 @@ export function HangarPanel({ onBack, isEmbedded = false }: { onBack(): void; is
             <header>
               <div>
                 <span>02</span>
-                <h2 id="collection-title">{t('collection')}</h2>
+                <h2 id="collection-title">{view === 'market' ? t('viewMarket') : t('collection')}</h2>
               </div>
-              <small>{t('cosmeticOnly')}</small>
+              <div className="vi-view-toggle" role="tablist" aria-label={t('collection')}>
+                {(['collection', 'market'] as const).map((option) => <button key={option} type="button" role="tab"
+                  aria-selected={view === option} className={view === option ? 'is-active' : ''}
+                  onClick={() => { sound.playSelect(); setView(option); }}>
+                  {option === 'market' ? t('viewMarket') : t('collection')}
+                </button>)}
+              </div>
             </header>
+            <WalletStrip signedIn={account !== null} wallet={chain.wallet} balance={chain.balance} busy={chain.busy}
+              onLink={chain.link} onUnlink={chain.unlink} onRefresh={() => void chain.refresh()} />
+            <ChainNoticeBar notice={chain.notice} onDismiss={chain.dismiss} />
+            {view === 'market'
+              ? <MarketView listings={chain.listings} wallet={chain.wallet} busy={chain.busy} onBuy={chain.buyListing} onCancel={chain.cancel} />
+              : <>
             <nav aria-label={t('collection')}>
-              {(['hull', 'trail', 'insignia'] as HangarCategory[]).map((item) => (
+              {hangarCategories.map((item) => (
                 <button
                   key={item}
                   className={category === item ? 'is-active' : ''}
@@ -145,28 +202,39 @@ export function HangarPanel({ onBack, isEmbedded = false }: { onBack(): void; is
             <div className="vi-cosmetic-grid">
               {itemsForCategory(category).map((item) => {
                 const equipped = loadout[category] === item.id;
+                const usable = canEquip(item, chain.ownedClasses);
+                const status = !item.unlocked ? t('comingSoon') : equipped ? t('equipped')
+                  : !item.chain ? t('available') : usable ? t('chainOwned')
+                  : item.chain.family === 'merit' ? t('chainMerit') : formatXlm(item.chain.priceStroops);
+                const image = imageForCosmetic(item);
                 return (
                   <button
                     key={item.id}
-                    className={`${equipped ? 'is-equipped' : ''} ${!item.unlocked ? 'is-locked' : ''}`}
+                    className={`${equipped ? 'is-equipped' : ''} ${!item.unlocked ? 'is-locked' : ''} ${item.chain ? 'is-nft' : ''} ${item.chain && !usable ? 'is-unowned' : ''} ${selected === item.id ? 'is-selected' : ''}`}
                     disabled={!item.unlocked}
-                    onClick={() => equip(item.id)}
+                    onClick={() => choose(item.id)}
                     onMouseEnter={() => {
                       if (item.unlocked) hover(460);
                     }}
                   >
-                    <i style={{ background: item.tone }} />
+                    {image ? <img className="vi-cosmetic-image" src={image} alt="" /> : <i style={{ background: item.tone }} />}
                     <span>
                       <strong>{item.name[locale]}</strong>
                       <small>{item.description[locale]}</small>
                     </span>
                     <em>
-                      {!item.unlocked ? t('comingSoon') : equipped ? t('equipped') : t('available')}
+                      {item.chain && <b className="vi-nft-tag">{t('chainNft')}</b>}
+                      {status}
                     </em>
                   </button>
                 );
               })}
             </div>
+            {/* An owned merit emblem has nothing left to do; everything else gets its actions. */}
+            {selectedItem?.chain && !(selectedItem.chain.family === 'merit' && chain.ownedClasses.has(selectedItem.chain.classId)) && <ItemDetail key={selectedItem.id} item={selectedItem} wallet={chain.wallet}
+              tokens={tokensOf(selectedItem.chain.classId)} listingByToken={chain.listingByToken} busy={chain.busy}
+              onBuy={chain.buy} onList={chain.list} onCancel={chain.cancel} />}
+              </>}
             <div className="vi-collection__footer">
               <p>{t('cosmeticDisclaimer')}</p>
               <div>
@@ -186,7 +254,17 @@ export function HangarPanel({ onBack, isEmbedded = false }: { onBack(): void; is
   );
 }
 
-export function HangarScreen({ onBack, embedded = false }: { onBack(): void; embedded?: boolean }) {
+export function HangarScreen({
+  onBack,
+  account = null,
+  onAccountChange = () => {},
+  embedded = false,
+}: {
+  onBack(): void;
+  account?: AccountUser | null;
+  onAccountChange?(user: AccountUser): void;
+  embedded?: boolean;
+}) {
   const { t } = useI18n();
   const sound = useSpaceSound();
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -215,7 +293,7 @@ export function HangarScreen({ onBack, embedded = false }: { onBack(): void; emb
   }, [embedded]);
 
   if (embedded) {
-    return <HangarPanel onBack={onBack} isEmbedded />;
+    return <HangarPanel onBack={onBack} isEmbedded account={account} onAccountChange={onAccountChange} />;
   }
 
   return (
@@ -237,7 +315,7 @@ export function HangarScreen({ onBack, embedded = false }: { onBack(): void; emb
         </div>
       </header>
 
-      <HangarPanel onBack={onBack} />
+      <HangarPanel onBack={onBack} account={account} onAccountChange={onAccountChange} />
 
       <footer className="vi-screen__footer">
         <span>IMPULSO // {t('hangar').toUpperCase()}</span>

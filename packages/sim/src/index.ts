@@ -1,4 +1,5 @@
 import { parseCommand } from '@impulso/input';
+import { planFormation } from './mecanicas/formations.js';
 import { planEnemyTurn, type EnemyScene } from './inteligencia-enemiga/training.js';
 import type { AiMemory, AiOrder, AiUnit } from './inteligencia-enemiga/types.js';
 import { advanceCapture, captureContext, guardianActive, resolveCombat, withinReach } from './maps/mechanics.js';
@@ -27,14 +28,21 @@ export {
 } from './base.js';
 export type { BaseModules, BaseRules, BaseStructure, BaseTarget, ExtraModule, ModuleKind, ModuleSpec } from './base.js';
 export { RIVAL_PROFILES } from './inteligencia-enemiga/estrategia.js';
+export { FORMATIONS, MAX_FORMATION_SHIPS, formationCells, formationShape, isFormation, marchHeading, planFormation } from './mecanicas/formations.js';
+export type { FormationBoard, FormationCell, FormationKind, FormationUnit } from './mecanicas/formations.js';
 export type { RivalDifficulty } from './inteligencia-enemiga/estrategia.js';
 export { BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS } from './economia.js';
 export type { ProductionOrder, ProductionState } from './economia.js';
 export { baseUpgradeCost, fleetCapacity, baseDamage, MAX_BASE_UPGRADE_LEVEL, BASE_DEFENSE_RANGE, CAPACITY_PER_LEVEL, BASE_DAMAGE_PER_LEVEL } from './economia.js';
 export type { BaseUpgrades, BaseUpgradeKind } from './economia.js';
 export { leerSuperficie } from './mapas/leer-tiled.js';
+export { OBSTACLE_MODELS } from './mapas/obstaculos.js';
+export type { MapObstacle, ObstacleModel } from './mapas/obstaculos.js';
 export { findPath as findTiledPath } from './maps/pathfinding.js';
 import { ESPIRAL } from './mapas/espiral.js';
+import { cloneSatellites, createSatellites, runSatellites, type SatelliteState } from './mecanicas/satellites.js';
+export { SATELLITE_AFTERMATH_TICKS } from './mecanicas/satellites.js';
+export type { DropZone, DropZoneSpec, SatelliteFall, SatelliteState } from './mecanicas/satellites.js';
 import type { SectorLeido, Superficie } from './mapas/leer-tiled.js';
 
 export { defineMapSpec, MAX_MAP_SIDE, MAX_MAP_CELLS } from './maps/types.js';
@@ -55,13 +63,13 @@ import { advanceAugmentClock, scheduleAugments, runAugmentEffects, cloneAugmentM
 import { effectsFor, effectiveFleetCap, effectiveBaseDamage, baseIncome, visionSources, isConcealed, statsForUnit } from './augments/effects.js';
 import { cloneMatchRecord, recordMatchTick, type MatchRecord } from './progression.js';
 import { observeKnowledge, type AiKnowledge } from './inteligencia-enemiga/knowledge.js';
-export { CHALLENGES, emptyProgress, emptyMatchRecord, profileFor, unlockedPool, rewardForMatch, challengeProgress } from './progression.js';
-export type { AccountProgress, ProgressProfile, MatchReward, MatchRecord } from './progression.js';
+export { CHALLENGES, MERITS, emptyProgress, emptyMatchRecord, profileFor, unlockedPool, rewardForCampaign, rewardForMatch, challengeProgress } from './progression.js';
+export type { AccountProgress, AwardRecord, CampaignOutcome, MeritId, ProgressProfile, MatchReward, MatchRecord } from './progression.js';
 export { effectiveFleetCap, effectiveBaseDamage, effectsFor, statsForUnit, visionSources, isConcealed, captureDuration, metalIncomeRate } from './augments/effects.js';
-export { initializeAugments, setAugmentPool, grantAugment, pickAugment, rerollAugments, chooseAiAugment } from './augments/runtime.js';
+export { initializeAugments, setAugmentPool, grantAugment, pickAugment, rerollAugments, chooseAiAugment, prepareCampaignSector } from './augments/runtime.js';
 export { AUGMENT_CATALOG, AUGMENTS_BY_ID, INITIAL_AUGMENTS } from './augments/catalog.js';
 export type { Augment, AugmentTier, ChallengeId } from './augments/catalog.js';
-export type { AugmentOffer, AugmentMatch } from './augments/runtime.js';
+export type { AugmentOffer, AugmentMatch, CampaignSectorAugments } from './augments/runtime.js';
 export type { ShipStats, StatModifier } from './stats.js';
 import { DURATION_MODES } from './match-modes.js';
 export { createMatchWorld, DURATION_MODES } from './match-modes.js';
@@ -149,6 +157,24 @@ export interface Squad extends Position {
   transit?: { from: Position; untilTick: number };
   /** Brief right-of-way pause after taking an allied passing pocket. */
   trafficYieldUntil?: number;
+  /** A fresh order may take its first step on the next tick instead of waiting for the beat. */
+  quickStep?: boolean;
+  /** After an off-beat first step, no further step before this tick (then the shared beat resumes). */
+  moveHoldUntil?: number;
+  /** Formation march: every ship of the group steps on the slowest member's beat, so the shape holds. */
+  formationPace?: number;
+  /** Beats spent waiting behind a marching ally; after a few the usual traffic rules take over. */
+  formationWait?: number;
+  /** This ship's cell in its formation. A passing ally may nudge it out; it then flies back. */
+  formationSeat?: Position;
+  /** Pushed off its seat by a passing ally and flying back: it waits, others never yield to it. */
+  formationNudged?: boolean;
+  /** Closest the formation march has come to its seat (in steps), and when. */
+  formationProgress?: { best: number; tick: number };
+}
+/** Ticks between steps: the ship's own speed, slowed to its formation's pace while marching in one. */
+export function marchInterval(world: World, squad: Squad): number {
+  return Math.max(moveInterval(world, squad.ownerId, squad.kind), squad.formationPace ?? 0);
 }
 export function createSquad(id: string, ownerId: PlayerId, kind: UnitKind, position: Position, world?: World): Squad {
   const stats = statsFor(world ?? { rules: TRAINING_RULES }, ownerId, kind);
@@ -169,6 +195,8 @@ export interface CaptureObjective extends Position {
   id: string;
   guardianId: string;
   progress: Record<PlayerId, number>;
+  /** Cells around the objective that count as its capture area; the rules' `captureRadius` when absent. */
+  radius?: number;
 }
 export interface ResourceNode extends CaptureObjective {
   kind: 'metal' | 'capture';
@@ -209,6 +237,8 @@ export interface World {
   knowledge?: Record<PlayerId,AiKnowledge>;
   /** Destructible bases, modules and the slower node economy. Set by createMatchWorld. */
   baseRules?: Readonly<BaseRules>;
+  /** Falling satellites over the map's `zona_caida` areas. Absent on maps without them. */
+  satellites?: SatelliteState;
 }
 export type CommandRejection =
   | 'invalid_command' | 'unknown_player' | 'stale_sequence'
@@ -256,16 +286,17 @@ const STARTING_FLEET: readonly { kind: UnitKind; dx: number; dy: number }[] = [
 export const GUARDIAN_AGGRO_RADIUS = 3;
 /** Guardians move one cell every this many ticks (slower than an Interceptor). */
 const GUARDIAN_MOVE_TICKS = 9;
-/** Training maps by id: Diego's Espiral Estelar (58×58) and the original Sector 01 (29×29). */
+/** Training maps by id: Diego's Espiral Estelar (96×96) and the original Sector 01 (29×29). */
 export const TRAINING_MAPS = Object.freeze({ espiral: ESPIRAL, 'sector-01': SECTOR_01 });
 export type TrainingMapId = keyof typeof TRAINING_MAPS;
 export function createSectorWorld(map: TrainingMapId = 'sector-01'): World {
   return createWorldOn(TRAINING_MAPS[map]);
 }
 export function createWorldOn(sector: SectorLeido): World {
-  const node = (input: { id: string; kind: 'metal' | 'capture'; x: number; y: number }): ResourceNode => ({
+  const node = (input: { id: string; kind: 'metal' | 'capture'; x: number; y: number; radius?: number }): ResourceNode => ({
     id: input.id, kind: input.kind, x: input.x, y: input.y,
     guardianId: `${input.id}-guardian`, ownerId: null, progress: { p1: 0, p2: 0 },
+    ...(input.radius !== undefined ? { radius: input.radius } : {}),
   });
   const metals = sector.metals.map((cell, index) => node({ id: `metal-${index + 1}`, kind: 'metal', x: cell.x, y: cell.y }));
   // p2 mirrors p1 through the map centre, so both fleets face the same terrain.
@@ -304,13 +335,14 @@ export function createWorldOn(sector: SectorLeido): World {
     ],
     nodes: [
       ...metals,
-      ...sector.captures.map((cell, index) => node({ id: `capture-${index + 1}`, kind: 'capture', x: cell.x, y: cell.y })),
+      ...sector.captures.map((cell, index) => node({ id: `capture-${index + 1}`, kind: 'capture', x: cell.x, y: cell.y, radius: cell.radius })),
     ],
     core: { id: 'core', x: sector.core.x, y: sector.core.y, guardianId: 'core-guardian', open: false, progress: { p1: 0, p2: 0 } },
     winner: null,
     production: { p1: null, p2: null },
     built: { p1: 0, p2: 0 },
     economy: true,
+    satellites: createSatellites(sector.dropZones, SECTOR_RULES.tickRate),
   };
 }
 export function distance(a: Position, b: Position): number {
@@ -380,6 +412,8 @@ export function cloneWorld(world: World): World {
     squads: world.squads.map((unit) => ({
       ...unit,
       arrivalSeat:unit.arrivalSeat?{...unit.arrivalSeat}:null,
+      formationSeat: unit.formationSeat ? { ...unit.formationSeat } : undefined,
+      formationProgress: unit.formationProgress ? { ...unit.formationProgress } : undefined,
       anchor: unit.anchor ? { ...unit.anchor } : null,
       gather: unit.gather ? { ...unit.gather } : null,
       target: unit.target ? { ...unit.target } : null,
@@ -398,6 +432,7 @@ export function cloneWorld(world: World): World {
       p2: world.production.p2 ? { ...world.production.p2 } : null,
     },
     built: { ...world.built },
+    satellites: cloneSatellites(world.satellites),
   };
 }
 function clonePlayer(player: Player): Player {
@@ -457,11 +492,17 @@ function nextStep(world: World, from: Position, to: Position): Position | null {
   }
   return findPath(from, to, world.width, world.height, world.obstacles)[1] ?? null;
 }
-/** Every living ship holds its cell, including allies. */
+/** Every living ship holds its cell, including allies. A departing ship also keeps the cell it
+ * leaves until its step ends, except for an ally that is no faster: moving in behind it keeps a
+ * full cell between them on screen, so columns close up instead of leaving a gap. */
 function cellOccupied(world: World, cell: Position, selfId: string): boolean {
+  const self = world.squads.find((unit) => unit.id === selfId);
+  const selfInterval = self ? marchInterval(world, self) : 0;
+  const trails = (unit: Squad | Guardian) => !!self && 'ownerId' in unit && unit.ownerId === self.ownerId
+    && selfInterval >= marchInterval(world, unit);
   const holds = (unit: Squad | Guardian) => (unit.x === cell.x && unit.y === cell.y)
     || (!!unit.transit && unit.transit.untilTick > world.tick
-      && unit.transit.from.x === cell.x && unit.transit.from.y === cell.y);
+      && unit.transit.from.x === cell.x && unit.transit.from.y === cell.y && !trails(unit));
   const ship = world.squads.some((unit) => unit.hp > 0 && unit.id !== selfId
     && holds(unit));
   const guardian = world.guardians.some((unit) => unit.hp > 0 && unit.id !== selfId && holds(unit));
@@ -497,7 +538,12 @@ function trafficStep(world: World, squad: Squad, destination: Position): Positio
   const cornerClear = (point: Position) => point.x === squad.x || point.y === squad.y
     || (!cornerOccupied(world,{ x: point.x, y: squad.y },squad) && !cornerOccupied(world,{ x: squad.x, y: point.y },squad));
   if (!direct || (clear(direct) && cornerClear(direct))) return direct;
-  if(world.squads.some(u=>u.hp>0&&u.ownerId===squad.ownerId&&u.arrivalSeat&&!movementDestination(world,u)&&u.x===direct.x&&u.y===direct.y))return null;
+  // Seated allies are swapped through, except that a formation flies around its own seated
+  // ships so the shape it is building does not get shuffled. The last couple of steps swap as
+  // usual: a seat walled in by its neighbours is only reachable that way.
+  const swappable=(unit:Squad|Guardian)=>'ownerId' in unit&&unit.ownerId===squad.ownerId&&!!unit.arrivalSeat
+    &&!movementDestination(world,unit)&&!(squad.formationPace&&unit.formationSeat&&distance(squad,destination)>2);
+  if(world.squads.some(u=>u.hp>0&&swappable(u)&&u.x===direct.x&&u.y===direct.y))return null;
   // An occupied goal is allowed in the search (e.g. an attack target), but never entered.
   const open = (point: Position) => (point.x === destination.x && point.y === destination.y) || clear(point);
   let alternative: Position | null;
@@ -507,7 +553,7 @@ function trafficStep(world: World, squad: Squad, destination: Position): Positio
     const walkable = world.surface.walkable.slice();
     const block=(point:Position)=>{if(point.x!==destination.x||point.y!==destination.y)walkable[point.y*world.width+point.x]=false;};
     for(const unit of [...world.squads,...world.guardians])if(unit.hp>0&&unit.id!==squad.id){
-      if('ownerId' in unit&&unit.ownerId===squad.ownerId&&unit.arrivalSeat&&!movementDestination(world,unit))continue;
+      if(swappable(unit))continue;
       block(unit);
       if(unit.transit&&unit.transit.untilTick>world.tick)block(unit.transit.from);
     }
@@ -517,7 +563,7 @@ function trafficStep(world: World, squad: Squad, destination: Position): Positio
       cache=trafficPaths.get(world.surface);if(!cache){cache=new Map();trafficPaths.set(world.surface,cache);}
       const occupied:number[]=[];
       for(const unit of [...world.squads,...world.guardians])if(unit.hp>0&&unit.id!==squad.id) {
-        if('ownerId' in unit&&unit.ownerId===squad.ownerId&&unit.arrivalSeat&&!movementDestination(world,unit))continue;
+        if(swappable(unit))continue;
         occupied.push(unit.y*world.width+unit.x);
         if(unit.transit&&unit.transit.untilTick>world.tick)occupied.push(unit.transit.from.y*world.width+unit.transit.from.x);
       }
@@ -540,6 +586,11 @@ function commitOrder(world: World, playerId: PlayerId, seq: number, squadId: str
   next.players[playerId].lastSequence = seq;
   const nextSquad = next.squads.find((unit) => unit.id === squadId);
   if (!nextSquad) return { accepted: false, reason: 'unknown_squad', world };
+  delete nextSquad.formationProgress;
+  delete nextSquad.formationWait;
+  delete nextSquad.formationPace;
+  delete nextSquad.formationSeat;
+  delete nextSquad.formationNudged;
   write(nextSquad);
   refreshArrivals(next.squads.filter((unit) => unit.hp > 0), boardOf(next),(from,to)=>routeExists(next,from,to));
   return { accepted: true, world: next };
@@ -572,6 +623,37 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
       holdGround(unit);
       unit.hp = 0;
       delete unit.transit;
+    }
+    refreshArrivals(next.squads.filter((unit) => unit.hp > 0), boardOf(next),(from,to)=>routeExists(next,from,to));
+    return { accepted: true, world: next };
+  }
+  if (command.type === 'move_formation') {
+    const units = command.squadIds.map((id) => world.squads.find((unit) => unit.id === id));
+    if (units.some((unit) => !unit)) return reject('unknown_squad');
+    if (units.some((unit) => unit!.ownerId !== playerId)) return reject('not_owner');
+    if (units.some((unit) => unit!.hp <= 0)) return reject('squad_destroyed');
+    const blocked = rejectDestination(world, { from: units[0]!, x: command.x, y: command.y });
+    if (blocked) return reject(blocked);
+    const next = cloneWorld(world);
+    next.players[playerId].lastSequence = command.seq;
+    const ships = command.squadIds.map((id) => next.squads.find((unit) => unit.id === id)!);
+    const center = { x: command.x, y: command.y };
+    const seats = planFormation(ships, center, command.formation,
+      { open: (cell) => cellOnBoard(next, cell), reachable: (from, to) => routeExists(next, from, to) });
+    const pace = ships.length > 1 ? Math.max(...ships.map((ship) => moveInterval(next, ship.ownerId, ship.kind))) : undefined;
+    for (const ship of ships) {
+      const seat = seats.get(ship.id) ?? center;
+      delete ship.formationProgress;
+      delete ship.formationWait;
+      delete ship.formationNudged;
+      replaceDestination(ship, seat);
+      // The seat is final: the shared-destination ring must not reshuffle it.
+      ship.target = { ...seat };
+      ship.arrivalLocked = true;
+      ship.arrivalSeat = { ...seat };
+      if (pace) ship.formationPace = pace; else delete ship.formationPace;
+      ship.formationSeat = { ...seat };
+      ship.quickStep = true;
     }
     refreshArrivals(next.squads.filter((unit) => unit.hp > 0), boardOf(next),(from,to)=>routeExists(next,from,to));
     return { accepted: true, world: next };
@@ -636,6 +718,7 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
       nextSquad.route = [];
       nextSquad.attackTargetId = command.targetId;
       nextSquad.attackMemory = { x: target.x, y: target.y, seenAt: world.tick };
+      nextSquad.quickStep = true;
     });
   }
   if (command.type === 'stop') {
@@ -656,6 +739,7 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
   return commitOrder(world, playerId, command.seq, squad.id, (nextSquad) => {
     if (command.type === 'enqueue') appendDestination(nextSquad, command);
     else replaceDestination(nextSquad, command);
+    nextSquad.quickStep = true;
   });
 }
 /** A guardian's post is its objective's cell. */
@@ -695,7 +779,7 @@ function swapBlockedAllies(world: World, squad: Squad, destination: Position, mo
     && unit.id !== squad.id && unit.x === step.x && unit.y === step.y);
   if (!other || moved.has(other.id) || (other.transit && other.transit.untilTick > world.tick)) return false;
   const otherDestination = movementDestination(world, other);
-  const interval = (unit: Squad) => moveInterval(world, unit.ownerId, unit.kind);
+  const interval = (unit: Squad) => marchInterval(world, unit);
   const idle=!otherDestination&&other.stance==='march'&&!other.attackTargetId;
   if(idle&&other.x===destination.x&&other.y===destination.y&&!other.arrivalSeat)return false;
   if ((!otherDestination&&!idle) || (!idle&&world.tick % interval(other) !== 0)) return false;
@@ -717,7 +801,11 @@ function swapBlockedAllies(world: World, squad: Squad, destination: Position, mo
   other.transit = { from: otherFrom, untilTick: world.tick + interval(other) };
   Object.assign(squad, otherFrom);
   Object.assign(other, from);
-  if(idle&&other.arrivalSeat)other.arrivalSeat={...from};
+  if(idle&&other.formationSeat){
+    // Nudged out of formation: head straight back to its own seat.
+    other.gather={...other.formationSeat};other.target={...other.formationSeat};other.arrivalSeat={...other.formationSeat};
+    other.formationNudged=true;
+  }else if(idle&&other.arrivalSeat)other.arrivalSeat={...from};
   squad.lastMovedTick = other.lastMovedTick = world.tick;
   moved.add(squad.id);
   moved.add(other.id);
@@ -756,6 +844,10 @@ function yieldToBlockedAlly(world: World, squad: Squad, destination: Position): 
   const other = [...world.squads].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
     .find((unit) => unit.hp > 0 && unit.ownerId === squad.ownerId && squad.id < unit.id
       && !(squad.gather&&unit.gather&&squad.gather.x===unit.gather.x&&squad.gather.y===unit.gather.y)
+      // Ships of one formation keep their lanes; the blocked one waits instead.
+      && !(squad.formationPace && unit.formationPace)
+      // Stepping aside for a nudged ship would only shove the passer back into its way.
+      && !unit.formationNudged
       && distance(squad, unit) <= 2 && movementDestination(world, unit)
       && routeBlockedByTraffic(world, unit, movementDestination(world, unit)!));
   if (!other) return false;
@@ -774,8 +866,8 @@ function yieldToBlockedAlly(world: World, squad: Squad, destination: Position): 
       || distance(a, destination) - distance(b, destination) || a.y - b.y || a.x - b.x);
   const pocket = pockets[0];
   if (!pocket) return false;
-  const interval = moveInterval(world, squad.ownerId, squad.kind);
-  const otherInterval = moveInterval(world, other.ownerId, other.kind);
+  const interval = marchInterval(world, squad);
+  const otherInterval = marchInterval(world, other);
   squad.transit = { from: { x: squad.x, y: squad.y }, untilTick: world.tick + interval };
   squad.trafficYieldUntil = world.tick + 3 * Math.max(interval, otherInterval);
   Object.assign(squad, pocket);
@@ -783,6 +875,40 @@ function yieldToBlockedAlly(world: World, squad: Squad, destination: Position): 
   return true;
 }
 
+const FORMATION_PATIENCE = 4;
+const FORMATION_STALL_BEATS = 6;
+/** Formation courtesies (waiting, flying around seated ships) must never strand a ship: one that
+ * has not moved for a few beats drops them and uses the ordinary traffic rules to reach its seat. */
+function loosenStalledFormation(world: World, squad: Squad, destination: Position, interval: number): void {
+  // Progress means getting closer, so a ship shuffling back and forth counts as stalled too.
+  const gap = Math.max(Math.abs(squad.x - destination.x), Math.abs(squad.y - destination.y));
+  const progress = squad.formationProgress;
+  if (!progress || gap < progress.best) {
+    squad.formationProgress = { best: gap, tick: world.tick };
+    return;
+  }
+  if (world.tick - progress.tick <= interval * FORMATION_STALL_BEATS) return;
+  delete squad.formationPace;
+  delete squad.formationWait;
+  delete squad.formationProgress;
+}
+/** In formation, a ship whose next cell is held by an ally that is still marching waits for it to
+ * move on instead of dodging sideways or backing off: that dodge is what breaks the shape. */
+function waitForMarchingAlly(world: World, squad: Squad, destination: Position): boolean {
+  if (!squad.formationPace) return false;
+  const step = nextStep(world, squad, destination);
+  if (!step || !cellOccupied(world, step, squad.id)) { squad.formationWait = 0; return false; }
+  const ahead = world.squads.find((unit) => unit.hp > 0 && unit.id !== squad.id && unit.ownerId === squad.ownerId
+    && ((unit.x === step.x && unit.y === step.y) || (unit.transit && unit.transit.untilTick > world.tick
+      && unit.transit.from.x === step.x && unit.transit.from.y === step.y)));
+  const going = ahead && movementDestination(world, ahead);
+  // A seated ally, an enemy or a head-on pair needs the traffic rules, not patience.
+  if (!ahead || !going || (ahead.x === step.x && ahead.y === step.y
+    && nextStep(world, ahead, going)?.x === squad.x && nextStep(world, ahead, going)?.y === squad.y)) return false;
+  squad.formationWait = (squad.formationWait ?? 0) + 1;
+  if (squad.formationWait > FORMATION_PATIENCE) { squad.formationWait = 0; return false; }
+  return true;
+}
 function moveSquads(world: World): void {
   const moved = new Set<string>();
   // Resolve targets before traffic so a pair sees the same intentions regardless
@@ -796,9 +922,22 @@ function moveSquads(world: World): void {
   for (const squad of world.squads) {
     if (squad.hp <= 0 || moved.has(squad.id) || (squad.trafficYieldUntil ?? 0) > world.tick) continue;
     const destination = movementDestination(world, squad);
-    if (!destination) continue;
-    const interval = moveInterval(world, squad.ownerId, squad.kind);
-    if (world.tick % interval !== 0) continue;
+    // Seated: the formation march is over for this ship.
+    if (!destination) {
+      delete squad.formationPace; delete squad.formationWait; delete squad.formationProgress; delete squad.formationNudged;
+      continue;
+    }
+    const interval = marchInterval(world, squad);
+    // Orders feel instant: the first step of a fresh order goes on the next tick. Later steps
+    // keep the shared beat, which allied swaps rely on.
+    const onBeat = world.tick % interval === 0;
+    const inTransit = !!squad.transit && squad.transit.untilTick > world.tick;
+    const quick = !!squad.quickStep && !inTransit && !onBeat;
+    if ((squad.moveHoldUntil ?? 0) > world.tick || (!onBeat && !quick)) continue;
+    squad.quickStep = false;
+    if (quick) squad.moveHoldUntil = world.tick + Math.ceil(interval / 2);
+    if (squad.formationPace) loosenStalledFormation(world, squad, destination, interval);
+    if (waitForMarchingAlly(world, squad, destination)) continue;
     if(routeBlockedByTraffic(world,squad,destination)){
       if(yieldToBlockedAlly(world,squad,destination))continue;
     }
@@ -879,6 +1018,7 @@ export function stepWorld(world: World): World {
   runBaseStructures(next);
   moveSquads(next);
   if (next.economy) moveGuardians(next);
+  runSatellites(next);
   resolveCombat(next.surface ? { ...next, level: next.surface.level, diagonalReach: true } : next);
   if (next.baseRules) resolveSiege(next);
   if (next.economy) resolveBaseDefense(next);

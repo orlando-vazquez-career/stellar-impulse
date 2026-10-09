@@ -3,16 +3,18 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExtern
 import { DevelopmentControls } from './DevelopmentControls';
 import { Hud } from './Hud';
 import { AugmentHud } from './AugmentHud';
+import { FirstMatchTutorial } from './FirstMatchTutorial';
 import { MatchProgress } from '../profile/MatchProgress';
 import { createMockGameplayAdapter } from './mock-adapter';
 import { createServerGameplayAdapter } from './server-adapter';
-import { createCampaignGameplayAdapter } from './campaign-adapter';
+import { campaignTransport } from '../../multiplayer/campaign-transport';
+import { nextFormation } from './formation';
 import type { MultiplayerSession } from '../../multiplayer/session';
 import { MatchAudio, playEvent, type Announcement } from './audio';
 import { useI18n } from '../i18n';
 import type { VisualPreferences } from '../settings/preferences';
 import type { RivalDifficulty } from '../lobby/PreparationLobby';
-import { selectMap, type TrainingMapId } from '../map/sector-map';
+import { DEFAULT_PLAYABLE_MAP, selectMap, type TrainingMapId } from '../map/sector-map';
 import type { CameraView, GameplayPresentationAdapter } from './model';
 import type { PhaserBattlefieldHandle } from './phaser/PhaserBattlefield';
 
@@ -25,28 +27,29 @@ const PRODUCTION_KEYS: Record<string, 'explorer' | 'interceptor' | 'frigate' | '
 const emptySubscribe = () => () => {};
 const emptyMultiplayer = () => null;
 
-export function GameplayScreen({ preferences, difficulty = 'medium', map = 'espiral', duration = 'skirmish', multiplayerSession, onLeave }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; duration?: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void }) {
+export function GameplayScreen({ preferences, difficulty = 'medium', map = DEFAULT_PLAYABLE_MAP, duration = 'skirmish', multiplayerSession, onLeave, onAudioChange }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; duration?: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const [match, setMatch] = useState(0);
-  // The local mock only knows Sector 01. Selecting before the children render keeps scene, HUD and server on one map.
-  const chosen = multiplayerSession || wantsLocalMock() ? 'sector-01' : map;
+  // The campaign plays on the map its room announces; the offline mock keeps Sector 01.
+  const chosen = multiplayerSession ? multiplayerSession.getSnapshot().phase?.renderMap ?? 'espiral'
+    : wantsLocalMock() ? 'sector-01' : map;
   selectMap(chosen);
-  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} duration={duration} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
+  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} duration={duration} multiplayerSession={multiplayerSession} onLeave={onLeave} onAudioChange={onAudioChange} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
 }
 
 /** The adapter lives exactly as long as the mounted match, so a server room is never left orphaned. */
-function GameplayMatch({ preferences, difficulty, map, duration, multiplayerSession, onLeave, onRestart }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; duration: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void }) {
+function GameplayMatch({ preferences, difficulty, map, duration, multiplayerSession, onLeave, onRestart, onAudioChange }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; duration: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const [adapter, setAdapter] = useState<GameplayPresentationAdapter | null>(null);
   useEffect(() => {
-    const created = multiplayerSession ? createCampaignGameplayAdapter(multiplayerSession)
+    const created = multiplayerSession ? createServerGameplayAdapter(SERVER_URL, difficulty, map, 'skirmish', campaignTransport(multiplayerSession))
       : wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL, difficulty, map, duration);
     setAdapter(created);
     return () => created.destroy();
   }, []);
   if (!adapter) return <main className="vi-gameplay vi-screen" aria-busy="true" />;
-  return <GameplayView adapter={adapter} preferences={preferences} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={onRestart} />;
+  return <GameplayView adapter={adapter} preferences={preferences} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={onRestart} onAudioChange={onAudioChange} />;
 }
 
-function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRestart }: { adapter: GameplayPresentationAdapter; preferences: VisualPreferences; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void }) {
+function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRestart, onAudioChange }: { adapter: GameplayPresentationAdapter; preferences: VisualPreferences; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const view = useSyncExternalStore(adapter.subscribe, adapter.getSnapshot);
   const roomState = useSyncExternalStore(multiplayerSession?.subscribe ?? emptySubscribe, multiplayerSession?.getSnapshot ?? emptyMultiplayer);
   const { locale } = useI18n();
@@ -57,7 +60,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
   // Sounds and spoken calls for server events; the banner fades after a few seconds.
   useEffect(() => {
     if (!adapter.subscribeEvents) return;
-    const audio = new MatchAudio(preferences.audio, locale);
+    const audio = new MatchAudio(locale);
     let counter = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = adapter.subscribeEvents((event) => {
@@ -69,7 +72,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
       timer = setTimeout(() => setAnnouncement(null), 3200);
     });
     return () => { unsubscribe(); clearTimeout(timer); audio.dispose(); };
-  }, [adapter, preferences.audio, locale]);
+  }, [adapter, locale]);
   const [developmentOpen, setDevelopmentOpen] = useState(false);
   const [cameraView, setCameraView] = useState<CameraView | null>(null);
   const battlefieldRef = useRef<PhaserBattlefieldHandle>(null);
@@ -80,7 +83,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
     if (centered.current || view.connection === 'local') return;
     const own = view.squads.find((squad) => squad.owner === 'blue');
     if (!own || !battlefieldRef.current) return;
-    centered.current = battlefieldRef.current.centerOnCell(Math.round(own.gridX), Math.round(own.gridY));
+    centered.current = battlefieldRef.current.focusFleet(Math.round(own.gridX), Math.round(own.gridY));
   }, [view]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -92,6 +95,9 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
         return;
       }
       if (/^[wasd]$/i.test(key)) return; // Camera navigation is never an action shortcut.
+      if (key.toLowerCase() === 'f' && !event.repeat && view.formation
+        && view.selectedSquadIds.length > 1
+        && !Object.values(preferences.controls).some((binding) => binding.toLowerCase() === 'f')) { adapter.dispatch({ type: 'set-formation', formation: nextFormation(view.formation) }); return; }
       if (view.canProduce !== false && PRODUCTION_KEYS[key] && !event.repeat) { adapter.dispatch({ type: 'produce', kind: PRODUCTION_KEYS[key] }); return; }
       if (key.toLowerCase() === preferences.controls.cancel.toLowerCase()) adapter.dispatch({ type: 'set-action', action: null });
       else if (key.toLowerCase() === preferences.controls.move.toLowerCase() && !event.repeat) adapter.dispatch({ type: 'set-action', action: 'move' });
@@ -100,7 +106,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [adapter, preferences.controls, view.canProduce]);
+  }, [adapter, preferences.controls, view.canProduce, view.formation, view.selectedSquadIds.length]);
   return <main className="vi-gameplay vi-screen" data-room-id={roomState?.roomId} data-player-id={roomState?.phase?.playerId} data-connection={roomState?.connection} data-sequence={roomState?.acknowledgedSequence} data-tick={view.tick}>
     <Suspense fallback={<div className="vi-phaser" aria-busy="true" />}>
       <PhaserBattlefield ref={battlefieldRef} view={view}
@@ -109,9 +115,10 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
         onAttackSelected={(targetId) => adapter.dispatch({ type: 'attack-selected', targetId })}
         onCameraChange={setCameraView} />
     </Suspense>
-    <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onBaseRange={previewBaseRange} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)} onResetCamera={() => battlefieldRef.current?.resetCamera()} onDevelopment={() => setDevelopmentOpen(true)} onLeave={onLeave} multiplayer={Boolean(multiplayerSession)} />
+    <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onBaseRange={previewBaseRange} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)} onResetCamera={() => battlefieldRef.current?.resetCamera()} onDevelopment={() => setDevelopmentOpen(true)} onLeave={onLeave} multiplayer={Boolean(multiplayerSession)} audio={preferences.audio} onAudioChange={onAudioChange} />
     {developmentOpen && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}
     <AugmentHud view={view} adapter={adapter} sound={!preferences.audio.muted && preferences.audio.effects > 0 && preferences.audio.master > 0} />
+    {!multiplayerSession && <FirstMatchTutorial view={view} />}
     {announcement && !view.result && <div key={announcement.id} className={`vi-announcement vi-announcement--${announcement.tone}`} role="status">{announcement.text}</div>}
     {roomState?.phase?.phase === 'transition' && <div className="vi-result" role="dialog" aria-label={english ? 'Next sector' : 'Siguiente sector'}><div className="vi-result__card">
       <h2>{english ? 'Preparing sector' : 'Preparando sector'} {roomState.phase.sector + 1}</h2>

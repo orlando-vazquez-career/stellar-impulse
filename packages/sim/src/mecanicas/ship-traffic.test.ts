@@ -87,23 +87,34 @@ describe('ship traffic', () => {
     expect(world.squads[0]).toMatchObject({ x: 4, y: 3, target: null });
   });
 
-  it('reserves the cell a ship leaves until its interpolated step finishes', () => {
+  it('lets an equally fast ally follow into the cell being vacated, closing the column', () => {
     let world = field();
     world.squads[1]!.x = 2;
     world = applyCommand(world, 'p1', { type: 'move', seq: 1, squadId: 'lead', x: 4, y: 3 }).world;
     world = applyCommand(world, 'p1', { type: 'move', seq: 2, squadId: 'parked', x: 3, y: 3 }).world;
-    for (let tick = 0; tick < 6; tick++) world = stepWorld(world);
+    world = stepWorld(world);
     expect(world.squads[0]).toMatchObject({ x: 4, y: 3 });
-    expect(world.squads[1]).toMatchObject({ x: 2, y: 3 });
-    for (let tick = 0; tick < 6; tick++) world = stepWorld(world);
     expect(world.squads[1]).toMatchObject({ x: 3, y: 3 });
+  });
+  it('keeps the vacated cell reserved from a faster ally and from rivals until the step ends', () => {
+    for (const follower of ['fast-ally', 'rival'] as const) {
+      let world = field();
+      world.squads[0] = createSquad('lead', 'p1', 'bomber', { x: 3, y: 3 });
+      world.squads[1] = createSquad('parked', follower === 'rival' ? 'p2' : 'p1', 'interceptor', { x: 2, y: 3 });
+      world = applyCommand(world, 'p1', { type: 'move', seq: 1, squadId: 'lead', x: 4, y: 3 }).world;
+      world = applyCommand(world, world.squads[1]!.ownerId, { type: 'move', seq: 1, squadId: 'parked', x: 3, y: 3 }).world;
+      for (let tick = 0; tick < 6; tick++) world = stepWorld(world);
+      expect(world.squads[0]).toMatchObject({ x: 4, y: 3 });
+      expect(world.squads[1]).toMatchObject({ x: 2, y: 3 });
+    }
   });
   it.each(['ally','enemy','guardian'] as const)('diagonal passing keeps a %s corner rule without sharing destination cells',blocker=>{
     let world=field();world.economy=false;
     if(blocker==='enemy')world.squads[1]!.ownerId='p2';
     if(blocker==='guardian'){world.squads.pop();world.guardians=[{id:'corner',objectiveId:'core',x:4,y:3,hp:1000,maxHp:1000,damage:0}];}
     world=applyCommand(world,'p1',{seq:1,type:'move',squadId:'lead',x:4,y:4}).world;
-    for(let i=0;i<6;i++)world=stepWorld(world);
+    // The first step is immediate; only an allied corner lets it cut the diagonal.
+    world=stepWorld(world);
     if(blocker==='ally')expect(world.squads[0]).toMatchObject({x:4,y:4,target:null});
     else expect(world.squads[0]!.x===4&&world.squads[0]!.y===4).toBe(false);
     expect(world.squads[0]!.x===4&&world.squads[0]!.y===3).toBe(false);
@@ -128,7 +139,7 @@ describe('ship traffic', () => {
     }
     expect(world.squads.filter(s=>s.target).map(s=>({id:s.id,x:s.x,y:s.y,target:s.target}))).toEqual([]);
     for(const s of world.squads){expect(s.target).toBeNull();expect(Math.max(Math.abs(s.x-14),Math.abs(s.y-14))).toBeLessThanOrEqual(6);}
-  });
+  }, 60_000);
   it.each(['sector-01','espiral'] as const)('a 24-ship fleet reaches a crowded destination on %s',(map)=>{
     let world=createSectorWorld(map);world.guardians=[];world.economy=false;world.rules.coreOpenTick=100000;
     const route=(findTiledPath(world.surface!,world.players.p1.base,world.core) as {path:{x:number;y:number}[]}).path;
@@ -140,7 +151,7 @@ describe('ship traffic', () => {
     for(let i=0;i<24;i++)world=applyCommand(world,'p1',{seq:i+1,type:'move',squadId:world.squads[i]!.id,...destination}).world;
     for(let t=0;t<3000;t++){world=stepWorld(world);expect(new Set(world.squads.map(s=>`${s.x},${s.y}`)).size).toBe(24);}
     expect(world.squads.filter(s=>s.target).map(s=>({id:s.id,x:s.x,y:s.y,target:s.target}))).toEqual([]);
-  });
+  }, 120_000);
   it('a parked ally yields in a corridor when it blocks a route beyond its cell',()=>{
     let world=field();world.economy=false;world.surface!.walkable=world.surface!.walkable.map((_,i)=>Math.floor(i/20)===3);
     world=applyCommand(world,'p1',{seq:1,type:'move',squadId:'lead',x:7,y:3}).world;

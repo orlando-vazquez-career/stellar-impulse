@@ -6,6 +6,8 @@ export const STELLAR_TESTNET = Object.freeze({
   rpcUrl: "https://soroban-testnet.stellar.org",
   horizonUrl: "https://horizon-testnet.stellar.org",
   explorerUrl: "https://stellar.expert/explorer/testnet",
+  /** Stellar Asset Contract of native XLM on testnet: payments in the contracts go through it. */
+  nativeAssetContract: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
 });
 
 export type ChainErrorCode =
@@ -14,10 +16,13 @@ export type ChainErrorCode =
   | "NETWORK_MISMATCH"
   | "WALLET_UNAVAILABLE"
   | "WALLET_REJECTED"
-  | "INVALID_ADDRESS";
+  | "INVALID_ADDRESS"
+  | "CONTRACT_REJECTED"
+  | "UNFUNDED_ACCOUNT";
 
 export class ChainError extends Error {
-  constructor(public readonly code: ChainErrorCode, message: string) {
+  /** `contractCode`: the contract's error number when a contract refused the call. */
+  constructor(public readonly code: ChainErrorCode, message: string, public readonly contractCode?: number) {
     super(message);
     this.name = "ChainError";
   }
@@ -131,3 +136,7 @@ export async function connectFreighterTestnet(adapter?: FreighterAdapter): Promi
 }
 
 export * from "./cosmetics.js";
+export * from "./marketplace.js";
+export * from "./wallet-link.js";
+export { contractErrorMessage } from "./call.js";
+export type { CallOptions, ChainRpc, Submitted, TransactionSigner } from "./call.js";

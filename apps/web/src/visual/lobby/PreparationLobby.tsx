@@ -1,3 +1,4 @@
+import { DEFAULT_CAMPAIGN_MAP, PLAYABLE_MAPS } from '@impulso/input';
 import type { DurationMode } from '@impulso/sim';
 import { useState, useRef, useEffect, type FormEvent } from 'react';
 import { useI18n } from '../i18n';
@@ -16,10 +17,6 @@ const DIFFICULTIES: { value: RivalDifficulty; label: string; hint: string }[] = 
   { value: 'medium', label: 'Media', hint: 'Se expande rápido y pelea por todo.' },
   { value: 'hard', label: 'Difícil', hint: 'Toma dos nodos a la vez y asalta los tuyos.' },
 ];
-const MAPS: { value: TrainingMapId; label: string; hint: string }[] = [
-  { value: 'espiral', label: 'Espiral Estelar', hint: '58×58. Carriles de impulso, nebulosas y núcleo con escudo.' },
-  { value: 'sector-01', label: 'Sector 01', hint: '29×29. Mapa compacto con rampas y meseta central.' },
-];
 type FleetSide = 'blue' | 'red';
 
 export function PreparationLobby({
@@ -37,13 +34,14 @@ export function PreparationLobby({
   onDeploy(difficulty: RivalDifficulty, map: TrainingMapId, duration: DurationMode): void;
   initialJoinCode?: string;
 }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const sound = useSpaceSound();
   const canvas = useRef<HTMLCanvasElement>(null);
 
   const [duration, setDuration] = useState<DurationMode>('skirmish');
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
-  const [map, setMap] = useState<TrainingMapId>('espiral');
+  const [map, setMap] = useState<TrainingMapId>(DEFAULT_CAMPAIGN_MAP);
+  const selectedMap = PLAYABLE_MAPS.find((option) => option.id === map) ?? PLAYABLE_MAPS[0];
   const [side, setSide] = useState<FleetSide>('blue');
   const [ready, setReady] = useState(false);
   const [joinCode, setJoinCode] = useState(initialJoinCode.toUpperCase());
@@ -130,12 +128,12 @@ export function PreparationLobby({
                 <i className="vi-map-preview__blue" />
                 <i className="vi-map-preview__red" />
               </div>
-              <span>{map === 'espiral' ? 'ESPIRAL ESTELAR' : `SECTOR 01 // ${t('mapValue')}`}</span>
+              <span>{selectedMap.name[locale]}</span>
             </div>
             <dl className="vi-briefing__data">
               <div>
                 <dt>{t('map')}</dt>
-                <dd>{map === 'espiral' ? 'Espiral Estelar' : t('mapValue')}</dd>
+                <dd>{selectedMap.name[locale]}</dd>
               </div>
               <div>
                 <dt>{t('objective')}</dt>
@@ -162,18 +160,18 @@ export function PreparationLobby({
             </button>
                 {mode === 'create' && (
                   <fieldset className="vi-difficulty vi-map-select">
-                    <legend>Mapa</legend>
-                    {MAPS.map((option) => (
+                    <legend>{t('map')}</legend>
+                    {PLAYABLE_MAPS.map((option) => (
                       <button
-                        key={option.value}
+                        key={option.id}
                         type="button"
-                        className={map === option.value ? 'is-selected' : ''}
-                        aria-pressed={map === option.value}
+                        className={map === option.id ? 'is-selected' : ''}
+                        aria-pressed={map === option.id}
                         onMouseEnter={() => hover(420)}
-                        onClick={() => { sound.playSelect(); setMap(option.value); }}
+                        onClick={() => { sound.playSelect(); setMap(option.id); }}
                       >
-                        <strong>{option.label}</strong>
-                        <small>{option.hint}</small>
+                        <strong>{option.name[locale]}</strong>
+                        <small>{option.description[locale]}</small>
                       </button>
                     ))}
                   </fieldset>

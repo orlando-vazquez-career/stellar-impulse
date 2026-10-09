@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
-import { SHIP_COUNTERS, UNIT_COSTS, EXTRA_MODULES, type ModuleKind } from '@impulso/sim';
+import { useEffect, useMemo, useState } from 'react';
+import { SHIP_COUNTERS, UNIT_COSTS, EXTRA_MODULES, FORMATIONS, formationShape, type FormationKind, type ModuleKind } from '@impulso/sim';
 import { useI18n } from '../i18n';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { formatStat } from './format-stat';
 import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
+import { AudioControls } from '../settings/AudioControls';
 import type { CameraView, CoreState, GameplayAction, GameplayPresentationAdapter, GameplayViewModel } from './model';
 import { activeMapId, sectorMap, sectorSurface } from '../map/sector-map';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH } from './phaser/isometric';
+import { cellToIso, isoToPoint, ISO_ORIGIN_X, ISO_ORIGIN_Y, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, projectedWorldBounds, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, VIEW_YAW_RADIANS } from './phaser/isometric';
 
 function formatTime(seconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -64,10 +65,39 @@ function SurrenderButton({ view, adapter }: { view: GameplayViewModel; adapter: 
   </button>;
 }
 
-function TopControls({ view, adapter, onResetCamera, onDevelopment, onLeave, multiplayer }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; onResetCamera(): void; onDevelopment(): void; onLeave(): void; multiplayer?: boolean }) {
+function SpeakerIcon({ muted }: { muted: boolean }) {
+  return <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" stroke="none" />
+    {muted ? <path d="M16 9l5 6M21 9l-5 6" /> : <><path d="M16.5 8.5a5 5 0 0 1 0 7" /><path d="M19 6a8.5 8.5 0 0 1 0 12" /></>}
+  </svg>;
+}
+
+/** Volume without leaving the match: every slider is heard at once and saved on this device. */
+function SoundButton({ audio, onAudioChange }: { audio: VisualPreferences['audio']; onAudioChange(audio: VisualPreferences['audio']): void }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [open]);
+  const silent = audio.muted || audio.master === 0;
+  return <>
+    <button className="vi-sound-button" title={t('soundPanel')} aria-label={t('soundPanel')} aria-expanded={open} onClick={() => setOpen(!open)}><SpeakerIcon muted={silent} /></button>
+    {open && <Panel className="vi-sound-panel">
+      <header><strong>{t('soundPanel')}</strong><button onClick={() => setOpen(false)} aria-label={t('collapse')}>×</button></header>
+      <p>{t('soundPanelHelp')}</p>
+      <AudioControls value={audio} onChange={onAudioChange} />
+    </Panel>}
+  </>;
+}
+
+function TopControls({ view, adapter, onResetCamera, onDevelopment, onLeave, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; onResetCamera(): void; onDevelopment(): void; onLeave(): void; multiplayer?: boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const { t } = useI18n();
   return <div className="vi-top-controls">
-    {!multiplayer && <SurrenderButton view={view} adapter={adapter} />}
+    <SurrenderButton view={view} adapter={adapter} />
+    {audio && onAudioChange && <SoundButton audio={audio} onAudioChange={onAudioChange} />}
     <button title={t('cameraReset')} onClick={onResetCamera}><span aria-hidden="true">◎</span></button>
     {!multiplayer && <button title={t('preferences')} onClick={onDevelopment}><span aria-hidden="true">⚙</span></button>}
     <LanguageToggle />
@@ -79,12 +109,13 @@ const MINIMAP_SIZE = 172;
 const OWNER_FILL = { blue: '#36a9ff', red: '#ff4f64', neutral: '#f2b84b' } as const;
 
 /** Minimap scale and floor cells for the active map, rebuilt only when the map changes. */
-let layout: { mapId: string; scale: number; offset: { x: number; y: number }; floor: { x: number; y: number; path: string }[]; terrainPath: string } | null = null;
+let layout: { mapId: string; scale: number; offset: { x: number; y: number }; world: ReturnType<typeof projectedWorldBounds>; floor: { x: number; y: number; path: string }[]; terrainPath: string } | null = null;
 function minimapLayout() {
   if (layout?.mapId === activeMapId) return layout;
-  const scale = MINIMAP_SIZE / ISO_WORLD_WIDTH;
-  const offset = { x: 4, y: 4 + (MINIMAP_SIZE - ISO_WORLD_HEIGHT * scale) / 2 };
-  layout = { mapId: activeMapId, scale, offset, floor: [], terrainPath: '' };
+  const world = projectedWorldBounds();
+  const scale = MINIMAP_SIZE / world.width;
+  const offset = { x: 4 - world.x * scale, y: 4 + (MINIMAP_SIZE - world.height * scale) / 2 - world.y * scale };
+  layout = { mapId: activeMapId, scale, offset, world, floor: [], terrainPath: '' };
   layout.floor = sectorSurface.walkable.flatMap((walkable, index) => {
     if (!walkable) return [];
     const x = index % sectorMap.width;
@@ -114,10 +145,19 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
   const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
   const route = view.moveOrder?.squadId === view.selectedSquadId ? view.moveOrder : null;
-  const { scale: MINIMAP_SCALE, offset: MINIMAP_OFFSET, floor, terrainPath } = minimapLayout();
+  const { scale: MINIMAP_SCALE, offset: MINIMAP_OFFSET, world, floor, terrainPath } = minimapLayout();
   const core = sectorSurface.core;
   const bases = { blue: sectorSurface.bases.p1, red: sectorSurface.bases.p2 };
-  const seen = (cell: { x: number; y: number }) => !view.visibleCells || view.visibleCells[cell.y * sectorMap.width + cell.x] === true;
+  // Thousands of cells in one path: rebuild it only when vision changes, not on every camera or ship frame.
+  const visibleCells = view.visibleCells;
+  const exploredCells = view.exploredCells;
+  const seenPath = useMemo(() => visibleCells
+    ? floor.filter((cell) => visibleCells[cell.y * sectorMap.width + cell.x] === true).map((cell) => cell.path).join(' ')
+    : terrainPath, [visibleCells, floor, terrainPath]);
+  // Without fog memory every cell counts as explored, as before.
+  const exploredPath = useMemo(() => exploredCells
+    ? floor.filter((cell) => exploredCells[cell.y * sectorMap.width + cell.x] === true).map((cell) => cell.path).join(' ')
+    : terrainPath, [exploredCells, floor, terrainPath]);
   return <Panel className={`vi-minimap ${collapsed ? 'is-collapsed' : ''}`}>
     <header><strong>{t('minimap')}</strong><button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></header>
     {!collapsed && <button className="vi-minimap__pan" aria-label={t('minimapPan')} onClick={(event) => {
@@ -129,13 +169,14 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
     }}><svg viewBox="0 0 180 180" role="img" aria-label={t('minimap')}>
       <rect className="map-boundary" x="4" y="4" width="172" height="172" />
       {/* Batch terrain into two paths so every server view does not reconcile thousands of SVG elements. */}
-      <path d={terrainPath} fill="#34587a" />
-      <path d={view.visibleCells ? floor.filter(seen).map((cell) => cell.path).join(' ') : terrainPath} fill="#5b95c4" />
+      <path d={terrainPath} fill="#22384f" />
+      <path d={exploredPath} fill="#34587a" />
+      <path d={seenPath} fill="#5b95c4" />
       {[...(view.chart?.nodes??[]),...(view.chart?.guardians??[])].map((cell,index)=>{
         const point=miniPoint(cell.x,cell.y);return <circle key={`chart-${index}`} className="map-chart-marker" cx={point.x} cy={point.y} r="2.4" fill="none" stroke="#b5c4d1" opacity=".65"/>;
       })}
       {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); return <rect key={node.id} x={point.x - 2.2} y={point.y - 2.2} width="4.4" height="4.4"
-        transform={`rotate(45 ${point.x} ${point.y})`} fill={node.owner ? OWNER_FILL[node.owner] : '#8aa0b8'} />; })}
+        transform={`rotate(45 ${point.x} ${point.y})`} fill={node.owner ? OWNER_FILL[node.owner] : '#8aa0b8'} opacity={node.stale ? 0.45 : 1} />; })}
       <circle className="map-core" cx={miniPoint(core.x, core.y).x} cy={miniPoint(core.x, core.y).y} r="4" />
       {Object.entries(bases).map(([owner, cell]) => { const point = miniPoint(cell.x, cell.y); return <rect key={owner}
         x={point.x - 5} y={point.y - 3.5} width="10" height="7" fill={owner === 'blue' ? OWNER_FILL.blue : OWNER_FILL.red} />; })}
@@ -146,11 +187,44 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
           fill={squad.owner === 'neutral' ? OWNER_FILL.neutral : undefined} />;
       })}
       {route && <circle className="map-destination" cx={miniPoint(route.destination.x, route.destination.y).x} cy={miniPoint(route.destination.x, route.destination.y).y} r="3" />}
-      {cameraView && <rect className="map-camera" data-iso-width={ISO_WORLD_WIDTH} data-iso-height={ISO_WORLD_HEIGHT} data-world-x={cameraView.worldX} data-world-y={cameraView.worldY} data-zoom={cameraView.zoom}
+      {cameraView && <rect className="map-camera"
+        data-iso-width={world.width} data-iso-height={world.height}
+        data-world-origin-x={world.x} data-world-origin-y={world.y}
+        data-tile-origin-x={ISO_ORIGIN_X} data-tile-origin-y={ISO_ORIGIN_Y}
+        data-map-width={sectorMap.width} data-map-height={sectorMap.height}
+        data-view-yaw={VIEW_YAW_RADIANS}
+        data-world-x={cameraView.worldX} data-world-y={cameraView.worldY} data-zoom={cameraView.zoom}
         x={MINIMAP_OFFSET.x + cameraView.worldX * MINIMAP_SCALE} y={MINIMAP_OFFSET.y + cameraView.worldY * MINIMAP_SCALE}
         width={cameraView.width * ISO_WORLD_WIDTH * MINIMAP_SCALE} height={cameraView.height * ISO_WORLD_HEIGHT * MINIMAP_SCALE} />}
     </svg></button>}
   </Panel>;
+}
+
+const FORMATION_LABEL = {
+  line: 'formationLine', column: 'formationColumn', wedge: 'formationWedge', box: 'formationBox', ranks: 'formationRanks', circle: 'formationCircle',
+} as const satisfies Record<FormationKind, string>;
+
+/** The icon is the real shape for six ships, drawn from the same geometry the server uses. */
+function FormationIcon({ kind }: { kind: FormationKind }) {
+  const seats = formationShape(kind, 6);
+  const sides = seats.map((seat) => seat.side), depths = seats.map((seat) => seat.depth);
+  const span = Math.max(Math.max(...sides) - Math.min(...sides), Math.max(...depths) - Math.min(...depths), 1);
+  const midSide = (Math.max(...sides) + Math.min(...sides)) / 2, midDepth = (Math.max(...depths) + Math.min(...depths)) / 2;
+  return <svg viewBox="-12 -12 24 24" width="24" height="24" aria-hidden="true">
+    {seats.map((seat, index) => <circle key={index} cx={(seat.side - midSide) / span * 18} cy={-(seat.depth - midDepth) / span * 18}
+      r={index === 0 ? 2.6 : 2.1} className={index === 0 ? 'is-lead' : undefined} />)}
+  </svg>;
+}
+
+function FormationPicker({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
+  const { t } = useI18n();
+  if (!view.formation) return null;
+  return <div className="vi-formation" role="radiogroup" aria-label={t('formation')}>
+    {FORMATIONS.map((kind) => <button key={kind} role="radio" aria-checked={view.formation === kind}
+      className={view.formation === kind ? 'is-active' : undefined} title={`${t(FORMATION_LABEL[kind])} · ${t('formationHint')}`}
+      aria-label={t(FORMATION_LABEL[kind])} onClick={() => adapter.dispatch({ type: 'set-formation', formation: kind })}>
+      <FormationIcon kind={kind} /></button>)}
+  </div>;
 }
 
 function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter }) {
@@ -163,11 +237,13 @@ function SquadHud({ view, adapter }: { view: GameplayViewModel; adapter: Gamepla
   const status = squad.status === 'moving' ? t('moving') : squad.status === 'attacking' ? t('attacking') : squad.status === 'holding' ? t('holding') : squad.status === 'capturing' ? t('capturing') : t('idle');
   const stats = squad.stats ?? view.unitStats?.[squad.unitType];
   const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
-  return <Panel className={`vi-squad ${collapsed ? 'is-collapsed' : ''}`}>
-    <header><span>{selected.length > 1 ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span>
+  const group = selected.length > 1;
+  return <Panel className={`vi-squad ${collapsed ? 'is-collapsed' : ''} ${group && view.formation ? 'has-formation' : ''}`}>
+    <header><span>{group ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span>
       <div className="vi-squad__tools"><button className="vi-retire" disabled={!!view.result}
         title={t('retireShipsHelp')} onClick={() => adapter.dispatch({ type: 'disband-selected' })}>{t('retireShips')}</button>
         <button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></div></header>
+    {!collapsed && group && <FormationPicker view={view} adapter={adapter} />}
     {!collapsed && selected.length > 1 ? <div className="vi-squad__group">{(['explorer','interceptor','frigate','bomber'] as const).map(kind=>{
       const ships=selected.filter(s=>s.unitType===kind);if(!ships.length)return null;
       const hp=ships.reduce((n,s)=>n+(s.hp??s.healthPercent),0),maxHp=ships.reduce((n,s)=>n+(s.maxHp??100),0);
@@ -341,12 +417,12 @@ function NoticeHud({ view }: { view: GameplayViewModel }) {
   return <div className={`vi-notice vi-notice--${view.connection}`} role="status">{view.notice}</div>;
 }
 
-export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave,onBaseRange, multiplayer }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void;onBaseRange?:(show:boolean)=>void; multiplayer?:boolean }) {
+export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave,onBaseRange, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void;onBaseRange?:(show:boolean)=>void; multiplayer?:boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const { t } = useI18n();
   return <div className="vi-hud" aria-label={t('hud')}>
     <ResourceHud view={view} />
     <SectorHud view={view} />
-    <TopControls view={view} adapter={adapter} onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} multiplayer={multiplayer} />
+    <TopControls view={view} adapter={adapter} onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} multiplayer={multiplayer} audio={audio} onAudioChange={onAudioChange} />
     <Minimap view={view} cameraView={cameraView} onPanMap={onPanMap} />
     <SquadHud view={view} adapter={adapter} />
     <ActionHud view={view} adapter={adapter} controls={controls} />

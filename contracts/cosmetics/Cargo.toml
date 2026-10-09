@@ -1,6 +1,6 @@
 [package]
 name = "impulso-cosmetics"
-description = "Initial versioned Soroban contract scaffold for Impulso Stellar"
+description = "Initial versioned Soroban contract scaffold for Stellar Impulse"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

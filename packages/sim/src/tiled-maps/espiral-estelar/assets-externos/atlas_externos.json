@@ -1,0 +1,68 @@
+{
+  "satelites": {
+    "sprites": [
+      "satelite_1.png",
+      "satelite_2.png",
+      "satelite_frontal.png",
+      "satelite_dorsal.png"
+    ],
+    "uso": "Decoración y bloqueo 2x2 o 3x3, colocar en capa estructuras",
+    "logica": "blocked"
+  },
+  "antenas": {
+    "sprites": [
+      "antena_larga_1.png",
+      "antena_larga_2.png",
+      "antena_larga_3.png",
+      "antena_larga_4.png",
+      "antena_plato_1.png",
+      "antena_plato_2.png",
+      "antena_multipolar_1.png"
+    ],
+    "uso": "Bloqueo 1x1 (plato/larga) o 2x2 (multipolar), colocar en capa estructuras",
+    "logica": "blocked"
+  },
+  "satelite_animacion": {
+    "image": "satelite_animacion.png",
+    "frameWidth": 188,
+    "frameHeight": 192,
+    "frames": 8,
+    "fps": 8,
+    "repeat": -1,
+    "uso": "Satélite con baliza que parpadea"
+  },
+  "planeta_grande": {
+    "image": "planeta_grande.png",
+    "uso": "Solo visual, colocar debajo del mapa como fondo o en capa de decoración. No tiene lógica."
+  },
+  "robotsitoo": {
+    "tsx": "robotsitoo.tsx",
+    "frameWidth": 64,
+    "image": "sprites/robotsitoo.png",
+    "frameHeight": 64,
+    "frames": 7,
+    "fps": 10,
+    "repeat": -1,
+    "uso": "Animación del dron moviéndose (idle/patrulla)"
+  },
+  "robot_sal": {
+    "tsx": "robot-sal.tsx",
+    "image": "sprites/robot-sal.png",
+    "frameWidth": 72,
+    "frameHeight": 80,
+    "frames": 8,
+    "fps": 9,
+    "repeat": 0,
+    "salir": [0, 1, 2, 3, 4, 5, 6, 7],
+    "volver": [7, 6, 5, 4, 3, 2, 1, 0],
+    "uso": "Despliegue del dron (salir) — para volver, reproducir en reversa"
+  },
+  "planetafondo": {
+    "tsx": "planetafondo.tsx",
+    "tileWidth": 122,
+    "tileHeight": 120,
+    "tiles": 20,
+    "uso": "Tira de planetas para fondo, cada tile es un planeta distinto"
+  },
+  "nota_altura": "La capa 'altura' del mapa marca las plataformas elevadas. En el cliente, las naves suben 16px sobre las plataformas y bajan al espacio abierto. Ver logica/client/elevation.ts."
+}

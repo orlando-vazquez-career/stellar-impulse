@@ -8,7 +8,7 @@ describe('command boundary', () => {
     expect(parseCommand(disband)).toEqual({ ok: true, command: disband });
     expect(parseCommand({ ...disband, squadIds: [] }).ok).toBe(false);
     expect(parseCommand({ ...disband, squadIds: ['p1-explorer', 'p1-explorer'] }).ok).toBe(false);
-    expect(parseCommand({ ...disband, squadIds: Array.from({ length: 25 }, (_, i) => `ship-${i}`) }).ok).toBe(false);
+    expect(parseCommand({ ...disband, squadIds: Array.from({ length: 129 }, (_, i) => `ship-${i}`) }).ok).toBe(false);
     const ids = ['p1-explorer'];
     Object.defineProperty(ids, '0', { get() { throw new Error('must not execute'); } });
     expect(parseCommand({ ...disband, squadIds: ids }).ok).toBe(false);

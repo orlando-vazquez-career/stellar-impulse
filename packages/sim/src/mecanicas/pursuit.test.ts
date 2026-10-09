@@ -65,8 +65,11 @@ describe('attack pursuit', () => {
   });
 
   it('fires while moving without replacing the player destination', () => {
-    const world = applyCommand(arena(), 'p1', { seq: 1, type: 'move', squadId: 'hunter', x: 1, y: 8 }).world;
-    expect(ticks(world, 5).squads[0]).toMatchObject({ target: { x: 1, y: 8 }, attackTargetId: null, lastShot: { tick: 5 } });
+    // The enemy sits beside the first (immediate) step of a northbound route.
+    const field = arena();
+    Object.assign(field.squads[1]!, { x: 1, y: 7 });
+    const world = applyCommand(field, 'p1', { seq: 1, type: 'move', squadId: 'hunter', x: 2, y: 1 }).world;
+    expect(ticks(world, 5).squads[0]).toMatchObject({ x: 2, y: 7, target: { x: 2, y: 1 }, attackTargetId: null, lastShot: { tick: 5 } });
   });
 
   it('never shoots an unseen diagonal opponent even when weapon range reaches it', () => {

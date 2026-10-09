@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Impulso Stellar — Lobby</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+  <link rel="stylesheet" href="css/lobby.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+<main class="viewport">
+<div class="stage" data-ref="stage">
+
+  <!-- Fondo -->
+  <div data-ref="sky" aria-hidden="true"></div>
+  <div class="twinkle-layer" aria-hidden="true"></div>
+  <div class="nebula" aria-hidden="true"></div>
+  <div class="brand-glow" aria-hidden="true"></div>
+
+  <!-- Planeta, órbitas, mapa y arte por modo -->
+  <div class="planet-stage" data-ref="planetStage">
+<svg width="760" height="760" viewBox="0 0 760 760" aria-hidden="true">
+<g transform="rotate(-20 380 380)" fill="none">
+<ellipse cx="380" cy="380" rx="370" ry="120" stroke="rgba(200,190,255,.14)"></ellipse>
+<circle r="3" fill="#dcd4ff"><animateMotion dur="26s" repeatCount="indefinite" path="M10 380 A370 120 0 1 1 750 380 A370 120 0 1 1 10 380"></animateMotion></circle>
+</g>
+<g transform="rotate(28 380 380)" fill="none">
+<ellipse cx="380" cy="380" rx="330" ry="90" stroke="rgba(200,190,255,.1)"></ellipse>
+<circle r="2" fill="#ffd9a8"><animateMotion dur="18s" repeatCount="indefinite" path="M50 380 A330 90 0 1 0 710 380 A330 90 0 1 0 50 380"></animateMotion></circle>
+</g>
+</svg>
+
+    <div class="planet">
+      <div class="planet-rim"></div>
+      <div data-ref="planetSprites"></div>
+      <div class="planet-shade"></div>
+    </div>
+
+    <div class="lobby-map" data-ref="lobbyMap">
+<svg width="760" height="760" viewBox="0 0 760 760" fill="none" aria-hidden="true">
+<g stroke="rgba(255,226,184,.45)" stroke-width="1">
+<path d="M330 360 Q 280 250 257 217"></path>
+<path d="M330 360 Q 440 210 527 197"></path>
+<path d="M330 360 Q 490 330 607 427"></path>
+<path d="M330 360 Q 440 470 477 607"></path>
+<path d="M330 360 Q 240 480 207 567"></path>
+<path d="M330 360 Q 210 320 117 387"></path>
+</g>
+<g fill="#ffe2b8">
+<circle r="2.5"><animateMotion dur="2.8s" repeatCount="indefinite" path="M330 360 Q 280 250 257 217"></animateMotion></circle>
+<circle r="2.5"><animateMotion dur="3.4s" repeatCount="indefinite" path="M330 360 Q 440 210 527 197"></animateMotion></circle>
+<circle r="2.5"><animateMotion dur="3.1s" repeatCount="indefinite" path="M330 360 Q 490 330 607 427"></animateMotion></circle>
+<circle r="2.5"><animateMotion dur="3.7s" repeatCount="indefinite" path="M330 360 Q 440 470 477 607"></animateMotion></circle>
+<circle r="2.5"><animateMotion dur="2.6s" repeatCount="indefinite" path="M330 360 Q 240 480 207 567"></animateMotion></circle>
+<circle r="2.5"><animateMotion dur="3.3s" repeatCount="indefinite" path="M330 360 Q 210 320 117 387"></animateMotion></circle>
+</g>
+<circle cx="330" cy="360" r="7" fill="#fff4e0"></circle>
+<circle cx="330" cy="360" r="14" stroke="rgba(255,244,224,.6)"></circle>
+<text x="350" y="356" fill="#fff4e0" font-family="JetBrains Mono, monospace" font-size="12" letter-spacing="3">BASE · DESPLIEGUE</text>
+</svg>
+      <div data-ref="mapNodes"></div>
+    </div>
+
+    <div class="shockwave" data-ref="shockwave"></div>
+
+<svg class="art" data-art="campaign" hidden width="760" height="760" viewBox="0 0 760 760" style="position: absolute; inset: 0; overflow: visible" fill="none">
+<path d="M300 300 Q 380 270 432 356 Q 430 440 360 470" stroke="#f2a65a" stroke-width="1.5" stroke-dasharray="4 7"><animate attributeName="stroke-dashoffset" from="0" to="-44" dur="1.6s" repeatCount="indefinite"></animate></path>
+<circle cx="300" cy="300" r="5" fill="#ffd9a8"></circle>
+<circle cx="300" cy="300" r="6" stroke="#f2a65a"><animate attributeName="r" values="6;28" dur="2.4s" repeatCount="indefinite"></animate><animate attributeName="opacity" values=".9;0" dur="2.4s" repeatCount="indefinite"></animate></circle>
+<circle cx="432" cy="356" r="5" fill="#ffd9a8"></circle>
+<circle cx="432" cy="356" r="6" stroke="#f2a65a"><animate attributeName="r" values="6;28" dur="2.4s" begin="-.8s" repeatCount="indefinite"></animate><animate attributeName="opacity" values=".9;0" dur="2.4s" begin="-.8s" repeatCount="indefinite"></animate></circle>
+<circle cx="360" cy="470" r="5" fill="#ffd9a8"></circle>
+<circle cx="360" cy="470" r="6" stroke="#f2a65a"><animate attributeName="r" values="6;28" dur="2.4s" begin="-1.6s" repeatCount="indefinite"></animate><animate attributeName="opacity" values=".9;0" dur="2.4s" begin="-1.6s" repeatCount="indefinite"></animate></circle>
+<g fill="#ffe7c7" font-family="JetBrains Mono, monospace" font-size="12" letter-spacing="3">
+<text x="190" y="290">S-I  EXPLORAR</text>
+<text x="452" y="352">S-II  COMBATIR</text>
+<text x="380" y="492">S-III  DEFENDER</text>
+</g>
+</svg>
+
+<svg class="art" data-art="versus" hidden width="760" height="760" viewBox="0 0 760 760" style="position: absolute; inset: 0; overflow: visible" fill="none">
+<path d="M100 140 Q 420 0 670 630" stroke="#7fb2ff" stroke-width="1.2" stroke-dasharray="3 6" opacity=".8"></path>
+<path d="M670 630 Q 790 170 100 140" stroke="#ff7a59" stroke-width="1.2" stroke-dasharray="3 6" opacity=".8"></path>
+<circle r="4" fill="#cfe0ff"><animateMotion dur="2.6s" repeatCount="indefinite" path="M100 140 Q 420 0 670 630"></animateMotion></circle>
+<circle r="4" fill="#ffd2c2"><animateMotion dur="2.6s" repeatCount="indefinite" path="M670 630 Q 790 170 100 140"></animateMotion></circle>
+<circle cx="100" cy="140" r="26" fill="#13204a" stroke="#7fb2ff" stroke-width="2"></circle>
+<circle cx="100" cy="140" r="40" stroke="rgba(127,178,255,.35)"><animate attributeName="r" values="30;52" dur="2s" repeatCount="indefinite"></animate><animate attributeName="opacity" values="1;0" dur="2s" repeatCount="indefinite"></animate></circle>
+<circle cx="670" cy="630" r="26" fill="#4a1a12" stroke="#ff7a59" stroke-width="2"></circle>
+<circle cx="670" cy="630" r="40" stroke="rgba(255,122,89,.35)"><animate attributeName="r" values="30;52" dur="2s" begin="-1s" repeatCount="indefinite"></animate><animate attributeName="opacity" values="1;0" dur="2s" begin="-1s" repeatCount="indefinite"></animate></circle>
+<text x="310" y="100" fill="#fff0ea" font-family="Instrument Serif, Georgia, serif" font-style="italic" font-size="54">1 v 1</text>
+<g font-family="JetBrains Mono, monospace" font-size="12" letter-spacing="3">
+<text x="36" y="200" fill="#bcd4ff">TÚ</text>
+<text x="604" y="690" fill="#ffc2b0">RIVAL</text>
+</g>
+</svg>
+
+<svg class="art" data-art="training" hidden width="760" height="760" viewBox="0 0 760 760" style="position: absolute; inset: 0; overflow: visible" fill="none">
+<g stroke="#5fe0c8" opacity=".4">
+<ellipse cx="380" cy="380" rx="250" ry="80"></ellipse>
+<ellipse cx="380" cy="380" rx="250" ry="170"></ellipse>
+<ellipse cx="380" cy="380" rx="250" ry="0.5"></ellipse>
+<ellipse cx="380" cy="380" rx="0" ry="250"><animate attributeName="rx" values="0;250;0" dur="9s" repeatCount="indefinite"></animate></ellipse>
+<ellipse cx="380" cy="380" rx="0" ry="250"><animate attributeName="rx" values="0;250;0" dur="9s" begin="-3s" repeatCount="indefinite"></animate></ellipse>
+<ellipse cx="380" cy="380" rx="0" ry="250"><animate attributeName="rx" values="0;250;0" dur="9s" begin="-6s" repeatCount="indefinite"></animate></ellipse>
+</g>
+<path d="M300 320 L 460 310 L 490 440 L 320 460 Z" stroke="#aaffee" stroke-dasharray="3 6"></path>
+<polygon points="11,0 -8,-7 -8,7" fill="#dffff8"><animateMotion dur="8s" repeatCount="indefinite" rotate="auto" path="M300 320 L 460 310 L 490 440 L 320 460 Z"></animateMotion></polygon>
+<text x="250" y="660" fill="#c9fff3" font-family="JetBrains Mono, monospace" font-size="12" letter-spacing="3">PATRULLA · GUARDIA · ATAQUE</text>
+</svg>
+
+<svg class="art" data-art="hangar" hidden width="760" height="760" viewBox="0 0 760 760" style="position: absolute; inset: 0; overflow: visible" fill="none">
+<g transform="rotate(-18 380 380)">
+<ellipse cx="380" cy="380" rx="350" ry="115" stroke="#b48cff" stroke-dasharray="2 6" opacity=".55"></ellipse>
+<circle r="4" fill="rgba(210,180,255,.5)"><animateMotion dur="7s" begin="-.25s" repeatCount="indefinite" path="M30 380 A350 115 0 1 0 730 380 A350 115 0 1 0 30 380"></animateMotion></circle>
+<circle r="3" fill="rgba(210,180,255,.3)"><animateMotion dur="7s" begin="-.5s" repeatCount="indefinite" path="M30 380 A350 115 0 1 0 730 380 A350 115 0 1 0 30 380"></animateMotion></circle>
+<path d="M20 0 L -13 -11 L -6 0 L -13 11 Z" fill="#efe4ff" stroke="#b48cff"><animateMotion dur="7s" repeatCount="indefinite" rotate="auto" path="M30 380 A350 115 0 1 0 730 380 A350 115 0 1 0 30 380"></animateMotion></path>
+</g>
+<text x="260" y="720" fill="#e2d2ff" font-family="JetBrains Mono, monospace" font-size="12" letter-spacing="3">COSMÉTICOS · SIN VENTAJA</text>
+</svg>
+
+<svg class="art" data-art="settings" hidden width="760" height="760" viewBox="0 0 760 760" style="position: absolute; inset: 0; overflow: visible" fill="none">
+<g stroke="#9fc6ff">
+<circle cx="380" cy="380" r="285" stroke-dasharray="2 10" opacity=".7"><animateTransform attributeName="transform" type="rotate" from="0 380 380" to="360 380 380" dur="40s" repeatCount="indefinite"></animateTransform></circle>
+<circle cx="380" cy="380" r="318" stroke-dasharray="44 16" opacity=".35"><animateTransform attributeName="transform" type="rotate" from="360 380 380" to="0 380 380" dur="60s" repeatCount="indefinite"></animateTransform></circle>
+<circle cx="380" cy="380" r="350" stroke-dasharray="1 5" opacity=".5"><animateTransform attributeName="transform" type="rotate" from="0 380 380" to="360 380 380" dur="90s" repeatCount="indefinite"></animateTransform></circle>
+</g>
+<g fill="#dbe8ff">
+<circle cx="380" cy="62" r="5"></circle><circle cx="698" cy="380" r="5"></circle><circle cx="380" cy="698" r="5"></circle><circle cx="62" cy="380" r="5"></circle>
+</g>
+<g fill="#dbe8ff" font-family="JetBrains Mono, monospace" font-size="12" letter-spacing="3">
+<text x="396" y="58">AUDIO</text><text x="712" y="384">VIDEO</text><text x="396" y="718">CONTROLES</text><text x="-10" y="364">RED</text>
+</g>
+</svg>
+
+<svg class="art" data-art="credits" hidden width="760" height="760" viewBox="0 0 760 760" style="position: absolute; inset: 0; overflow: visible" fill="none">
+<polyline points="230,230 520,200 600,440 420,590 180,500 230,230" stroke="rgba(246,215,154,.45)" stroke-dasharray="2 5"></polyline>
+<g fill="#fff3d6">
+<circle cx="230" cy="230" r="4"><animate attributeName="opacity" values=".4;1;.4" dur="3s" repeatCount="indefinite"></animate></circle>
+<circle cx="520" cy="200" r="4"><animate attributeName="opacity" values=".4;1;.4" dur="3.6s" repeatCount="indefinite"></animate></circle>
+<circle cx="600" cy="440" r="4"><animate attributeName="opacity" values=".4;1;.4" dur="2.7s" repeatCount="indefinite"></animate></circle>
+<circle cx="420" cy="590" r="4"><animate attributeName="opacity" values=".4;1;.4" dur="3.9s" repeatCount="indefinite"></animate></circle>
+<circle cx="180" cy="500" r="4"><animate attributeName="opacity" values=".4;1;.4" dur="3.2s" repeatCount="indefinite"></animate></circle>
+</g>
+<g fill="#fff3d6" font-family="Instrument Serif, Georgia, serif" font-style="italic" font-size="26">
+<text x="160" y="214">Hans</text><text x="534" y="190">Orlando</text><text x="614" y="446">Yamil</text><text x="434" y="614">Diego</text><text x="84" y="530">Ismael</text>
+</g>
+</svg>
+  </div>
+
+  <!-- Marca -->
+  <header class="brand">
+    <div class="eyebrow">ATLAS DE MANDO</div>
+    <h1 class="brand-title">IMPULSO STELLAR</h1>
+    <div class="brand-tagline serif">Explora, combate, defiende.</div>
+    <div class="brand-rule"></div>
+  </header>
+
+  <!-- Lista de modos -->
+  <nav class="panel panel--modes" data-ref="modesPanel" aria-label="Modos de juego">
+    <div data-ref="modeList" style="display: contents"></div>
+  </nav>
+
+  <!-- Detalle del modo elegido -->
+  <section class="panel panel--detail" data-ref="detailPanel" hidden>
+    <button class="btn back-button" type="button" data-ref="backButton">
+      <svg width="18" height="12" viewBox="0 0 18 12" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M17 6H2M6 1L1 6l5 5"></path></svg>
+      VOLVER AL ATLAS
+    </button>
+    <div class="detail-code" data-ref="detailCode"></div>
+    <h2 class="detail-name serif" data-ref="detailName"></h2>
+    <p class="detail-blurb" data-ref="detailBlurb"></p>
+    <div class="option-list" data-ref="optionList"></div>
+    <button class="btn deploy-button" type="button" data-ref="deployButton" disabled>DESPLEGAR</button>
+  </section>
+
+  <!-- Barra superior -->
+  <div class="topbar">
+    <span>RED · STELLAR TESTNET</span>
+    <button class="btn icon-button" type="button" data-ref="soundToggle">
+      <svg data-icon="on" width="18" height="16" viewBox="0 0 18 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M1 5.5h3.5L9 1.5v13l-4.5-4H1z"></path><path d="M12 5c1.2 1.6 1.2 4.4 0 6M14.5 3c2.3 2.8 2.3 7.2 0 10"></path></svg>
+      <svg data-icon="off" width="18" height="16" viewBox="0 0 18 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" hidden><path d="M1 5.5h3.5L9 1.5v13l-4.5-4H1z"></path><path d="M12 5.5l5 5M17 5.5l-5 5"></path></svg>
+    </button>
+    <button class="btn alias-badge" type="button" data-ref="aliasBadge" aria-label="Cambiar alias">
+      <span class="alias-label">PILOTO</span>
+      <span data-ref="aliasText">[TU ALIAS]</span>
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M9.5 1.5l3 3L4.5 12.5H1.5v-3z"></path></svg>
+    </button>
+    <form class="alias-form" data-ref="aliasForm" hidden>
+      <label class="alias-label" for="alias-input">ALIAS</label>
+      <input id="alias-input" class="alias-input" data-ref="aliasInput" maxlength="14" placeholder="TU NOMBRE" autocomplete="off">
+      <button class="btn alias-submit" type="submit">LISTO</button>
+    </form>
+  </div>
+
+  <!-- Ticker inferior -->
+  <footer class="ticker">
+    <span class="ticker-status" data-ref="tickerStatus"></span>
+    <span class="ticker-rule"></span>
+    <span class="ticker-hint" data-ref="tickerHint"></span>
+  </footer>
+
+</div>
+</main>
+</body>
+</html>

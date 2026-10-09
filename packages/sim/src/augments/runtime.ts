@@ -6,7 +6,8 @@ import { AUGMENT_CATALOG, AUGMENTS_BY_ID, INITIAL_AUGMENTS, type AugmentTier } f
 import { effectsFor, statsForUnit } from './effects.js';
 import { randomFor } from './random.js';
 import { knownObjectives, observeKnowledge } from '../inteligencia-enemiga/knowledge.js';
-export interface AugmentOffer { choice: number; tier: AugmentTier; cards: string[]; deadline: number; rerolls: number }
+/** `rerollLimit` defaults to 1; a campaign sector raises it for the previous sector winner. */
+export interface AugmentOffer { choice: number; tier: AugmentTier; cards: string[]; deadline: number; rerolls: number; rerollLimit?: number }
 export interface AugmentPlayer {
   unlocked: string[]; chosen: string[]; offer: AugmentOffer | null; nextChoice: number;
   pickedAt: Record<string, number>; fastBuilds: number; fastFactor: number; captureBounties: number;
@@ -23,6 +24,9 @@ export function cloneAugmentMatch(match: AugmentMatch | undefined): AugmentMatch
 }
 const TIERS: AugmentTier[] = ['silver','gold','prismatic'];
 const PLAYERS = ['p1','p2'] as const;
+/** The opening holds the clock until every player has resolved its pending offer. */
+const openingResolved = (match: AugmentMatch) => PLAYERS.every((p) => match.players[p].offer === null && match.players[p].chosen.length > 0);
+const OPENING_TICKS = 300;
 function hand(world: World, player: PlayerId, choice: number, rerolls: number, previous: string[] = []): string[] {
   const state = world.augmentMatch!.players[player];
   const tags = new Set(state.chosen.flatMap((id) => [...AUGMENTS_BY_ID.get(id)!.tags]));
@@ -46,7 +50,7 @@ function hand(world: World, player: PlayerId, choice: number, rerolls: number, p
 function offer(world: World, player: PlayerId, choice: number): void {
   const state = world.augmentMatch!.players[player];
   state.offer = { choice, tier: TIERS[choice]!, cards: hand(world,player,choice,0),
-    deadline: world.augmentMatch!.clock + (choice === 0 ? 300 : 200), rerolls: 0 };
+    deadline: world.augmentMatch!.clock + (choice === 0 ? OPENING_TICKS : 200), rerolls: 0 };
   state.nextChoice = choice + 1;
 }
 export function initializeAugments(world: World, pools: Partial<Record<PlayerId, readonly string[]>> = {}): void {
@@ -97,14 +101,14 @@ export function pickAugment(world: World, player: PlayerId, choice: unknown, id:
   const current = validOffer(world,player,choice);
   if (!current || typeof id !== 'string' || !current.cards.includes(id)) return {accepted:false,reason:'invalid_augment_pick',world};
   const next = cloneWorld(world); grantAugment(next,player,id); next.augmentMatch!.players[player].offer=null;
-  if (PLAYERS.every((p) => next.augmentMatch!.players[p].chosen.length > 0)) next.augmentMatch!.started=true;
+  if (openingResolved(next.augmentMatch!)) next.augmentMatch!.started=true;
   return {accepted:true,world:next};
 }
 export function rerollAugments(world: World, player: PlayerId, choice: unknown): AugmentResult {
   const current = validOffer(world,player,choice);
-  if (!current || current.rerolls !== 0) return {accepted:false,reason:'augment_reroll_used_or_expired',world};
+  if (!current || current.rerolls >= (current.rerollLimit ?? 1)) return {accepted:false,reason:'augment_reroll_used_or_expired',world};
   const next=cloneWorld(world); const offered=next.augmentMatch!.players[player].offer!;
-  offered.rerolls=1; offered.cards=hand(next,player,offered.choice,1,current.cards);
+  offered.rerolls=current.rerolls+1; offered.cards=hand(next,player,offered.choice,offered.rerolls,current.cards);
   return {accepted:true,world:next};
 }
 /** Returns true while the opening selection still holds the match clock. */
@@ -120,8 +124,33 @@ export function advanceAugmentClock(world: World): boolean {
       match.players[player].offer=null;
     }
   }
-  if (!match.started && PLAYERS.every((p) => match.players[p].chosen.length > 0)) match.started=true;
+  if (!match.started && openingResolved(match)) match.started=true;
   return !match.started;
+}
+export interface CampaignSectorAugments {
+  /** 0, 1 or 2: silver, gold or prismatic, the one offer this sector makes. */
+  choice: number;
+  /** Picks from earlier sectors, applied again in order before the new offer. */
+  carried: Record<PlayerId, readonly string[]>;
+  pools?: Partial<Record<PlayerId, readonly string[]>>;
+  /** The previous sector winner gets one more reroll. */
+  extraRerolls?: Partial<Record<PlayerId, number>>;
+}
+/**
+ * Campaign sectors: each one is a fresh match where the carried picks apply again and a single
+ * offer of the sector's tier holds the clock, like a match opening. No other offer follows.
+ */
+export function prepareCampaignSector(world: World, sector: CampaignSectorAugments): void {
+  initializeAugments(world, sector.pools ?? {});
+  const match = world.augmentMatch!;
+  for (const player of PLAYERS) {
+    for (const id of sector.carried[player]) grantAugment(world, player, id);
+    offer(world, player, sector.choice);
+    const state = match.players[player];
+    state.offer = { ...state.offer!, deadline: match.clock + OPENING_TICKS, rerollLimit: 1 + (sector.extraRerolls?.[player] ?? 0) };
+    state.nextChoice = TIERS.length;
+  }
+  match.started = false;
 }
 export function scheduleAugments(world: World): void {
   if (!world.augmentMatch || !world.duration) return;

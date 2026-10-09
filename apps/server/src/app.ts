@@ -5,21 +5,48 @@ import { BattlefieldRoom } from './battlefield-room';
 import { campaignRoomWith } from './campaign-room';
 import type { CampaignConfig } from './campaign/machine';
 import { AuthError, AuthService, bearerToken } from './auth';
+import { ChainRewards } from './chain-rewards';
+
+export interface AuthLimit { burst: number; refillPerSecond: number }
 
 export interface GameServerOptions {
   /** Campaign timing overrides for tests or future modes. */
   campaign?: Partial<CampaignConfig>;
   auth?: AuthService;
   authDataFile?: string | null;
+  /** Shared budget of password checks (login and registration). */
+  authLimit?: AuthLimit;
+  /** On-chain merit emblems; defaults to `STELLAR_MINTER_SECRET` from the environment. */
+  chainRewards?: ChainRewards;
+}
+
+/** 20 testers can sign in at once; past that, a flood cannot keep hashing passwords on the game loop. */
+const DEFAULT_AUTH_LIMIT: AuthLimit = { burst: 20, refillPerSecond: 2 };
+
+/** Password hashing blocks the event loop every room shares, so login and registration draw from one bucket. */
+function tokenBucket({ burst, refillPerSecond }: AuthLimit) {
+  let tokens = burst;
+  let last = Date.now();
+  return () => {
+    const now = Date.now();
+    tokens = Math.min(burst, tokens + ((now - last) / 1000) * refillPerSecond);
+    last = now;
+    if (tokens < 1) return false;
+    tokens -= 1;
+    return true;
+  };
 }
 
 export function createGameServer(options: GameServerOptions = {}) {
   const auth = options.auth ?? new AuthService(options.authDataFile === undefined
     ? (process.env.AUTH_DATA_FILE ?? './data/users.json') : options.authDataFile);
-  const credentials = (body: unknown) => body && typeof body === 'object' && !Array.isArray(body)
-    ? body as { email?: unknown; password?: unknown } : {};
-  const respond = (action: () => unknown, status = 200): Response => {
-    try { return Response.json(action(), { status }); }
+  auth.useChainRewards(options.chainRewards ?? ChainRewards.fromEnv());
+  const passwordCheck = tokenBucket(options.authLimit ?? DEFAULT_AUTH_LIMIT);
+  const limited = () => Response.json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': '1' } });
+  const fields = (body: unknown) => body && typeof body === 'object' && !Array.isArray(body)
+    ? body as { email?: unknown; password?: unknown; displayName?: unknown; address?: unknown; transaction?: unknown } : {};
+  const respond = async (action: () => unknown, status = 200): Promise<Response> => {
+    try { return Response.json(await action(), { status }); }
     catch (error) {
       if (error instanceof AuthError) return Response.json({ error: error.code }, { status: error.status });
       throw error;
@@ -49,14 +76,16 @@ export function createGameServer(options: GameServerOptions = {}) {
     },
     routes: createRouter({
       health: createEndpoint('/health', { method: 'GET' }, async () => ({
-        status: 'ok', mode: 'training', persistent: false,
+        status: 'ok', mode: 'training', persistent: auth.persistent, storage: auth.storage,
       })),
       register: createEndpoint('/auth/register', { method: 'POST' }, async (ctx) => {
-        const { email, password } = credentials(ctx.body);
-        return respond(() => auth.register(email, password), 201);
+        if (!passwordCheck()) return limited();
+        const { email, password, displayName } = fields(ctx.body);
+        return respond(() => auth.register(email, password, displayName), 201);
       }),
       login: createEndpoint('/auth/login', { method: 'POST' }, async (ctx) => {
-        const { email, password } = credentials(ctx.body);
+        if (!passwordCheck()) return limited();
+        const { email, password } = fields(ctx.body);
         return respond(() => auth.login(email, password));
       }),
       guest: createEndpoint('/auth/guest', { method: 'POST' }, async (ctx) => {
@@ -65,8 +94,28 @@ export function createGameServer(options: GameServerOptions = {}) {
       }),
       me: createEndpoint('/auth/me', { method: 'GET' }, async (ctx) =>
         respond(() => ({ user: authenticated(ctx.request?.headers.get('authorization') ?? null).user }))),
-      profile: createEndpoint('/auth/profile', {method:'GET'}, async(ctx)=>respond(()=>
-        auth.profile(authenticated(ctx.request?.headers.get('authorization') ?? null).user.id))),
+      // The progression profile plus the account's alias; the alias is not part of progression.
+      profile: createEndpoint('/auth/profile', { method: 'GET' }, async (ctx) => respond(() => {
+        const { user } = authenticated(ctx.request?.headers.get('authorization') ?? null);
+        return { ...auth.profile(user.id), displayName: user.displayName };
+      })),
+      updateProfile: createEndpoint('/auth/profile', { method: 'PUT' }, async (ctx) => respond(async () => {
+        const { user } = authenticated(ctx.request?.headers.get('authorization') ?? null);
+        return { user: await auth.updateDisplayName(user.id, fields(ctx.body).displayName) };
+      })),
+      // Wallet link: a SEP-10 challenge signed in Freighter proves the address belongs to the player.
+      walletChallenge: createEndpoint('/wallet/challenge', { method: 'POST' }, async (ctx) => respond(() => {
+        const { user } = authenticated(ctx.request?.headers.get('authorization') ?? null);
+        return auth.walletChallenge(user.id, fields(ctx.body).address);
+      })),
+      walletLink: createEndpoint('/wallet/link', { method: 'POST' }, async (ctx) => respond(async () => {
+        const { user } = authenticated(ctx.request?.headers.get('authorization') ?? null);
+        return { user: await auth.linkWallet(user.id, fields(ctx.body).transaction) };
+      })),
+      walletUnlink: createEndpoint('/wallet', { method: 'DELETE' }, async (ctx) => respond(async () => {
+        const { user } = authenticated(ctx.request?.headers.get('authorization') ?? null);
+        return { user: await auth.unlinkWallet(user.id) };
+      })),
       logout: createEndpoint('/auth/logout', { method: 'POST' }, async (ctx) => {
         try {
           const { token } = authenticated(ctx.request?.headers.get('authorization') ?? null);

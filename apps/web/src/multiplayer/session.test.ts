@@ -1,14 +1,16 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { Client } from '@colyseus/sdk';
 import { createGameServer } from '../../../server/src/app';
+import { createMatchWorld } from '@impulso/sim';
 import { AuthService } from '../../../server/src/auth';
 import { createMultiplayerSession, type MultiplayerSession, type MultiplayerSnapshot } from './session';
 
 const port = 31_000 + Math.floor(Math.random() * 900);
 const url = `http://127.0.0.1:${port}`;
 const auth = new AuthService();
-const tokens = ['ana', 'beto', 'carla'].map((name) => auth.register(`${name}-session@example.com`, 'secret-1234').token);
+const tokens = await Promise.all(['ana', 'beto', 'carla']
+  .map(async (name) => (await auth.register(`${name}-session@example.com`, 'secret-1234')).token));
 const server = createGameServer({ auth, campaign: {
+  createSector: (_sector, seed) => createMatchWorld('sector-01', 'skirmish', seed),
   countdownMs: 100, reconnectWindowMs: 3_000, resumeCountdownMs: 150,
 } });
 const sessions: MultiplayerSession[] = [];
@@ -39,6 +41,16 @@ function waitFor(session: MultiplayerSession, accept: (snapshot: MultiplayerSnap
     const timeout = setTimeout(() => { off(); reject(new Error(`Timed out: ${JSON.stringify(session.getSnapshot().phase)}`)); }, 4_000);
   });
 }
+/** Both players take the first card of the sector opening and the sector starts running. */
+async function openSector(...players: MultiplayerSession[]) {
+  for (const player of players) {
+    const offer = player.getSnapshot().view!.augments!.offer!;
+    player.augmentPick(offer.choice, offer.cards[0]!.id);
+  }
+  await Promise.all(players.map((player) => waitFor(player, (value) => value.view?.augments?.started === true)));
+}
+const guard = (squadId: string) => ({ type: 'stance', squadId, stance: 'guard' });
+/** The server injects a small fixture; clients use the same default as the campaign lobby. */
 async function pair(storage?: StorageMemory) {
   const host = session(storage);
   const guest = session();
@@ -48,20 +60,22 @@ async function pair(storage?: StorageMemory) {
   await waitFor(guest, (snapshot) => snapshot.phase?.phase === 'lobby');
   host.ready(); guest.ready();
   await Promise.all([host, guest].map((client) => waitFor(client, (snapshot) =>
-    snapshot.phase?.phase === 'sector' && snapshot.view !== null)));
+    snapshot.phase?.phase === 'sector' && snapshot.view?.augments?.offer !== undefined)));
+  await openSector(host, guest);
   return { host, guest };
 }
 
 describe('shared multiplayer session over real transport', () => {
-  it('retains admission, phase, map and private views before the gameplay adapter mounts', async () => {
+  it('retains admission, phase and private match views before the gameplay adapter mounts', async () => {
     const { host, guest } = await pair();
     const first = host.getSnapshot();
-    expect(first).toMatchObject({ connection: 'online', phase: { playerId: 'p1', phase: 'sector', renderMap: 'sector-01' } });
+    expect(first).toMatchObject({ connection: 'online', phase: { playerId: 'p1', phase: 'sector', renderMap: 'espiral' } });
     expect(guest.getSnapshot().phase?.playerId).toBe('p2');
-    expect(first.map).toMatchObject({ mapId: first.view!.mapId, width: first.view!.width, height: first.view!.height });
+    expect(first.view).toMatchObject({ protocolVersion: 3, mode: 'training', playerId: 'p1' });
     expect(first.view?.players.p2).not.toHaveProperty('lastSequence');
+    expect(first.view?.players.p2).not.toHaveProperty('metal');
     const ship = first.view!.squads.find((squad) => squad.ownerId === 'p1')!;
-    host.command({ type: 'move_group', squadIds: [ship.id], x: ship.x, y: ship.y });
+    host.command(guard(ship.id));
     expect((await waitFor(host, (value) => value.acknowledgedSequence > 0)).acknowledgedSequence).toBe(1);
     expect(host.getSnapshot()).toBe(host.getSnapshot());
   });
@@ -70,13 +84,13 @@ describe('shared multiplayer session over real transport', () => {
     const storage = new StorageMemory();
     const { host, guest } = await pair(storage);
     const ship = host.getSnapshot().view!.squads.find((squad) => squad.ownerId === 'p1')!;
-    host.command({ type: 'stop', squadIds: [ship.id] });
+    host.command(guard(ship.id));
     await waitFor(host, (value) => value.acknowledgedSequence === 1);
     host.destroy();
     expect(storage.values.size).toBe(1);
     const paused = await waitFor(guest, (value) => value.phase?.pause !== null && value.phase?.pause !== undefined);
     const tick = paused.view!.tick;
-    guest.command({ type: 'stop', squadIds: ['p2-interceptor'] });
+    guest.command(guard('p2-interceptor'));
     expect(guest.getSnapshot().acknowledgedSequence).toBe(0);
     const restored = session(storage);
     expect(await restored.restore()).toBe(true);
@@ -84,12 +98,14 @@ describe('shared multiplayer session over real transport', () => {
     expect(resumed.view!.tick).toBeGreaterThanOrEqual(tick);
     expect(resumed.acknowledgedSequence).toBe(1);
     await waitFor(restored, (value) => value.phase?.resumeInMs === null && value.phase.pause === null);
-    restored.command({ type: 'stop', squadIds: [ship.id] });
+    restored.command(guard(ship.id));
     expect((await waitFor(restored, (value) => value.acknowledgedSequence === 2)).acknowledgedSequence).toBe(2);
     await restored.leave();
     expect(storage.values.size).toBe(0);
     expect((await waitFor(guest, (value) => value.phase?.phase === 'results')).phase?.result)
       .toMatchObject({ winner: 'p2', reason: 'forfeit' });
+    // An instant forfeit pays nothing, but the reward still arrives so the screen can say so.
+    expect((await waitFor(guest, (value) => value.reward !== null)).reward).toMatchObject({ xpGained: 0 });
   });
 
   it('rejects authentication and occupied seats with useful errors without saving credentials', async () => {
@@ -134,18 +150,18 @@ describe('shared multiplayer session over real transport', () => {
     const storage = new StorageMemory();
     const { host, guest } = await pair(storage);
     const ship = host.getSnapshot().view!.squads.find((squad) => squad.ownerId === 'p1')!;
-    host.command({ type: 'stop', squadIds: [ship.id] });
+    host.command(guard(ship.id));
     await waitFor(host, (value) => value.acknowledgedSequence === 1);
     // Terminate the actual server socket, leaving the SDK transport and retry implementation intact.
     const transport = server.transport as unknown as { wss: { clients: Set<{ terminate(): void }> } };
     const reconnecting = waitFor(host, (value) => value.connection === 'reconnecting');
     [...transport.wss.clients][0]!.terminate();
     await reconnecting;
-    host.command({ type: 'stop', squadIds: [ship.id] });
+    host.command(guard(ship.id));
     await waitFor(host, (value) => value.connection === 'online');
     expect(host.getSnapshot().acknowledgedSequence).toBe(1);
     await waitFor(host, (value) => value.phase?.resumeInMs === null && value.phase.pause === null);
-    host.command({ type: 'stop', squadIds: [ship.id] });
+    host.command(guard(ship.id));
     await waitFor(host, (value) => value.acknowledgedSequence === 2);
     host.destroy();
     await waitFor(guest, (value) => value.phase?.pause?.by === 'p1');
@@ -154,19 +170,24 @@ describe('shared multiplayer session over real transport', () => {
     expect((await waitFor(restored, (value) => value.connection === 'online')).acknowledgedSequence).toBe(2);
   });
 
-  it('consentedly exits an unsupported map instead of drawing a different battlefield', async () => {
-    const legacy = await new Client(url).create('campaign', { protocolVersion: 2, name: 'Ana', token: tokens[0] });
-    legacy.reconnection.enabled = false;
-    legacy.onMessage('*', () => {});
-    const storage = new StorageMemory();
-    const guest = session(storage);
-    try {
-      await guest.join(legacy.roomId, 'Beto', tokens[1]!);
-      const result = await waitFor(guest, (value) => value.connection === 'offline');
-      expect(result.roomId).toBeNull();
-      expect(result.error).toMatch(/mapa.*disponible/i);
-      expect(storage.values.size).toBe(0);
-    } finally { await legacy.leave(); }
+  it('sends augment rerolls and picks only for the offer on screen', async () => {
+    const host = session();
+    const guest = session();
+    await host.create('Ana', tokens[0]!);
+    await waitFor(host, (snapshot) => snapshot.phase?.phase === 'lobby');
+    await guest.join(host.getSnapshot().roomId!, 'Beto', tokens[1]!);
+    await waitFor(guest, (snapshot) => snapshot.phase?.phase === 'lobby');
+    host.ready(); guest.ready();
+    const opening = await waitFor(host, (value) => value.view?.augments?.offer !== undefined && value.view.augments.offer !== null);
+    const first = opening.view!.augments!.offer!;
+    host.augmentPick(first.choice + 1, first.cards[0]!.id);
+    host.augmentReroll(first.choice);
+    const rerolled = await waitFor(host, (value) => value.view?.augments?.offer?.rerolls === 1);
+    expect(rerolled.view!.augments!.offer!.cards.map((card) => card.id)).not.toEqual(first.cards.map((card) => card.id));
+    host.command(guard('p1-interceptor'));
+    expect(host.getSnapshot().acknowledgedSequence).toBe(0);
+    await openSector(host, guest);
+    expect(host.getSnapshot().view!.augments!.own).toHaveLength(1);
   });
 
   it('settles an exit during reconnection and cancels retries without reconnecting a ghost player', async () => {

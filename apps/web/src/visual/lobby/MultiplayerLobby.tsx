@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
+import { DEFAULT_CAMPAIGN_MAP, PLAYABLE_MAPS, type PlayableMapId } from '@impulso/input';
 import type { MultiplayerSession } from '../../multiplayer/session';
 import { sessionToken } from '../../auth/client';
 import { useSpaceSound } from '../../login/sound';
@@ -56,8 +57,6 @@ const messages = {
     countdownHint: 'Ambos comandantes están listos. La partida está por comenzar.',
     operationBrief: 'Campo de batalla',
     map: 'Mapa',
-    mapName: 'Sector 01',
-    mapHint: 'Rampas y meseta central. Dos flotas, un mismo campo de batalla.',
     format: 'Formato',
     formatValue: '1 contra 1',
     seats: 'Asignación de flota',
@@ -122,8 +121,6 @@ const messages = {
     countdownHint: 'Both commanders are ready. The match is about to begin.',
     operationBrief: 'Battlefield',
     map: 'Map',
-    mapName: 'Sector 01',
-    mapHint: 'Ramps and a central plateau. Two fleets on the same battlefield.',
     format: 'Format',
     formatValue: '1 versus 1',
     seats: 'Fleet assignment',
@@ -177,12 +174,14 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
   const getSnapshot = useCallback(() => session.getSnapshot(), [session]);
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const [roomName, setRoomName] = useState(alias);
+  const [map, setMap] = useState<PlayableMapId>(DEFAULT_CAMPAIGN_MAP);
   const validRoomName = /^[\p{L}\p{N} _.-]{1,24}$/u.test(roomName.trim());
   const [joinCode, setJoinCode] = useState(initialJoinCode);
   const [pending, setPending] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const phase = snapshot.phase;
+  const selectedMap = PLAYABLE_MAPS.find((option) => option.id === (phase?.renderMap ?? map)) ?? PLAYABLE_MAPS[0];
   const joined = Boolean(snapshot.roomId);
   const busy = pending || leaving || snapshot.connection === 'connecting' || snapshot.connection === 'reconnecting';
   const ownSeat = phase ? phase.seats[phase.playerId] : null;
@@ -219,7 +218,7 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
     setPending(true);
     try {
       const activeToken = token || sessionToken() || '';
-      if (mode === 'create') await session.create(roomName.trim(), activeToken);
+      if (mode === 'create') await session.create(roomName.trim(), activeToken, map);
       else await session.join(joinCode.trim(), roomName.trim(), activeToken);
     } catch {
       // The session publishes the connection error for this operation.
@@ -300,16 +299,28 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
                 <i className="vi-map-preview__blue" />
                 <i className="vi-map-preview__red" />
               </div>
-              <span>{copy.mapName}</span>
+              <span>{selectedMap.name[locale]}</span>
             </div>
-            <p className="vi-multiplayer-map-hint">{copy.mapHint}</p>
+            <p className="vi-multiplayer-map-hint">{selectedMap.description[locale]}</p>
             <dl className="vi-briefing__data">
-              <div><dt>{copy.map}</dt><dd>{copy.mapName}</dd></div>
+              <div><dt>{copy.map}</dt><dd>{selectedMap.name[locale]}</dd></div>
               <div><dt>{copy.format}</dt><dd>{copy.formatValue}</dd></div>
               <div><dt>{copy.seats}</dt><dd>{copy.seatsValue}</dd></div>
               <div><dt>{copy.objective}</dt><dd>{copy.objectiveValue}</dd></div>
             </dl>
             <p className="vi-multiplayer-rules">{copy.rules}</p>
+            {mode === 'create' && !joined && (
+              <fieldset className="vi-difficulty vi-map-select" disabled={busy}>
+                <legend>{copy.map}</legend>
+                {PLAYABLE_MAPS.map((option) => (
+                  <button key={option.id} type="button" className={map === option.id ? 'is-selected' : ''}
+                    aria-pressed={map === option.id} onClick={() => { sound.playSelect(); setMap(option.id); }}>
+                    <strong>{option.name[locale]}</strong>
+                    <small>{option.description[locale]}</small>
+                  </button>
+                ))}
+              </fieldset>
+            )}
           </section>
 
           <section className="vi-lobby-card vi-room vi-multiplayer-room" aria-labelledby="multiplayer-room-title">
@@ -439,7 +450,7 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
 
       <footer className="vi-screen__footer">
         <span>{copy.commander} // {alias.toUpperCase()}</span>
-        <span>{copy.formatValue} // {copy.mapName}</span>
+        <span>{copy.formatValue} // {selectedMap.name[locale]}</span>
       </footer>
     </main>
   );

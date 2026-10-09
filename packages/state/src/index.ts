@@ -1,6 +1,6 @@
 import { AUGMENTS_BY_ID, DURATION_MODES, effectsFor, effectiveFleetCap, effectiveBaseDamage, visionSources, isConcealed, statsForUnit, baseUpgradeCost, metalIncomeRate, captureDuration, type Augment } from '@impulso/sim';
 import { baseArmor, baseDefense, type ExtraModule, type ModuleKind, type ModuleSpec } from '@impulso/sim';
-import { distance, statsFor, moveInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
+import { distance, statsFor, marchInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
 import { weaponView, type WeaponView } from './weapons.js';
 export { UNIT_STATS, damageAgainst, findPath } from '@impulso/sim';
 export type { UnitKind } from '@impulso/sim';
@@ -23,7 +23,7 @@ export interface MatchLobbyView {
 }
 export interface AugmentView {
   started: boolean; own: AugmentCardView[]; rival: AugmentCardView[]; nextChoiceTick: number | null;
-  offer: {choice:number;tier:Augment['tier'];cards:AugmentCardView[];remainingSeconds:number;rerolls:number} | null;
+  offer: {choice:number;tier:Augment['tier'];cards:AugmentCardView[];remainingSeconds:number;rerolls:number;rerollLimit:number} | null;
 }
 export interface PlayerView {
   schemaVersion: 1;
@@ -35,8 +35,6 @@ export interface PlayerView {
   width: number;
   height: number;
   obstacles: Position[];
-  walkable?: boolean[];
-  level?: number[];
   rules: Rules;
   unitStats?: Record<UnitKind, ShipStats>;
   augments?: AugmentView;
@@ -50,16 +48,20 @@ export interface PlayerView {
   enemyBase?: {x:number;y:number;visible:boolean;hp?:number;maxHp?:number};
   productionForbidden?: UnitKind[];
   /** Metal and the hangar queue are private to their owner. */
-  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; baseUpgrades?: { damage: number; capacity: number }; production?: { kind: UnitKind; remainingTicks: number } | null }>;
+  /** `lastSequence`: owner only, so a restored client keeps numbering its orders after the server's last accepted one. */
+  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; lastSequence?: number; baseUpgrades?: { damage: number; capacity: number }; production?: { kind: UnitKind; remainingTicks: number } | null }>;
   squads: VisibleSquad[];
   guardians: Guardian[];
-  nodes: ResourceNode[];
+  /** `fraction`: each side's capture progress from 0 to 1, with its own capture time. */
+  nodes: (ResourceNode & { fraction?: Record<PlayerId, number> })[];
   core: World['core'];
   visibleCells: Position[];
   winner: PlayerId | null;
   metalRate?:number;
   coreFraction?:number;
   reward?: import('@impulso/sim').MatchReward;
+  /** Announced satellite falls. Public: the warning crosses the whole sky. */
+  satellites?: import('@impulso/sim').SatelliteFall[];
 }
 /** Fresh whitelist snapshot. Never send the authoritative world to a player. */
 export function viewFor(world: World, playerId: PlayerId): PlayerView {
@@ -75,6 +77,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     p2: { id: 'p2', base: { ...world.players.p2.base } },
   };
   players[playerId].metal = world.players[playerId].metal;
+  players[playerId].lastSequence = world.players[playerId].lastSequence;
   players[playerId].baseUpgrades = { ...(world.players[playerId].baseUpgrades ?? { damage: 0, capacity: 0 }) };
   const order = world.production[playerId];
   players[playerId].production = order ? { kind: order.kind, remainingTicks: Math.max(0, order.readyTick - world.tick) } : null;
@@ -88,7 +91,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     coreFraction:Math.max(...(['p1','p2'] as const).map(p=>world.core.progress[p]/captureDuration(world,p,world.rules.coreCaptureTicks,true))),
     augments: match && augmentPlayer ? {started:match.started,own:augmentPlayer.chosen.map(card),rival:match.players[rivalId].chosen.map(card),
       nextChoiceTick:world.duration && augmentPlayer.nextChoice<3 ? DURATION_MODES[world.duration].choices[augmentPlayer.nextChoice]! : null,
-      offer:offer ? {choice:offer.choice,tier:offer.tier,cards:offer.cards.map(card),remainingSeconds:Math.max(0,Math.ceil((offer.deadline-match.clock)/world.rules.tickRate)),rerolls:offer.rerolls} : null} : undefined,
+      offer:offer ? {choice:offer.choice,tier:offer.tier,cards:offer.cards.map(card),remainingSeconds:Math.max(0,Math.ceil((offer.deadline-match.clock)/world.rules.tickRate)),rerolls:offer.rerolls,rerollLimit:offer.rerollLimit ?? 1} : null} : undefined,
     chart:augmentPlayer?.chart ? {nodes:augmentPlayer.chart.nodes.map((p)=>({...p})),guardians:augmentPlayer.chart.guardians.map((p)=>({...p}))} : undefined,
     base:{damage:effectiveBaseDamage(world,playerId)+baseDefense(world,playerId).damage,range:Math.max(baseDefense(world,playerId).range,4),fleetCap:effectiveFleetCap(world,playerId),upgradeCosts:{damage:baseUpgradeCost('damage',world.players[playerId].baseUpgrades),capacity:baseUpgradeCost('capacity',world.players[playerId].baseUpgrades)},
       ...(world.baseRules && own.structure && own.modules ? {
@@ -101,7 +104,6 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     productionForbidden:effectsFor(world,playerId).flatMap((e)=>e.hook==='no-production'?[e.kind]:[]),
     schemaVersion: 1, mode: 'training', tick: world.tick, playerId, duration: world.duration, suddenDeath: world.suddenDeath,
     width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })),
-    ...(world.surface ? { walkable: [...world.surface.walkable], level: [...world.surface.level] } : {}),
     rules: { ...world.rules }, players,
     unitStats: Object.fromEntries(['explorer', 'interceptor', 'frigate', 'bomber'].map((kind) => [kind, statsFor(world, playerId, kind as UnitKind)])) as Record<UnitKind, ShipStats>,
     squads: world.squads.filter((unit) => unit.ownerId === playerId || (unit.hp > 0 && visible(unit) && !isConcealed(world,unit))).map((unit) => {
@@ -112,7 +114,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
       const publicUnit = {
         id: unit.id, ownerId: unit.ownerId, kind: unit.kind,
         x: unit.x, y: unit.y, hp: disguised?unit.hp/unit.maxHp*maxHp:unit.hp, maxHp, damage: stats.damage,
-        stats, moveTicks: moveInterval(world, unit.ownerId, unit.kind),
+        stats, moveTicks: marchInterval(world, unit),
         ...weaponView(unit, stats, world.tick, visible),
       };
       return unit.ownerId === playerId
@@ -129,6 +131,9 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     nodes: world.nodes.filter(visible).map((node) => ({
       id: node.id, kind: node.kind, guardianId: node.guardianId, x: node.x, y: node.y,
       ownerId: node.ownerId, progress: { p1: node.progress.p1, p2: node.progress.p2 },
+      fraction: { p1: node.progress.p1 / captureDuration(world, 'p1', world.rules.nodeCaptureTicks, false),
+        p2: node.progress.p2 / captureDuration(world, 'p2', world.rules.nodeCaptureTicks, false) },
+      ...(node.radius !== undefined ? { radius: node.radius } : {}),
       ...(node.activeAt !== undefined && node.activeAt > world.tick ? { activeAt: node.activeAt } : {}),
     })),
     // The central objective timer and capture score are public rules.
@@ -137,6 +142,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
       open: world.core.open, progress: { p1: world.core.progress.p1, p2: world.core.progress.p2 },
     },
     visibleCells, winner: world.winner,
+    ...(world.satellites ? { satellites: world.satellites.falls.map((fall) => ({ ...fall })) } : {}),
   };
 }
 

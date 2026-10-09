@@ -1,0 +1,15 @@
+{
+  "key": "musica-iron-vanguard",
+  "slot": "Music",
+  "family": "Collection",
+  "name": {
+    "es": "Iron Vanguard",
+    "en": "Iron Vanguard"
+  },
+  "description": {
+    "es": "Pista de combate para tus partidas.",
+    "en": "Battle track for your matches."
+  },
+  "image": "/cosmetics/img/musica-iron-vanguard.svg",
+  "cosmeticOnly": true
+}

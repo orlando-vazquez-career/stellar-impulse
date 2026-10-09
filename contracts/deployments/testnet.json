@@ -1,12 +1,12 @@
 {
   "network": "testnet",
   "passphrase": "Test SDF Network ; September 2015",
-  "contractId": "CCLRN6UTKQ7NLZTDSBDSPCEKQ5JBVEUYQUDF3FDBCXMWJ6E7HXYNHEKD",
-  "contractVersion": 3,
-  "wasmSha256": "bbc8102924c36d3f24e6bbf6c084084affc4ebe48cf9fa86c089b130019e175a",
-  "deployTx": "504e4b4b8c64771a1a264bf75a590f1f79611b6e5c47b7e55705d87430b3785b",
-  "commit": "844432208ca63b9548a904016458a426b0564026",
-  "deployedAt": "2026-09-29T20:45:41.118Z",
+  "contractId": "CBKQMFOSP2RFRXL6KQH3VTLVOKJCUU6K3XJLRNEUJHJJM7AZT2JSLA6L",
+  "contractVersion": 4,
+  "wasmSha256": "f049f33ff6c800f7263260b2ef9399aecff490e1c90e658bd4a771d15f8603a4",
+  "deployTx": "afcf66e21b1338c86c2f7191b12d6e82f33c7609f6660171b52c8728c6bf02c3",
+  "commit": "6a18b1e",
+  "deployedAt": "2026-10-09T03:22:16.970Z",
   "paymentToken": {
     "asset": "native XLM",
     "sac": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
@@ -52,10 +52,38 @@
       "transferable": false,
       "supplyCap": 0,
       "priceStroops": "0"
+    },
+    {
+      "id": 5,
+      "key": "voz-analista",
+      "slot": "Announcer",
+      "family": "Collection",
+      "transferable": true,
+      "supplyCap": 0,
+      "priceStroops": "40000000"
+    },
+    {
+      "id": 6,
+      "key": "musica-gravity-final-path",
+      "slot": "Music",
+      "family": "Collection",
+      "transferable": true,
+      "supplyCap": 0,
+      "priceStroops": "20000000"
     }
   ],
+  "marketplace": {
+    "contractId": "CDB77C2EVQFHI6DNOK7Q7FZNJ6OMRRONMS5EI5BLIKV3UMENYE7NQ53C",
+    "contractVersion": 1,
+    "wasmSha256": "d753d8b942aec25dba3e21caf05fa89a489a0bc309fcec0289cfe8e5d2fd75b0",
+    "deployTx": "81242bddac5b39bad3a355a633564d138e4caa142b81b79c4c1418936c653c72",
+    "feeBps": 500,
+    "feeRecipient": "GBYQV67XYIRS4XLLEH5I7X6SOFQGHSDXTPQ4UHBUNYOVKEOVA3NTQ7GR",
+    "explorer": "https://stellar.expert/explorer/testnet/contract/CDB77C2EVQFHI6DNOK7Q7FZNJ6OMRRONMS5EI5BLIKV3UMENYE7NQ53C"
+  },
   "smoke": {
     "player": "GDTADSZTQTR75MTDR5CNXSE2AAJFFLAZVYEIXGOJXIQLUV4DHCTBMR65",
+    "buyer": "GCFFOSG6NUZJMAJRPFT7HVTBBEGF2PSCDP5TGCELIWOSD67YMYNHF4WX",
     "boughtToken": 1,
     "grantedToken": 2,
     "duplicateGrantRejected": true,
@@ -63,7 +91,14 @@
       2,
       1
     ],
-    "hasClass2": true
+    "hasClass2": true,
+    "marketSale": {
+      "listingId": 1,
+      "price": "20000000",
+      "fee": "1000000",
+      "sellerReceived": "16417977",
+      "newOwner": "GCFFOSG6NUZJMAJRPFT7HVTBBEGF2PSCDP5TGCELIWOSD67YMYNHF4WX"
+    }
   },
-  "explorer": "https://stellar.expert/explorer/testnet/contract/CCLRN6UTKQ7NLZTDSBDSPCEKQ5JBVEUYQUDF3FDBCXMWJ6E7HXYNHEKD"
+  "explorer": "https://stellar.expert/explorer/testnet/contract/CBKQMFOSP2RFRXL6KQH3VTLVOKJCUU6K3XJLRNEUJHJJM7AZT2JSLA6L"
 }

@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client, type Room } from '@colyseus/sdk';
-import { CAMPAIGN_PROTOCOL_VERSION } from '@impulso/input';
+import { BATTLEFIELD_PROTOCOL_VERSION } from '@impulso/input';
 import { createGameServer } from './app.js';
 
 const PORT = 32_000 + Math.floor(Math.random() * 800);
 const URL = `http://127.0.0.1:${PORT}`;
-const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
+const envelope = (body: unknown) => ({ protocolVersion: BATTLEFIELD_PROTOCOL_VERSION, body });
 const server = createGameServer();
 
 beforeAll(async () => { await server.listen(PORT, '127.0.0.1'); });
@@ -30,7 +30,7 @@ describe('battlefield room', () => {
   it('publishes the Sector 01 map and accepts only versioned authoritative commands', async () => {
     const client = new Client(URL);
     const room = await client.joinOrCreate('battlefield', {
-      protocolVersion: CAMPAIGN_PROTOCOL_VERSION,
+      protocolVersion: BATTLEFIELD_PROTOCOL_VERSION,
       name: 'Ana',
     });
     room.reconnection.enabled = false;
@@ -67,8 +67,8 @@ describe('battlefield room', () => {
   it('forfeits the match when a connected player leaves', async () => {
     const host = new Client(URL);
     const guest = new Client(URL);
-    const a = await host.joinOrCreate('battlefield', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name: 'Ana' });
-    const b = await guest.joinById(a.roomId, { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name: 'Beto' });
+    const a = await host.joinOrCreate('battlefield', { protocolVersion: BATTLEFIELD_PROTOCOL_VERSION, name: 'Ana' });
+    const b = await guest.joinById(a.roomId, { protocolVersion: BATTLEFIELD_PROTOCOL_VERSION, name: 'Beto' });
     a.reconnection.enabled = false;
     b.reconnection.enabled = false;
     a.onMessage('view', () => undefined);
@@ -91,7 +91,7 @@ describe('battlefield room', () => {
   it('starts the authoritative tick after one client completes the ready handshake', async () => {
     const client = new Client(URL);
     const room = await client.joinOrCreate('battlefield', {
-      protocolVersion: CAMPAIGN_PROTOCOL_VERSION,
+      protocolVersion: BATTLEFIELD_PROTOCOL_VERSION,
       name: 'Demo',
     });
     room.reconnection.enabled = false;
@@ -110,7 +110,7 @@ describe('battlefield room', () => {
   it('moves a ship from a high-level command and publishes the authoritative position', async () => {
     const client = new Client(URL);
     const room = await client.joinOrCreate('battlefield', {
-      protocolVersion: CAMPAIGN_PROTOCOL_VERSION,
+      protocolVersion: BATTLEFIELD_PROTOCOL_VERSION,
       name: 'Mover',
     });
     room.reconnection.enabled = false;

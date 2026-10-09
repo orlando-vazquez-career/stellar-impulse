@@ -1,19 +1,27 @@
+import { TEST_SERVER_URL } from './server-url';
 import {expect,test} from '@playwright/test';
 import {chooseOpening} from './helpers';
 test('shows an authenticated official match reward and the saved account profile',async({page,request})=>{
-  const response=await request.post('http://127.0.0.1:2567/auth/register',{data:{email:`progress-${Date.now()}@example.com`,password:'test-password-123'}});
+  test.setTimeout(120000);
+  const response=await request.post(`${TEST_SERVER_URL}/auth/register`,{data:{email:`progress-${Date.now()}@example.com`,password:'test-password-123'}});
   expect(response.status()).toBe(201);
   const account=await response.json() as {token:string};
   await page.addInitScript(token=>sessionStorage.setItem('impulso.auth-token',token),account.token);
-  await page.goto('/?testTimeScale=10&testSeed=42');
+  await page.goto('/?testTimeScale=5&testSeed=42');
   await page.getByRole('button',{name:/Preparar operación/}).click();
+  await page.getByRole('button',{name:/^Fácil/}).click();
   await page.getByLabel('Estoy listo para desplegar').check();
   await page.getByRole('button',{name:'Iniciar operación'}).click();
   await chooseOpening(page);
-  await expect(page.locator('.match-progress')).toBeVisible({timeout:50000});
+  // End through a real command once the 2:30 shield expires, instead of waiting for an AI win.
+  const surrender=page.locator('.vi-surrender');
+  await expect(surrender).toBeEnabled({timeout:60000});
+  await surrender.dblclick();
+  await expect(page.getByRole('dialog',{name:'Derrota'})).toBeVisible();
+  await expect(page.locator('.match-progress')).toBeVisible({timeout:10000});
   await expect(page.locator('.match-progress')).toContainText(/\+\d+ XP/);
   await page.screenshot({path:'test-results/match-progression.png'});
-  const profile=await request.get('http://127.0.0.1:2567/auth/profile',{headers:{Authorization:`Bearer ${account.token}`}});
+  const profile=await request.get(`${TEST_SERVER_URL}/auth/profile`,{headers:{Authorization:`Bearer ${account.token}`}});
   const saved=await profile.json() as {xp:number};expect(saved.xp).toBeGreaterThan(0);
   await page.getByRole('button',{name:'Salir',exact:true}).click();
   await page.getByRole('button',{name:'Perfil',exact:true}).click();

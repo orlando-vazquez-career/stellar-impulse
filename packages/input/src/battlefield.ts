@@ -1,3 +1,5 @@
+import { FORMATION_KINDS, MAX_GROUP_UNITS, type MoveFormationCommand } from './index.js';
+
 /** Serializable battlefield intentions. The server owns all game outcomes. */
 export interface MoveGroupCommand {
   type: 'move_group';
@@ -20,7 +22,7 @@ export interface AttackGroupCommand {
   targetId: string;
 }
 
-export type BattlefieldCommand = MoveGroupCommand | StopCommand | AttackGroupCommand;
+export type BattlefieldCommand = MoveGroupCommand | MoveFormationCommand | StopCommand | AttackGroupCommand;
 export type BattlefieldParseResult =
   | { ok: true; command: BattlefieldCommand }
   | { ok: false; reason: 'invalid_command' };
@@ -44,7 +46,7 @@ function dataFields(value: unknown, keys: readonly string[]): Record<string, unk
 function squadIds(value: unknown): string[] | null {
   if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return null;
   const length = Object.getOwnPropertyDescriptor(value, 'length')?.value;
-  if (typeof length !== 'number' || length < 1 || length > 16) return null;
+  if (typeof length !== 'number' || length < 1 || length > MAX_GROUP_UNITS) return null;
   if (Reflect.ownKeys(value).length !== length + 1) return null;
   const ids: string[] = [];
   const seen = new Set<string>();
@@ -61,15 +63,17 @@ function squadIds(value: unknown): string[] | null {
 /** Strict validation at the JSON boundary. No coercion or extra properties. */
 export function parseBattlefieldCommand(value: unknown): BattlefieldParseResult {
   try {
-    const header = dataFields(value, ['type', 'seq', 'squadIds', 'x', 'y']) ??
+    const header = dataFields(value, ['type', 'seq', 'squadIds', 'x', 'y', 'formation']) ??
+      dataFields(value, ['type', 'seq', 'squadIds', 'x', 'y']) ??
       dataFields(value, ['type', 'seq', 'squadIds', 'targetId']) ??
       dataFields(value, ['type', 'seq', 'squadIds']);
     if (!header) return INVALID;
     const { type, seq } = header;
-    if ((type !== 'move_group' && type !== 'stop' && type !== 'attack_group') ||
+    if ((type !== 'move_group' && type !== 'move_formation' && type !== 'stop' && type !== 'attack_group') ||
       typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 1) return INVALID;
     const ids = squadIds(header.squadIds);
     if (!ids) return INVALID;
+    if ((type === 'move_formation') !== ('formation' in header)) return INVALID;
     if (type === 'stop') {
       if ('x' in header || 'y' in header) return INVALID;
       return { ok: true, command: { type, seq, squadIds: ids } };
@@ -81,6 +85,11 @@ export function parseBattlefieldCommand(value: unknown): BattlefieldParseResult 
     const { x, y } = header;
     if (typeof x !== 'number' || !Number.isSafeInteger(x) || x < 0 ||
       typeof y !== 'number' || !Number.isSafeInteger(y) || y < 0) return INVALID;
+    if (type === 'move_formation') {
+      const formation = header.formation;
+      if (typeof formation !== 'string' || !(FORMATION_KINDS as readonly string[]).includes(formation)) return INVALID;
+      return { ok: true, command: { type, seq, squadIds: ids, x, y, formation: formation as MoveFormationCommand['formation'] } };
+    }
     return { ok: true, command: { type, seq, squadIds: ids, x, y } };
   } catch {
     return INVALID;

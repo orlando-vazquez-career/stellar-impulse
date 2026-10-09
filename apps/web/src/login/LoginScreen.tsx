@@ -13,6 +13,8 @@ export interface LoginScreenProps {
   onAliasChange?: (alias: string) => void;
   onContinueGuest?: (alias: string) => void;
   onLogin?: (email: string, password: string) => Promise<void>;
+  /** Si existe, el panel ofrece "Crear cuenta" junto a "Iniciar sesión". */
+  onRegister?: (email: string, password: string, alias: string) => Promise<void>;
   busy?: boolean;
   notice?: string;
   onCreateTraining?: (alias: string) => void;
@@ -27,7 +29,7 @@ export interface LoginScreenProps {
 /**
  * Puerta de entrada principal del juego: la nave ardiendo en primer plano,
  * asteroides detrás, y el panel-holograma cyberpunk del login a la derecha.
- * Ocupa el viewport completo e inicia toda la experiencia de Impulso Stellar.
+ * Ocupa el viewport completo e inicia toda la experiencia de Stellar Impulse.
  */
 export function LoginScreen(props: LoginScreenProps) {
   const {
@@ -35,6 +37,7 @@ export function LoginScreen(props: LoginScreenProps) {
     onAliasChange,
     onContinueGuest,
     onLogin,
+    onRegister,
     busy = false,
     notice = '',
     onCreateTraining = () => {},
@@ -108,6 +111,7 @@ export function LoginScreen(props: LoginScreenProps) {
             onAliasChange={onAliasChange}
             onContinueGuest={onContinueGuest}
             onLogin={onLogin}
+            onRegister={onRegister}
             onLoginError={triggerGlitch}
             busy={busy}
             notice={notice}

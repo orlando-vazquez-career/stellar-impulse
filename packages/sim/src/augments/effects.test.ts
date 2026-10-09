@@ -22,7 +22,7 @@ describe('catalog and exact effects',()=>{
     's-blindaje':w=>expect(statsFor(w,'p1','interceptor').armor).toBe(2),
     's-hangar':w=>{w=applyCommand(w,'p1',{seq:1,type:'produce',kind:'frigate'}).world;expect(w.production.p1!.readyTick).toBe(30);expect(w.augmentMatch!.players.p1.fastBuilds).toBe(1);},
     's-exploradores':w=>expect(statsFor(w,'p1','explorer')).toMatchObject({cost:3,speed:3}),
-    's-nanorep':w=>{w.squads[1]!.hp=10;w.squads[1]!.x=5;w.squads[1]!.y=2;expect(run(w,10).squads[1]!.hp).toBe(13);},
+    's-nanorep':w=>{w.squads[1]!.hp=10;w.squads[1]!.x=4;w.squads[1]!.y=2;expect(run(w,10).squads[1]!.hp).toBeCloseTo(11.15);},
     's-aceleradores':w=>expect(statsFor(w,'p1','interceptor').speed).toBeCloseTo(1.9),
     's-refuerzos':w=>expect(statsFor(w,'p1','bomber').maxHp).toBe(165),
     's-mantenimiento':w=>expect(statsFor(w,'p1','frigate').buildTicks).toBe(54),
@@ -34,7 +34,7 @@ describe('catalog and exact effects',()=>{
     'g-mineria':w=>{w.nodes=[{id:'node',guardianId:'none',kind:'metal',ownerId:'p1',x:15,y:15,progress:{p1:0,p2:0}}];expect(run(w,40).players.p1.metal).toBeCloseTo(104.6);},
     'g-cazadores':w=>{expect(statsFor(w,'p1','interceptor').speed).toBe(2);expect(counterBonus(w,w.squads[1]!,'bomber')).toBe(2);expect(counterBonus(w,w.squads[1]!,'frigate')).toBe(0);},
     'g-linea':w=>{w.squads.push(createSquad('buddy','p1','frigate',{x:5,y:3},w));expect(statsForUnit(w,w.squads[2]!).armor).toBe(3);w.squads.at(-1)!.x=10;expect(statsForUnit(w,w.squads[2]!).armor).toBe(1);},
-    'g-campo':w=>{w.squads[3]!.hp=10;w.squads[3]!.x=10;expect(run(w,49).squads[3]!.hp).toBe(10);expect(run(w,50).squads[3]!.hp).toBe(12);},
+    'g-campo':w=>{w.squads[3]!.hp=10;w.squads[3]!.x=10;expect(run(w,599).squads[3]!.hp).toBe(10);expect(run(w,600).squads[3]!.hp).toBeCloseTo(10.05);},
     'g-serie':w=>{expect(statsFor(w,'p1','bomber').cost).toBe(11);expect(statsFor(w,'p1','explorer').cost).toBe(3);},
     'g-impulso':w=>expect(statsFor(w,'p1','bomber').speed).toBe(1),
     'g-corazas':w=>expect(statsFor(w,'p1','bomber').armor).toBe(2),
@@ -75,5 +75,21 @@ describe('catalog and exact effects',()=>{
       const world=fixture();for(const id of order)grantAugment(world,'p1',id);
       expect(statsFor(world,'p1','bomber').cost).toBe(14);
     }
+  });
+});
+
+
+describe('repair balance boundaries', () => {
+  it('nanorepair uses radius 2, leaving ships at distance 3 untouched', () => {
+    const world=fixture(); grantAugment(world,'p1','s-nanorep');
+    world.squads[1]!.hp=10; world.squads[1]!.x=5; world.squads[1]!.y=2;
+    expect(run(world,10).squads[1]!.hp).toBe(10);
+  });
+  it('recent damage restarts the entire field repair wait', () => {
+    const world=fixture(); grantAugment(world,'p1','g-campo');
+    const ship=world.squads[3]!; ship.hp=10; ship.x=10; ship.lastDamageTick=590;
+    const waiting=run(world,1189);
+    expect(waiting.squads[3]!.hp).toBe(10);
+    expect(run(waiting,1).squads[3]!.hp).toBeCloseTo(10.05);
   });
 });

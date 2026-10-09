@@ -1,0 +1,10 @@
+.vi-tutorial { position: absolute; z-index: 6; top: 164px; left: 20px; width: 300px; max-width: calc(100vw - 40px); padding: 14px 16px; border-left: 3px solid #71e5dc; }
+.vi-tutorial header { display: flex; justify-content: space-between; gap: 12px; color: #71e5dc; font-family: var(--vi-display); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.vi-tutorial small { white-space: nowrap; color: var(--vi-muted); }
+.vi-tutorial h2 { margin: 10px 0 6px; color: var(--vi-text); font-family: var(--vi-display); font-size: 20px; }
+.vi-tutorial p { color: var(--vi-text); font-size: 13px; line-height: 1.5; }
+.vi-tutorial footer { display: flex; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 0; border: 0; }
+.vi-tutorial button { padding: 5px 0; color: var(--vi-muted); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.vi-tutorial button:hover { color: #71e5dc; }
+.vi-tutorial button:focus-visible { outline: 2px solid #71e5dc; outline-offset: 3px; }
+@media (max-height: 800px) { .vi-tutorial { top: 156px; width: 280px; padding: 10px 12px; } }

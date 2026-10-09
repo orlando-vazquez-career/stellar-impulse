@@ -2,8 +2,11 @@ import Phaser from 'phaser';
 import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '../model';
 import type { GridPoint } from './grid';
 import { activeMapId, HIDDEN_LAYERS, mapImageUrl, planSectorMove, sectorMap, sectorSurface, TILE_WIDTH, type Tileset } from '../../map/sector-map';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT } from './isometric';
+import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, playerViewCenter, playerViewZoom, projectedWorldBounds } from './isometric';
 import { WeaponEffects } from './weapon-effects';
+import { DEFAULT_FORMATION, formationSeats } from '../formation';
+import { SatelliteEffects } from './satellite-effects';
+import { RobotEffects, ROBOT_LAYER } from './robot-effects';
 
 /** Tiled stores flip flags in the top bits of every gid. */
 const GID_MASK = 0x1fffffff;
@@ -11,10 +14,28 @@ const GID_MASK = 0x1fffffff;
 const DEPTH = { layer: 10000, nodes: 90000, units: 100000, route: 200000, core: 200001, selection: 300000 } as const;
 /** Multiplicative tint for tiles outside vision: dark, but the terrain stays readable. */
 const FOG_TINT = 0x4a5566;
-/** Camera zoom limits: the farthest view still frames a fight; a little closer for detail. */
+/** Never seen: much darker, so scouting reveals the map. */
+const UNEXPLORED_TINT = 0x1f2632;
+/** Fog level per cell: never seen, explored but out of sight, in sight. */
+const UNSEEN = 0, EXPLORED = 1, IN_SIGHT = 2;
+const FOG_TINTS: Record<number, number | null> = { [UNSEEN]: UNEXPLORED_TINT, [EXPLORED]: FOG_TINT, [IN_SIGHT]: null };
+/** Enemy ships fade in and out at the edge of vision instead of popping. */
+const FADE_MS = 220;
+/** Layer written by scripts/obstaculos-tmx.ts so the editor shows the obstacles; never drawn in game. */
+const OBSTACLE_PREVIEW_LAYER = 'obstaculos-vista';
+/** Opening zoom over your own fleet. The wheel goes from ZOOM_MIN (wider view of the sector)
+ * to ZOOM_MAX (close-up). The whole 96×96 map at once is unreadable and costly to draw. */
 export const ZOOM_DEFAULT = 1.5;
-export const ZOOM_MIN = 1.5;
-export const ZOOM_MAX = 2;
+export const ZOOM_MIN = 0.9;
+export const ZOOM_MAX = 2.2;
+/** Terrain is built and drawn in square blocks of this many cells, only while they are on screen. */
+const CHUNK_CELLS = 8;
+/** Pointer distance from a screen edge, in pixels, at which the camera starts to drift. */
+const EDGE_ZONE = 56;
+/** Top camera speed in screen pixels per second, and the seconds it takes to get there or to stop. */
+const PAN_SPEED = 980;
+const PAN_EASE = 0.11;
+const ZOOM_EASE = 0.09;
 /** Two clicks on the same ship within this window select its whole class on screen. */
 const DOUBLE_CLICK_MS = 350;
 
@@ -34,6 +55,14 @@ const color = {
   core: 0xf7e77c,
   panel: 0x131d2d,
 };
+
+interface TerrainChunk {
+  x0: number; y0: number; x1: number; y1: number;
+  left: number; right: number; top: number; bottom: number;
+  /** Null until the block first comes into view. */
+  images: Phaser.GameObjects.Image[] | null;
+  shown: boolean;
+}
 
 interface UnitVisual {
   container: Phaser.GameObjects.Container;
@@ -83,9 +112,23 @@ export class MainScene extends Phaser.Scene {
   private baseMarks?: Phaser.GameObjects.Graphics;
   /** Terrain images per cell, so fog can tint the real tile art instead of painting over it. */
   private tileImages: Phaser.GameObjects.Image[][] = [];
-  private fogShown: boolean[] | null = null;
+  private fogShown: number[] = [];
+  private fogSource: boolean[] | null | undefined;
+  private exploredSource: boolean[] | null | undefined;
+  private terrainLayers: { data: number[]; order: number }[] = [];
+  private chunks: TerrainChunk[] = [];
+  /** Flat ground tiles with no see-through pixels: whatever flat tile lies under one is never visible. */
+  private readonly solidGround = new Set<number>();
+  private readonly panVelocity = { x: 0, y: 0 };
+  private zoomTarget = ZOOM_DEFAULT;
+  private zoomAnchor: { x: number; y: number } | null = null;
+  private rangeKey = '';
+  private previewKey = '';
+  private previewPath: GridPoint[] = [];
   private created = false;
   private weapons?: WeaponEffects;
+  private satellites?: SatelliteEffects;
+  private robots?: RobotEffects;
   private serverTickAt = 0;
   private readonly unitVisuals = new Map<string, UnitVisual>();
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -124,7 +167,8 @@ export class MainScene extends Phaser.Scene {
         if (url) this.load.image(textureKey(tileset, tile.id)!, url);
       }
     }
-    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, () => this.onError('No se pudo cargar el arte del mapa.'));
+    SatelliteEffects.preload(this);
+    RobotEffects.preload(this);
   }
 
   create() {
@@ -134,9 +178,10 @@ export class MainScene extends Phaser.Scene {
     }
     this.scale.refresh();
     this.cameras.main.setBackgroundColor(color.background);
-    // Margin so a base on the map edge can still be centred below the HUD panels.
+    // Margin so a base on the map edge can still be centred clear of the HUD panels.
+    const bounds = projectedWorldBounds();
     const margin = 360;
-    this.cameras.main.setBounds(-margin, -margin, ISO_WORLD_WIDTH + margin * 2, ISO_WORLD_HEIGHT + margin * 2);
+    this.cameras.main.setBounds(bounds.x - margin, bounds.y - margin, bounds.width + margin * 2, bounds.height + margin * 2);
     this.terrain = this.add.graphics().setDepth(0);
     this.route = this.add.graphics().setDepth(DEPTH.route);
     this.attackRanges=this.add.graphics().setDepth(DEPTH.nodes+1);
@@ -145,6 +190,8 @@ export class MainScene extends Phaser.Scene {
     this.nodeMarks = this.add.graphics().setDepth(DEPTH.nodes);
     this.baseMarks = this.add.graphics().setDepth(DEPTH.core);
     this.weapons = new WeaponEffects(this);
+    this.satellites = new SatelliteEffects(this);
+    this.robots = new RobotEffects(this);
     this.serverTickAt = this.time.now;
 
     this.drawTerrain();
@@ -163,7 +210,12 @@ export class MainScene extends Phaser.Scene {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.refreshCameraView, this);
       window.removeEventListener('pointermove', onPointerMove);
       this.unitVisuals.clear();
+      // Blocks that are off screen live outside the display list, so the scene would not destroy them.
+      for (const chunk of this.chunks) for (const image of chunk.images ?? []) image.destroy();
+      this.chunks = [];
       this.weapons?.destroy();
+      this.satellites?.destroy();
+      this.robots?.destroy();
     });
   }
 
@@ -177,7 +229,9 @@ export class MainScene extends Phaser.Scene {
       visual.container.y += (visual.targetY - visual.container.y) * follow;
       const angle = Math.atan2(Math.sin(visual.heading - visual.hull.rotation), Math.cos(visual.heading - visual.hull.rotation));
       visual.hull.rotation += angle * turn;
-      visual.container.setDepth(DEPTH.units + visual.container.y);
+      // Changing a depth re-sorts the whole scene, so only do it when the ship crosses a row.
+      const depth = DEPTH.units + Math.round(visual.container.y);
+      if (visual.container.depth !== depth) visual.container.setDepth(depth);
       if (visual.cooldown) {
         // Interpolate at most one server tick; a paused/disconnected game cannot recharge locally.
         const elapsed = this.snapshot.clockRunning ? Math.min(1, (this.time.now - this.serverTickAt) / 1000 * (this.snapshot.tickRate ?? 10)) : 0;
@@ -185,19 +239,41 @@ export class MainScene extends Phaser.Scene {
         visual.reload.width = 38 * (1 - remaining / Math.max(1, visual.cooldown.durationTicks));
       }
     }
+    // Satellites animate between server ticks, at most one tick ahead of the last view.
+    const tickRate = this.snapshot.tickRate ?? 10;
+    const ahead = this.snapshot.clockRunning ? Math.min(1, (this.time.now - this.serverTickAt) / 1000 * tickRate) : 0;
+    this.satellites?.update(this.snapshot.tick + ahead, tickRate);
+    this.robots?.update(Math.min(delta, 100));
     const camera = this.cameras.main;
-    const distance = (Math.min(delta, 100) / 1000) * 650 / camera.zoom;
     const pointer = this.input.activePointer;
     const edge = this.pointerOnCanvas && !this.dragOrigin && !this.selectionDrag && pointer.x >= 0 && pointer.y >= 0
       && pointer.x < this.scale.width && pointer.y < this.scale.height;
+    // The closer the pointer is to the border, the faster the drift; it eases in and out instead of jumping.
+    const drift = (position: number, size: number) => {
+      if (!edge) return 0;
+      const depth = position < EDGE_ZONE ? -(1 - position / EDGE_ZONE) : position > size - EDGE_ZONE ? 1 - (size - position) / EDGE_ZONE : 0;
+      return Math.sign(depth) * Phaser.Math.Easing.Quadratic.Out(Math.abs(depth));
+    };
     const cameraKey = (key: Phaser.Input.Keyboard.Key | undefined) => key?.isDown;
-    const horizontal = Number(Boolean(this.cursors?.right.isDown || cameraKey(this.movementKeys?.right) || (edge && pointer.x >= this.scale.width - 20)))
-      - Number(Boolean(this.cursors?.left.isDown || cameraKey(this.movementKeys?.left) || (edge && pointer.x < 20)));
-    const vertical = Number(Boolean(this.cursors?.down.isDown || cameraKey(this.movementKeys?.down) || (edge && pointer.y >= this.scale.height - 20)))
-      - Number(Boolean(this.cursors?.up.isDown || cameraKey(this.movementKeys?.up) || (edge && pointer.y < 20)));
-    camera.scrollX += horizontal * distance;
-    camera.scrollY += vertical * distance;
+    const keys = (positive: boolean | undefined, negative: boolean | undefined) => Number(Boolean(positive)) - Number(Boolean(negative));
+    const wanted = {
+      x: Phaser.Math.Clamp(keys(this.cursors?.right.isDown || cameraKey(this.movementKeys?.right), this.cursors?.left.isDown || cameraKey(this.movementKeys?.left)) + drift(pointer.x, this.scale.width), -1, 1),
+      y: Phaser.Math.Clamp(keys(this.cursors?.down.isDown || cameraKey(this.movementKeys?.down), this.cursors?.up.isDown || cameraKey(this.movementKeys?.up)) + drift(pointer.y, this.scale.height), -1, 1),
+    };
+    const ease = 1 - Math.exp(-seconds / PAN_EASE);
+    this.panVelocity.x += (wanted.x * PAN_SPEED - this.panVelocity.x) * ease;
+    this.panVelocity.y += (wanted.y * PAN_SPEED - this.panVelocity.y) * ease;
+    if (Math.abs(this.panVelocity.x) < 2 && wanted.x === 0) this.panVelocity.x = 0;
+    if (Math.abs(this.panVelocity.y) < 2 && wanted.y === 0) this.panVelocity.y = 0;
+    camera.scrollX += this.panVelocity.x * seconds / camera.zoom;
+    camera.scrollY += this.panVelocity.y * seconds / camera.zoom;
+    if (Math.abs(this.zoomTarget - camera.zoom) > 0.0005) {
+      const next = Math.abs(this.zoomTarget - camera.zoom) < 0.004 ? this.zoomTarget
+        : camera.zoom + (this.zoomTarget - camera.zoom) * (1 - Math.exp(-seconds / ZOOM_EASE));
+      this.zoomAround(next, this.zoomAnchor ?? { x: camera.width / 2, y: camera.height / 2 });
+    }
     this.refreshCameraView();
+    this.prepareTerrain();
   }
 
   sync(snapshot: GameplayViewModel) {
@@ -207,11 +283,36 @@ export class MainScene extends Phaser.Scene {
     if (this.sys.isActive()) this.renderSnapshot();
   }
 
+  /** Zoom that frames both bases. A small sector (Sector 01) fits on screen at a readable zoom
+   * and opens whole; a large one (Espiral 96×96) would need a tiny zoom and opens on your fleet. */
+  private fitZoom() {
+    return playerViewZoom(this.scale.width, this.scale.height);
+  }
+  private fitsWholeMap() {
+    return this.fitZoom() >= ZOOM_MIN;
+  }
+
+  /** Back to the opening view, centred on your base. A small sector keeps the zoom that shows
+   * nearly all of it; a large one opens at the default zoom. Centring matters: framing both bases
+   * left yours under the HUD panels, where it could not be clicked. */
   resetCamera() {
-    this.cameras.main.setZoom(ZOOM_DEFAULT);
-    const cell = cellToIso(sectorSurface.core.x, sectorSurface.core.y);
-    this.cameras.main.centerOn(cell.x, cell.y);
+    const zoom = this.fitsWholeMap() ? this.fitZoom() : ZOOM_DEFAULT;
+    this.cameras.main.setZoom(zoom);
+    this.zoomTarget = zoom;
+    const base = this.snapshot.base?.position;
+    const center = base ? cellToIso(base.x, base.y) : playerViewCenter();
+    this.cameras.main.centerOn(center.x, center.y);
     this.refreshCameraView();
+  }
+
+  /** Opening focus on the player's fleet. False while the scene is still loading. */
+  focusFleet(x: number, y: number): boolean {
+    return this.created && this.centerOnCell(x, y);
+  }
+
+  private zoomLimits() {
+    const fit = this.fitZoom();
+    return this.fitsWholeMap() ? { min: Math.min(fit, ZOOM_MAX), max: Math.max(fit, ZOOM_MAX) } : { min: ZOOM_MIN, max: ZOOM_MAX };
   }
 
   /** False until Phaser has created the camera; callers may retry. */
@@ -229,6 +330,7 @@ export class MainScene extends Phaser.Scene {
     const cameraKey = `${Math.round(camera.scrollX)},${Math.round(camera.scrollY)},${camera.zoom},${camera.width},${camera.height}`;
     if (cameraKey === this.lastCameraView) return;
     this.lastCameraView = cameraKey;
+    this.cullTerrain();
     // Phaser zooms around the camera centre, so the visible area is centred on scroll + half the viewport.
     const width = camera.width / camera.zoom;
     const height = camera.height / camera.zoom;
@@ -241,37 +343,123 @@ export class MainScene extends Phaser.Scene {
     });
   }
 
+  /** Zoom keeping the world point under a screen position where it is. The camera zooms around its centre. */
+  private zoomAround(zoom: number, anchor: { x: number; y: number }) {
+    const camera = this.cameras.main;
+    const offsetX = anchor.x - camera.width / 2, offsetY = anchor.y - camera.height / 2;
+    camera.scrollX += offsetX / camera.zoom - offsetX / zoom;
+    camera.scrollY += offsetY / camera.zoom - offsetY / zoom;
+    camera.setZoom(zoom);
+  }
+
+  /** Index the terrain in blocks. Their tile images are created the first time a block is on screen. */
   private drawTerrain() {
-    const graphics = this.terrain;
-    if (!graphics) return;
+    this.terrainLayers = sectorMap.layers.filter((layer) => layer.visible && layer.data && !HIDDEN_LAYERS.has(layer.name))
+      .map((layer, order) => ({ data: layer.data, order }));
+    this.fogShown = Array.from({ length: sectorMap.width * sectorMap.height }, () => IN_SIGHT);
+    this.chunks = [];
+    this.solidGround.clear();
+    for (const tileset of sectorMap.tilesets) {
+      const key = textureKey(tileset);
+      if (!isFlat(tileset) || !key || !this.textures.exists(key)) continue;
+      const count = this.textures.get(key).frameTotal - 1;
+      for (let tile = 0; tile < count; tile++) {
+        // Sample the diamond: a tile is solid when every probe is opaque.
+        let solid = true;
+        for (let v = -3; v <= 3 && solid; v++) for (let u = -3; u <= 3 && solid; u++) {
+          if (Math.abs(u) + Math.abs(v) > 3) continue;
+          const alpha = this.textures.getPixelAlpha(Math.round(31.5 + u * 9), Math.round(15.5 + v * 4.5), key, tile);
+          solid = alpha !== null && alpha >= 250;
+        }
+        if (solid) this.solidGround.add(tileset.firstgid + tile);
+      }
+    }
+    for (let y0 = 0; y0 < sectorMap.height; y0 += CHUNK_CELLS) for (let x0 = 0; x0 < sectorMap.width; x0 += CHUNK_CELLS) {
+      const x1 = Math.min(sectorMap.width, x0 + CHUNK_CELLS), y1 = Math.min(sectorMap.height, y0 + CHUNK_CELLS);
+      // Screen box of the block, with room above for tall tiles such as asteroids.
+      const corners = [cellToIso(x0, y0), cellToIso(x1 - 1, y0), cellToIso(x0, y1 - 1), cellToIso(x1 - 1, y1 - 1)];
+      this.chunks.push({ x0, y0, x1, y1, images: null, shown: false,
+        left: Math.min(...corners.map((corner) => corner.x)) - TILE_WIDTH,
+        right: Math.max(...corners.map((corner) => corner.x)) + TILE_WIDTH,
+        top: Math.min(...corners.map((corner) => corner.y)) - 220,
+        bottom: Math.max(...corners.map((corner) => corner.y)) + 64 });
+    }
+    this.drawMapObjects();
+    this.cullTerrain();
+  }
+
+  /** Keep only the blocks inside the camera in the display list: what is off screen costs nothing per frame. */
+  private visibleWorldBox() {
+    const camera = this.cameras.main;
+    const halfWidth = camera.width / camera.zoom / 2;
+    const halfHeight = camera.height / camera.zoom / 2;
+    const centerX = camera.scrollX + camera.width / 2;
+    const centerY = camera.scrollY + camera.height / 2;
+    return { left: centerX - halfWidth, right: centerX + halfWidth, top: centerY - halfHeight, bottom: centerY + halfHeight };
+  }
+
+  private cullTerrain() {
+    const view = this.visibleWorldBox();
+    for (const chunk of this.chunks) {
+      const visible = chunk.right >= view.left && chunk.left <= view.right && chunk.bottom >= view.top && chunk.top <= view.bottom;
+      if (visible === chunk.shown) continue;
+      chunk.shown = visible;
+      if (!chunk.images) { chunk.images = this.buildChunk(chunk); continue; }
+      for (const image of chunk.images) {
+        if (visible) image.addToDisplayList();
+        else image.removeFromDisplayList();
+      }
+    }
+  }
+
+  /** Build one block just outside the view per frame, so scrolling into it does not stutter. */
+  private prepareTerrain() {
+    const view = this.visibleWorldBox();
+    const margin = CHUNK_CELLS * TILE_WIDTH;
+    const chunk = this.chunks.find((candidate) => !candidate.images && candidate.right >= view.left - margin
+      && candidate.left <= view.right + margin && candidate.bottom >= view.top - margin && candidate.top <= view.bottom + margin);
+    if (!chunk) return;
+    chunk.images = this.buildChunk(chunk);
+    if (!chunk.shown) for (const image of chunk.images) image.removeFromDisplayList();
+  }
+
+  private buildChunk(chunk: TerrainChunk): Phaser.GameObjects.Image[] {
+    const images: Phaser.GameObjects.Image[] = [];
     const columns = sectorMap.width;
-    sectorMap.layers.filter((layer) => layer.visible && layer.data && !HIDDEN_LAYERS.has(layer.name)).forEach((layer, layerIndex) => {
-      for (let y = 0; y < sectorMap.height; y++) for (let x = 0; x < columns; x++) {
+    for (const [depth, layer] of this.terrainLayers.entries()) {
+      for (let y = chunk.y0; y < chunk.y1; y++) for (let x = chunk.x0; x < chunk.x1; x++) {
         const gid = layer.data[y * columns + x]! & GID_MASK;
         if (!gid) continue;
         const point = cellToIso(x, y);
         const tileset = tilesetFor(gid);
+        // Flat ground completely covered by a solid tile of a higher layer is never seen: do not create it.
+        if (tileset && isFlat(tileset) && this.terrainLayers.slice(depth + 1)
+          .some((above) => this.solidGround.has(above.data[y * columns + x]! & GID_MASK))) continue;
         const key = tileset && textureKey(tileset);
         if (!tileset || !key || !this.textures.exists(key)) {
-          graphics.fillStyle(0x0a1726, 1);
-          graphics.fillRect(point.x - 32, point.y - 16, 64, 32);
+          this.terrain?.fillStyle(0x0a1726, 1).fillRect(point.x - 32, point.y - 16, 64, 32);
           continue;
         }
         // Tiled anchors an isometric tile image at the bottom of its cell, left edge on the cell's left corner.
         const offset = tileset.tileoffset ?? { x: 0, y: 0 };
         const image = this.add.image(point.x - TILE_WIDTH / 2 + offset.x + tileset.tilewidth / 2,
           point.y + TILE_HALF_HEIGHT + offset.y, key, gid - tileset.firstgid)
-          .setOrigin(0.5, 1).setDepth(DEPTH.layer * layerIndex + (x + y) * 32 + x);
+          .setOrigin(0.5, 1).setDepth(DEPTH.layer * layer.order + (x + y) * 32 + x);
+        const tint = FOG_TINTS[this.fogShown[y * columns + x] ?? IN_SIGHT];
+        if (tint !== null && tint !== undefined) image.setTint(tint);
         (this.tileImages[y * columns + x] ??= []).push(image);
+        images.push(image);
       }
-    });
-    this.drawMapObjects();
+    }
+    return images;
   }
 
   /** Tile objects (bases, pillars, wrecks…) placed in Tiled object layers, bottom-anchored at their point. */
   private drawMapObjects() {
     for (const layer of sectorMap.layers) {
-      if (!layer.visible || !layer.objects) continue;
+      // Robots are animated by RobotEffects, not drawn as static art.
+      // The obstacle preview is for Tiled: the game draws obstacles from the simulation, below.
+      if (!layer.visible || !layer.objects || layer.name === ROBOT_LAYER || layer.name === OBSTACLE_PREVIEW_LAYER) continue;
       for (const object of layer.objects) {
         if (!object.gid || object.visible === false) continue;
         const gid = object.gid & GID_MASK;
@@ -288,6 +476,14 @@ export class MainScene extends Phaser.Scene {
         const row = Phaser.Math.Clamp(Math.floor(cellY), 0, sectorMap.height - 1);
         (this.tileImages[row * sectorMap.width + col] ??= []).push(image);
       }
+    }
+    // Obstacles the map marks with OBSTACLE_RING points: the simulation already closed their cells.
+    for (const obstacle of sectorSurface.obstaculos ?? []) {
+      const key = structureKey(obstacle.model);
+      if (!key || !this.textures.exists(key)) continue;
+      const point = cellToIso(obstacle.x, obstacle.y);
+      const image = this.add.image(point.x, point.y - TILE_HALF_HEIGHT, key).setOrigin(0.5, 0.72).setDepth(DEPTH.units + point.y - TILE_HALF_HEIGHT);
+      (this.tileImages[Math.floor(obstacle.y) * sectorMap.width + Math.floor(obstacle.x)] ??= []).push(image);
     }
   }
 
@@ -312,19 +508,54 @@ export class MainScene extends Phaser.Scene {
   }
 
 
+  /**
+   * Capture areas of the map's pronexos: always on the ground, grey until the node is in sight. In sight they
+   * take the owner's colour, turn amber while both sides have ships inside and fill with the captor's progress.
+   */
+  private drawCaptureAreas(graphics: Phaser.GameObjects.Graphics) {
+    for (const area of sectorSurface.captures) {
+      if (!area.radius) continue;
+      const node = this.snapshot.nodes.find((candidate) => candidate.x === area.x && candidate.y === area.y);
+      const center = cellToIso(area.x, area.y);
+      // The area is a disc of cells: on the isometric ground that is an ellipse twice as wide as tall.
+      const reach = (area.radius + 0.5) * Math.SQRT2;
+      const width = reach * TILE_HALF_WIDTH * 2, height = reach * TILE_HALF_HEIGHT * 2;
+      const inside = new Set(this.snapshot.squads.filter((squad) => squad.visible && squad.status !== 'destroyed' && (squad.owner === 'blue' || squad.owner === 'red')
+        && squad.stats?.canCapture !== false && !squad.isDecoy
+        && (Math.round(squad.gridX) - area.x) ** 2 + (Math.round(squad.gridY) - area.y) ** 2 <= area.radius! ** 2)
+        .map((squad) => squad.owner));
+      const hue = inside.size === 2 ? color.neutral : node?.owner === 'blue' ? color.blue : node?.owner === 'red' ? color.red : 0x8aa0b8;
+      graphics.fillStyle(hue, node ? 0.1 : 0.05);
+      graphics.fillEllipse(center.x, center.y, width, height);
+      graphics.lineStyle(2, hue, node ? 0.7 : 0.35);
+      graphics.strokeEllipse(center.x, center.y, width, height);
+      if (!node?.capture) continue;
+      const steps = Math.max(2, Math.ceil(64 * node.capture.fraction));
+      const sweep = Math.PI * 2 * node.capture.fraction;
+      graphics.lineStyle(5, node.capture.by === 'blue' ? color.blue : color.red, 1);
+      graphics.strokePoints(Array.from({ length: steps + 1 }, (_, step) => {
+        const angle = -Math.PI / 2 + sweep * step / steps;
+        return new Phaser.Math.Vector2(center.x + Math.cos(angle) * width / 2, center.y + Math.sin(angle) * height / 2);
+      }));
+    }
+  }
+
   /** Resource nodes: a ring in the owner's colour (grey while unclaimed); Metal nodes carry a diamond. */
   private drawNodes() {
     const graphics = this.nodeMarks;
     if (!graphics) return;
     graphics.clear();
+    this.drawCaptureAreas(graphics);
     for (const node of this.snapshot.nodes) {
       const center = cellToIso(node.x, node.y);
       const hue = node.owner === 'blue' ? color.blue : node.owner === 'red' ? color.red : 0x8aa0b8;
-      // A freshly captured node is faint until it starts producing.
-      graphics.lineStyle(2, hue, node.stabilizingSeconds ? 0.35 : 0.9);
+      // A freshly captured node is faint until it starts producing; a remembered one keeps its last
+      // known owner, faint until it is seen again.
+      const alpha = node.stale ? 0.4 : node.stabilizingSeconds ? 0.35 : 0.9;
+      graphics.lineStyle(2, hue, alpha);
       graphics.strokeEllipse(center.x, center.y + 9, 54, 27);
       if (node.kind === 'metal') {
-        graphics.fillStyle(hue, 0.95);
+        graphics.fillStyle(hue, node.stale ? 0.4 : 0.95);
         graphics.fillPoints(polygon([{ x: center.x, y: center.y - 2 }, { x: center.x + 7, y: center.y + 9 },
           { x: center.x, y: center.y + 20 }, { x: center.x - 7, y: center.y + 9 }]), true);
       }
@@ -368,18 +599,26 @@ export class MainScene extends Phaser.Scene {
   }
 
   /** Darken the tile art of every cell outside the player's current vision. Only changed cells are touched. */
+  /** Three fog levels on the real tile art: in sight, explored (dimmed) and never seen (dark). */
   private drawFog() {
     const cells = this.snapshot.visibleCells;
+    const explored = this.snapshot.exploredCells;
+    // The adapter hands over the same arrays until the server sends new vision.
+    if (cells === this.fogSource && explored === this.exploredSource) return;
+    this.fogSource = cells;
+    this.exploredSource = explored;
     const total = sectorMap.width * sectorMap.height;
     for (let index = 0; index < total; index++) {
-      const visible = cells ? cells[index] === true : true;
-      if (this.fogShown && this.fogShown[index] === visible) continue;
+      // Without memory (local mock, campaign) everything out of sight is simply dimmed.
+      const level = !cells || cells[index] ? IN_SIGHT : !explored || explored[index] ? EXPLORED : UNSEEN;
+      if (this.fogShown[index] === level) continue;
+      this.fogShown[index] = level;
+      const tint = FOG_TINTS[level];
       for (const image of this.tileImages[index] ?? []) {
-        if (visible) image.clearTint();
-        else image.setTint(FOG_TINT);
+        if (tint === null || tint === undefined) image.clearTint();
+        else image.setTint(tint);
       }
     }
-    this.fogShown = Array.from({ length: total }, (_, index) => (cells ? cells[index] === true : true));
   }
 
   previewBaseRange(enabled:boolean):void {
@@ -389,11 +628,14 @@ export class MainScene extends Phaser.Scene {
 
   /** A visual guide from server-provided stats; hit validation stays in the simulation. */
   private drawAttackRanges():void {
-    const graphics=this.attackRanges;graphics?.clear();if(!graphics)return;
+    const graphics=this.attackRanges;if(!graphics)return;
     const selected=this.snapshot.squads.find(s=>s.id===this.snapshot.selectedSquadId&&s.visible&&s.healthPercent>0);
     const base=this.showBaseRange?this.snapshot.base:undefined;
     const origin=base?.position??(selected?{x:Math.round(selected.gridX),y:Math.round(selected.gridY)}:undefined);
     const range=base?.range??selected?.stats?.range??(selected?this.snapshot.unitStats?.[selected.unitType]?.range:0)??0;
+    const key=!origin||range<=0?'':`${origin.x},${origin.y},${range},${base?1:0}`;
+    if(key===this.rangeKey)return;
+    this.rangeKey=key;graphics.clear();
     if(!origin||range<=0)return;
     const hue=base?0x78d7d0:0x84c8fa;
     for(let dy=-range;dy<=range;dy++)for(let dx=-range;dx<=range;dx++){
@@ -414,15 +656,23 @@ export class MainScene extends Phaser.Scene {
     this.drawFog();
     this.drawRoute();
     this.drawAttackRanges();
+    this.satellites?.sync(this.snapshot.satellites ?? [], this.snapshot.tick);
+    this.robots?.sync(this.snapshot);
     const visible = new Set(this.snapshot.squads.filter((squad) => squad.visible).map((squad) => squad.id));
     for (const [id, visual] of this.unitVisuals) {
       if (visible.has(id)) continue;
       this.tweens.killTweensOf(visual.container);
-      visual.container.destroy();
       this.unitVisuals.delete(id);
+      // Ships leaving sight (or destroyed) fade out; a later view may bring them back as a new visual.
+      this.tweens.add({ targets: visual.container, alpha: 0, duration: FADE_MS, onComplete: () => visual.container.destroy() });
     }
     for (const squad of this.snapshot.squads.filter((candidate) => candidate.visible)) {
+      const fresh = !this.unitVisuals.has(squad.id);
       const visual = this.unitVisuals.get(squad.id) ?? this.createUnit(squad);
+      if (fresh && squad.owner === 'red') {
+        visual.container.setAlpha(0);
+        this.tweens.add({ targets: visual.container, alpha: 1, duration: FADE_MS });
+      }
       visual.selection.setVisible(squad.selected);
       visual.label.setVisible(squad.selected);
       if (squad.healthPercent < visual.healthPercent) {
@@ -521,6 +771,44 @@ export class MainScene extends Phaser.Scene {
     return visual;
   }
 
+  private seatPreview: { key: string; seats: Map<string, GridPoint> } | null = null;
+  /** Cell of the last group order: hovering it shows the seats given, not a fresh preview. */
+  private orderedCell: GridPoint | null = null;
+
+  /** One tile outline per ship: where a group order will seat it (hover) or has seated it (order). */
+  private drawFormationSeats(graphics: Phaser.GameObjects.Graphics) {
+    const group = this.snapshot.squads.filter((squad) => squad.selected && squad.owner === 'blue' && squad.healthPercent > 0);
+    if (group.length < 2) return;
+    const aiming = (this.snapshot.activeAction === null || this.snapshot.activeAction === 'move') && this.hoverPoint;
+    const center = aiming ? { x: Math.round(this.hoverPoint!.x), y: Math.round(this.hoverPoint!.y) } : null;
+    if (this.orderedCell && (center?.x !== this.orderedCell.x || center?.y !== this.orderedCell.y)) this.orderedCell = null;
+    const preview = !!center && !this.orderedCell && center.x >= 0 && center.y >= 0 && center.x < sectorMap.width && center.y < sectorMap.height
+      && sectorSurface.walkable[center.y * sectorMap.width + center.x] === true;
+    if (preview) {
+      const formation = this.snapshot.formation ?? DEFAULT_FORMATION;
+      const key = `${formation}:${center!.x},${center!.y}:${group.map((ship) => `${ship.id}@${Math.round(ship.gridX)},${Math.round(ship.gridY)}`).join(';')}`;
+      if (this.seatPreview?.key !== key) {
+        this.seatPreview = { key, seats: formationSeats(group.map((ship) => ({ id: ship.id, x: ship.gridX, y: ship.gridY })), center!, formation) };
+      }
+    }
+    const halfWidth = TILE_WIDTH / 2 * 0.62;
+    const halfHeight = TILE_HALF_HEIGHT * 0.62;
+    for (const ship of group) {
+      const seat = preview ? this.seatPreview?.seats.get(ship.id) : ship.destination;
+      if (!seat) continue;
+      const point = cellToIso(seat.x, seat.y);
+      const hue = preview ? color.blueLight : color.blue;
+      const outline = [
+        new Phaser.Math.Vector2(point.x, point.y - halfHeight), new Phaser.Math.Vector2(point.x + halfWidth, point.y),
+        new Phaser.Math.Vector2(point.x, point.y + halfHeight), new Phaser.Math.Vector2(point.x - halfWidth, point.y),
+      ];
+      graphics.fillStyle(hue, preview ? 0.1 : 0.16);
+      graphics.fillPoints(outline, true);
+      graphics.lineStyle(1.5, hue, preview ? 0.55 : 0.8);
+      graphics.strokePoints(outline, true);
+    }
+  }
+
   private drawRoute() {
     const graphics = this.route;
     if (!graphics) return;
@@ -537,7 +825,7 @@ export class MainScene extends Phaser.Scene {
       graphics.strokeEllipse(to.x, to.y, 70, 35);
     }
     const preview = (this.snapshot.activeAction === null || this.snapshot.activeAction === 'move') && this.hoverPoint
-      ? planSectorMove({ x: selected.gridX, y: selected.gridY }, this.hoverPoint) : [];
+      ? this.previewRoute(selected, this.hoverPoint) : [];
     const ordered = this.snapshot.moveOrder?.squadId === selected.id ? this.snapshot.moveOrder.route : [];
     const path = preview.length > 1 ? preview : ordered;
     if (this.hoverPoint && !sectorSurface.walkable[Math.round(this.hoverPoint.y) * sectorMap.width + Math.round(this.hoverPoint.x)]) {
@@ -547,6 +835,7 @@ export class MainScene extends Phaser.Scene {
       graphics.lineBetween(blocked.x - 10, blocked.y - 7, blocked.x + 10, blocked.y + 7);
       graphics.lineBetween(blocked.x + 10, blocked.y - 7, blocked.x - 10, blocked.y + 7);
     }
+    this.drawFormationSeats(graphics);
     if (path.length < 2) return;
     const hue = preview.length > 1 ? color.blueLight : color.blue;
     graphics.lineStyle(3, hue, 0.9);
@@ -571,6 +860,16 @@ export class MainScene extends Phaser.Scene {
     graphics.strokeEllipse(destination.x, destination.y, 58, 30);
   }
 
+  /** Path preview under the cursor. Planning is A* over the map, so it is redone only when either end moves. */
+  private previewRoute(selected: SquadViewModel, hover: GridPoint): GridPoint[] {
+    const key = `${selected.id}:${Math.round(selected.gridX * 2)},${Math.round(selected.gridY * 2)}:${hover.x.toFixed(1)},${hover.y.toFixed(1)}`;
+    if (key !== this.previewKey) {
+      this.previewKey = key;
+      this.previewPath = planSectorMove({ x: selected.gridX, y: selected.gridY }, hover);
+    }
+    return this.previewPath;
+  }
+
   private pointerPosition(pointer: Phaser.Input.Pointer) {
     const bounds = this.game.canvas.getBoundingClientRect();
     const event = pointer.event;
@@ -592,16 +891,12 @@ export class MainScene extends Phaser.Scene {
   private sameTypeOnScreen(clickedId: string): string[] {
     const clicked = this.snapshot.squads.find((squad) => squad.id === clickedId);
     if (!clicked) return [clickedId];
-    const camera = this.cameras.main;
-    const width = camera.width / camera.zoom;
-    const height = camera.height / camera.zoom;
-    const left = camera.scrollX + camera.width / 2 - width / 2;
-    const top = camera.scrollY + camera.height / 2 - height / 2;
+    const view = this.visibleWorldBox();
     return this.snapshot.squads
       .filter((squad) => squad.owner === 'blue' && squad.unitType === clicked.unitType && squad.visible && squad.healthPercent > 0)
       .filter((squad) => {
         const point = cellToIso(squad.gridX, squad.gridY);
-        return point.x >= left && point.x <= left + width && point.y >= top && point.y <= top + height;
+        return point.x >= view.left && point.x <= view.right && point.y >= view.top && point.y <= view.bottom;
       })
       .map((squad) => squad.id);
   }
@@ -677,6 +972,7 @@ export class MainScene extends Phaser.Scene {
       }
       if ((this.snapshot.activeAction === null || this.snapshot.activeAction === 'move') && this.snapshot.selectedSquadIds.length) {
         this.onMoveSelected(cell.x, cell.y);
+        this.orderedCell = { x: Math.round(cell.x), y: Math.round(cell.y) };
       }
     });
     this.input.on(Phaser.Input.Events.POINTER_MOVE, (pointer: Phaser.Input.Pointer) => {
@@ -725,16 +1021,26 @@ export class MainScene extends Phaser.Scene {
       this.dragOrigin = undefined;
     });
     this.input.on(Phaser.Input.Events.POINTER_WHEEL, (pointer: Phaser.Input.Pointer, _objects: Phaser.GameObjects.GameObject[], _deltaX: number, deltaY: number) => {
-      const camera = this.cameras.main;
-      const position = this.pointerPosition(pointer);
-      const before = camera.getWorldPoint(position.x, position.y);
-      camera.setZoom(Phaser.Math.Clamp(camera.zoom - deltaY * 0.001, ZOOM_MIN, ZOOM_MAX));
-      const after = camera.getWorldPoint(position.x, position.y);
-      camera.scrollX += before.x - after.x;
-      camera.scrollY += before.y - after.y;
-      this.refreshCameraView();
+      // The wheel sets a goal; update() glides there keeping the point under the cursor still.
+      const limits = this.zoomLimits();
+      this.zoomTarget = Phaser.Math.Clamp(this.zoomTarget - deltaY * 0.001, limits.min, limits.max);
+      this.zoomAnchor = this.pointerPosition(pointer);
     });
   }
+}
+
+/** Texture of a structure image (a file of `tilesets/img`) by its name without extension. */
+function structureKey(name: string): string | null {
+  for (const tileset of sectorMap.tilesets) {
+    const tile = tileset.tiles?.find((candidate) => candidate.image?.split('/').pop() === `${name}.png`);
+    if (tile) return textureKey(tileset, tile.id);
+  }
+  return null;
+}
+
+/** A ground tile exactly the size of a cell, so it cannot stick out from under another. */
+function isFlat(tileset: Tileset): boolean {
+  return !!tileset.image && tileset.tilewidth === TILE_WIDTH && tileset.tileheight === TILE_HALF_HEIGHT * 2 && !tileset.tileoffset;
 }
 
 function tilesetFor(gid: number): Tileset | undefined {
