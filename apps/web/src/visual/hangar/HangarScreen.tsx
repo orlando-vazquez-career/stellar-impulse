@@ -4,7 +4,7 @@ import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
-import { cosmeticCatalog, itemsForCategory, type HangarCategory } from './catalog';
+import { cosmeticCatalog, imageForCosmetic, itemsForCategory, type HangarCategory } from './catalog';
 import { loadCosmeticLoadout, saveCosmeticLoadout, type CosmeticLoadout } from './loadout';
 import './hangar.css';
 
@@ -171,6 +171,7 @@ export function HangarScreen({ onBack }: { onBack(): void }) {
             <div className="vi-cosmetic-grid">
               {itemsForCategory(category).map((item) => {
                 const equipped = loadout[category] === item.id;
+                const image = imageForCosmetic(item);
                 return (
                   <button
                     key={item.id}
@@ -181,7 +182,7 @@ export function HangarScreen({ onBack }: { onBack(): void }) {
                       if (item.unlocked) hover(460);
                     }}
                   >
-                    <i style={{ background: item.tone }} />
+                    {image ? <img className="vi-cosmetic-image" src={image} alt="" /> : <i style={{ background: item.tone }} />}
                     <span>
                       <strong>{item.name[locale]}</strong>
                       <small>{item.description[locale]}</small>
