@@ -17,6 +17,7 @@ describe('audio manifest', () => {
 import { getAudioMix, setAudioMix } from '../audio-mix';
 import { defaultVisualPreferences } from '../settings/preferences';
 import { defaultCosmeticLoadout, saveCosmeticLoadout } from '../hangar/loadout';
+import { writeOwnedClasses } from '../hangar/ownership';
 
 describe('live match audio', () => {
   const players: MatchAudio[] = [];
@@ -77,7 +78,9 @@ describe('live match audio', () => {
     ['voz-analista', 0.95, 1.15],
   ])('uses the equipped %s profile for announcements in both languages', (voice, rate, pitch) => {
     const storage = new Map<string, string>();
-    vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) });
+    vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) });
+    // The premium voice and track are NFT pieces: this wallet holds both.
+    writeOwnedClasses('GTESTWALLET', [5, 6]);
     const speak = vi.fn();
     vi.stubGlobal('speechSynthesis', { speak, cancel: vi.fn() });
     vi.stubGlobal('SpeechSynthesisUtterance', class { constructor(public text: string) {} });
