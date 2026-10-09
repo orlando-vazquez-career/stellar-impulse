@@ -10,6 +10,22 @@
   background: #03070c;
   color: var(--vi-text);
   font-family: var(--vi-body);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(113, 229, 220, 0.4) transparent;
+}
+
+.vi-lobby::-webkit-scrollbar {
+  width: 5px;
+}
+.vi-lobby::-webkit-scrollbar-track {
+  background: rgba(3, 7, 12, 0.6);
+}
+.vi-lobby::-webkit-scrollbar-thumb {
+  background: rgba(113, 229, 220, 0.35);
+  border-radius: 2px;
+}
+.vi-lobby::-webkit-scrollbar-thumb:hover {
+  background: rgba(113, 229, 220, 0.7);
 }
 
 /* Lienzo de espacio profundo con nebulosas verdes y estrellas titilantes */
@@ -66,6 +82,143 @@
   position: relative;
   z-index: 10;
   background: linear-gradient(180deg, rgba(3, 7, 12, 0.85) 0%, transparent 100%);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+.vi-lobby .vi-screen__header .vi-brand {
+  justify-self: start;
+}
+
+.vi-lobby .vi-screen__header .vi-screen__header-center {
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vi-lobby .vi-screen__header .vi-header-actions {
+  justify-self: end;
+}
+
+.vi-screen__header-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 18px;
+  background: linear-gradient(180deg, rgba(8, 26, 36, 0.9) 0%, rgba(4, 15, 23, 0.95) 100%);
+  border: 1px solid rgba(113, 229, 220, 0.45);
+  color: #71e5dc;
+  font-family: var(--vi-display);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 3.5px;
+  text-transform: uppercase;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  box-shadow:
+    0 0 16px rgba(113, 229, 220, 0.12),
+    inset 0 0 10px rgba(113, 229, 220, 0.05);
+  text-shadow: 0 0 10px rgba(113, 229, 220, 0.5);
+}
+
+.vi-screen__header-tag::before {
+  content: '●';
+  color: #10b981;
+  font-size: 9px;
+  text-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+}
+
+.vi-lobby__back-btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 5px 14px;
+  border: 1px solid rgba(113, 229, 220, 0.5);
+  background: linear-gradient(135deg, rgba(113, 229, 220, 0.08) 0%, rgba(8, 22, 33, 0.6) 100%);
+  color: #a3f6ee;
+  font-family: var(--vi-display);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+  box-shadow: 0 0 14px rgba(113, 229, 220, 0.1), inset 0 0 8px rgba(113, 229, 220, 0.04);
+}
+
+.vi-lobby__back-btn .vi-lobby__back-arrow {
+  color: #71e5dc;
+  font-size: 13px;
+  transition: transform 0.2s ease;
+}
+
+/* Efecto futurista: haz de luz holográfico que recorre el botón */
+.vi-lobby__back-btn::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(113, 229, 220, 0.2) 20%,
+    rgba(113, 229, 220, 0.8) 50%,
+    rgba(255, 255, 255, 0.98) 60%,
+    rgba(113, 229, 220, 0.8) 70%,
+    transparent 100%
+  );
+  transform: skewX(-25deg);
+  animation: vi-lobby-futuristic-sweep 3.4s infinite ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes vi-lobby-futuristic-sweep {
+  0% {
+    left: -120%;
+  }
+  25%, 100% {
+    left: 220%;
+  }
+}
+
+.vi-lobby__back-btn:hover {
+  background: linear-gradient(135deg, rgba(113, 229, 220, 0.2) 0%, rgba(18, 48, 68, 0.8) 100%);
+  border-color: #71e5dc;
+  color: #ffffff;
+  box-shadow:
+    0 0 20px rgba(113, 229, 220, 0.35),
+    inset 0 0 12px rgba(113, 229, 220, 0.15);
+  transform: translateX(-3px);
+}
+
+.vi-lobby__back-btn:hover .vi-lobby__back-arrow {
+  transform: translateX(-3px);
+}
+
+.vi-lobby__back-btn:hover::after {
+  animation: vi-lobby-futuristic-sweep-fast 0.65s ease-out;
+}
+
+@keyframes vi-lobby-futuristic-sweep-fast {
+  0% {
+    left: -120%;
+  }
+  100% {
+    left: 220%;
+  }
+}
+
+.vi-lobby__back-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .vi-lobby__content {
@@ -127,6 +280,12 @@
   display: grid;
   grid-template-columns: minmax(330px, 0.82fr) minmax(520px, 1.18fr);
   gap: 18px;
+}
+
+@media (max-width: 960px) {
+  .vi-lobby__grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Tarjetas de Lobby (Holograma Cyberpunk) */

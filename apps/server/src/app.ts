@@ -59,6 +59,10 @@ export function createGameServer(options: GameServerOptions = {}) {
         const { email, password } = credentials(ctx.body);
         return respond(() => auth.login(email, password));
       }),
+      guest: createEndpoint('/auth/guest', { method: 'POST' }, async (ctx) => {
+        const body = ctx.body as { alias?: unknown } | undefined;
+        return respond(() => auth.guest(body?.alias), 201);
+      }),
       me: createEndpoint('/auth/me', { method: 'GET' }, async (ctx) =>
         respond(() => ({ user: authenticated(ctx.request?.headers.get('authorization') ?? null).user }))),
       profile: createEndpoint('/auth/profile', {method:'GET'}, async(ctx)=>respond(()=>

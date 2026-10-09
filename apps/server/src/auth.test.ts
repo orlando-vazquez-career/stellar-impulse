@@ -69,6 +69,19 @@ describe('account and multiplayer admission', () => {
     expect((await fetch(`${URL}/auth/me`, { headers: { authorization: `Bearer ${loggedIn.token}` } })).status).toBe(401);
   });
 
+  it('issues guest sessions with valid tokens and profile access', async () => {
+    const response = await fetch(`${URL}/auth/guest`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ alias: 'Vega' }),
+    });
+    expect(response.status).toBe(201);
+    const body = await response.json() as { token: string; user: { id: string; email: string } };
+    expect(body.user.email).toMatch(/^vega-[a-f0-9-]+@guest\.local$/);
+    expect(body.token).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+    const me = await fetch(`${URL}/auth/me`, { headers: { authorization: `Bearer ${body.token}` } });
+    expect(me.status).toBe(200);
+  });
+
   it('requires an account and lets two different users play via a shareable code', async () => {
     const ana = await register('ana-room@example.com');
     const beto = await register('beto-room@example.com');

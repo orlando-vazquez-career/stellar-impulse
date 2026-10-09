@@ -5,6 +5,7 @@ import { initialLoginUi, reduceLoginUi } from './login-state';
 import { createLoginScene } from './scene';
 import { Brand } from '../visual/shared/Brand';
 import { LanguageToggle } from '../visual/shared/LanguageToggle';
+import { AudioToggle } from '../visual/shared/AudioToggle';
 import loginCss from './login.css?inline';
 
 export interface LoginScreenProps {
@@ -95,7 +96,10 @@ export function LoginScreen(props: LoginScreenProps) {
       <canvas ref={canvas} className="li-canvas" aria-hidden="true" />
       <header className="li-topbar">
         <Brand />
-        <LanguageToggle />
+        <div className="li-topbar-actions">
+          <AudioToggle />
+          <LanguageToggle />
+        </div>
       </header>
       <div className="li-panel-wrap">
         <GlitchPanel trigger={glitchTrigger}>

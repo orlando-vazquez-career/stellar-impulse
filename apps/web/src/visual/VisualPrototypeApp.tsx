@@ -1,8 +1,8 @@
 import type { DurationMode } from '@impulso/sim';
 import { useEffect, useRef, useState } from 'react';
-import { MusicPlayer } from './music';
+import { MusicPlayer, getMusicPlayer } from './music';
 import { AccessScreen } from './access/AccessScreen';
-import { clearSession, logoutAccount, restoreAccount, sessionToken, type AccountUser } from '../auth/client';
+import { clearSession, ensureGuestSession, logoutAccount, restoreAccount, sessionToken, type AccountUser } from '../auth/client';
 import { createMultiplayerSession, type MultiplayerSession } from '../multiplayer/session';
 import { readPilotAlias } from '../login/pilot-alias';
 import { GameplayScreen } from './game/GameplayScreen';
@@ -79,17 +79,19 @@ function VisualPrototypeContent() {
     return multiplayer.subscribe(update);
   }, [multiplayer]);
 
-  function openMultiplayer(mode: LobbyMode, code = '') {
+  async function openMultiplayer(mode: LobbyMode, code = '') {
     setLobbyMode(mode);
     setJoinCode(code.trim().toUpperCase());
     setMultiplayerMatch(true);
-    if (account && sessionToken()) {
-      setScreen('multiplayer');
-    } else {
-      setPendingMultiplayer(mode);
-      setSessionNotice('multiplayerRequiresAccount');
-      setScreen('access');
+    if (!sessionToken()) {
+      try {
+        const guestUser = await ensureGuestSession(alias);
+        setAccount(guestUser);
+      } catch (err) {
+        console.warn('Could not ensure guest session', err);
+      }
     }
+    setScreen('multiplayer');
   }
 
   async function leaveMultiplayer() {
@@ -116,23 +118,26 @@ function VisualPrototypeContent() {
 
   // One background player for the whole app; browsers only start audio after a gesture.
   useEffect(() => {
-    const player = new MusicPlayer(loadVisualPreferences().audio);
+    const player = getMusicPlayer(loadVisualPreferences().audio);
     music.current = player;
+    player.play('menu');
     player.resume();
     const wake = () => player.resume();
-    window.addEventListener('pointerdown', wake);
-    window.addEventListener('keydown', wake);
-    window.addEventListener('click', wake);
-    window.addEventListener('touchstart', wake);
-    window.addEventListener('focusin', wake);
+    window.addEventListener('pointerdown', wake, { passive: true });
+    window.addEventListener('mousedown', wake, { passive: true });
+    window.addEventListener('keydown', wake, { passive: true });
+    window.addEventListener('click', wake, { passive: true });
+    window.addEventListener('touchstart', wake, { passive: true });
+    window.addEventListener('focusin', wake, { passive: true });
+    window.addEventListener('pointermove', wake, { passive: true, once: true });
     return () => {
       window.removeEventListener('pointerdown', wake);
+      window.removeEventListener('mousedown', wake);
       window.removeEventListener('keydown', wake);
       window.removeEventListener('click', wake);
       window.removeEventListener('touchstart', wake);
       window.removeEventListener('focusin', wake);
-      player.dispose();
-      music.current = null;
+      window.removeEventListener('pointermove', wake);
     };
   }, []);
   useEffect(() => { music.current?.setPreferences(preferences.audio); }, [preferences.audio]);
@@ -155,11 +160,26 @@ function VisualPrototypeContent() {
       sessionBusy={sessionBusy}
       sessionNotice={sessionNotice ? t(sessionNotice) : ''}
       onSignedIn={(user, value) => { setAccount(user); setAlias(value); setSessionNotice(''); setScreen(pendingMultiplayer ? 'multiplayer' : 'command'); setPendingMultiplayer(null); }}
-      onContinue={(value) => { setAlias(value); setPendingMultiplayer(null); setSessionNotice(''); setMultiplayerMatch(false); setScreen('command'); }}
-      onCreateTraining={(value) => { setAlias(value); setPendingMultiplayer(null); setSessionNotice(''); setMultiplayerMatch(false); setLobbyMode('create'); setScreen('lobby'); }}
-      onJoinRoom={(code, value) => { setAlias(value); openMultiplayer('join', code); }}
+      onContinue={(value) => {
+        setAlias(value);
+        setPendingMultiplayer(null);
+        setSessionNotice('');
+        setMultiplayerMatch(false);
+        void ensureGuestSession(value).then(setAccount).catch(() => {});
+        setScreen('command');
+      }}
+      onCreateTraining={(value) => {
+        setAlias(value);
+        setPendingMultiplayer(null);
+        setSessionNotice('');
+        setMultiplayerMatch(false);
+        void ensureGuestSession(value).then(setAccount).catch(() => {});
+        setLobbyMode('create');
+        setScreen('lobby');
+      }}
+      onJoinRoom={(code, value) => { setAlias(value); void openMultiplayer('join', code); }}
     />}
-    {screen === 'command' && <CommandCenter alias={alias} accountEmail={account?.email} onProfile={()=>setScreen('profile')} onCreateRoom={() => { setMultiplayerMatch(false); setLobbyMode('create'); setScreen('lobby'); }} onCreateMultiplayer={() => openMultiplayer('create')} onJoinRoom={() => openMultiplayer('join')} onHangar={() => setScreen('hangar')} onSettings={() => setScreen('settings')} onSignOut={() => void signOut()} />}
+    {screen === 'command' && <CommandCenter alias={alias} accountEmail={account?.email} preferences={preferences} onSavePreferences={(next) => { saveVisualPreferences(next); setPreferences(next); }} onProfile={()=>setScreen('profile')} onCreateRoom={() => { setMultiplayerMatch(false); setLobbyMode('create'); setScreen('lobby'); }} onCreateMultiplayer={() => void openMultiplayer('create')} onJoinRoom={() => void openMultiplayer('join')} onSignOut={() => void signOut()} onBack={() => void signOut()} />}
     {screen==='profile'&&<ProfileScreen onBack={()=>setScreen('command')}/>}
     {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} onBack={() => setScreen('command')} onExploreMap={() => { selectMap('sector-01'); setScreen('map'); }} onDeploy={(chosen, chosenMap, chosenDuration) => { setDuration(chosenDuration); setDifficulty(chosen); setMap(chosenMap); setScreen('gameplay'); }} />}
     {screen === 'multiplayer' && multiplayer && <MultiplayerLobby alias={alias} token={sessionToken() || ''} mode={lobbyMode} session={multiplayer} initialJoinCode={joinCode} onBack={() => { setMultiplayerMatch(false); setJoinCode(''); setScreen('command'); }} />}

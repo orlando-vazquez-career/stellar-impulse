@@ -20,37 +20,24 @@ function ToggleSetting({ title, detail, checked, onChange }: { title: string; de
   return <label className="vi-setting-toggle"><span><strong>{title}</strong><small>{detail}</small></span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /></label>;
 }
 
-export function SettingsScreen({ preferences, onBack, onSave }: { preferences: VisualPreferences; onBack(): void; onSave(preferences: VisualPreferences): void }) {
+export function SettingsPanel({
+  preferences,
+  onBack,
+  onSave,
+  isEmbedded = false,
+}: {
+  preferences: VisualPreferences;
+  onBack(): void;
+  onSave(preferences: VisualPreferences): void;
+  isEmbedded?: boolean;
+}) {
   const { locale, setLocale, t } = useI18n();
   const sound = useSpaceSound();
-  const canvas = useRef<HTMLCanvasElement>(null);
   const [category, setCategory] = useState<SettingsCategory>('audio');
   const [draft, setDraft] = useState<VisualPreferences>(() => ({
     audio: { ...preferences.audio }, controls: { ...preferences.controls }, accessibility: { ...preferences.accessibility },
   }));
   const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    if (!canvas.current) return;
-    const scene = createCommandSpaceScene(canvas.current);
-    scene.start();
-    if (preferences.accessibility.reducedMotion) scene.stop();
-
-    const onResize = () => scene.resize();
-    const onPointer = (event: PointerEvent) => {
-      scene.setPointer(
-        (event.clientX / window.innerWidth) * 2 - 1,
-        (event.clientY / window.innerHeight) * 2 - 1,
-      );
-    };
-    window.addEventListener('resize', onResize);
-    if (!preferences.accessibility.reducedMotion) window.addEventListener('pointermove', onPointer);
-    return () => {
-      scene.stop();
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('pointermove', onPointer);
-    };
-  }, [preferences.accessibility.reducedMotion]);
 
   const soundEnabled = !draft.audio.muted && draft.audio.master > 0 && draft.audio.effects > 0;
   const hover = () => { if (soundEnabled) sound.playHover({ pitch: 560 }); };
@@ -78,11 +65,30 @@ export function SettingsScreen({ preferences, onBack, onSave }: { preferences: V
     markDirty();
   };
 
-  return <main className="vi-settings vi-screen">
-    <canvas ref={canvas} className="vi-settings-canvas" aria-hidden="true" />
-    <header className="vi-screen__header"><Brand /><div className="vi-header-actions"><LanguageToggle /><button className="vi-text-button" onMouseEnter={hover} onClick={() => { select(); onBack(); }}>← {t('backToCommand')}</button></div></header>
-    <section className="vi-settings__content">
-      <div className="vi-settings__heading"><div><p className="vi-eyebrow">{t('settingsEyebrow')}</p><h1>{t('settingsTitle')}</h1></div><p>{t('settingsBody')}</p></div>
+  return (
+    <section className={`vi-settings__content ${isEmbedded ? 'vi-settings__content--embedded' : ''}`}>
+      <div className="vi-settings__heading">
+        <div>
+          <p className="vi-eyebrow">{t('settingsEyebrow')}</p>
+          <h1>{t('settingsTitle')}</h1>
+        </div>
+        <div className="vi-settings__heading-meta">
+          <p>{t('settingsBody')}</p>
+          {isEmbedded && (
+            <button
+              className="vi-embedded-close"
+              onClick={() => {
+                select();
+                onBack();
+              }}
+              aria-label={t('backToCommand')}
+              title={t('backToCommand')}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className="vi-settings__workspace">
         <nav className="vi-settings__nav" aria-label={t('settings')}>
@@ -133,6 +139,72 @@ export function SettingsScreen({ preferences, onBack, onSave }: { preferences: V
         </section>
       </div>
     </section>
-    <footer className="vi-screen__footer"><span>IMPULSO // {t('settings').toUpperCase()}</span><span>LOCAL // v0.4</span></footer>
-  </main>;
+  );
+}
+
+export function SettingsScreen({
+  preferences,
+  onBack,
+  onSave,
+  embedded = false,
+}: {
+  preferences: VisualPreferences;
+  onBack(): void;
+  onSave(preferences: VisualPreferences): void;
+  embedded?: boolean;
+}) {
+  const { t } = useI18n();
+  const sound = useSpaceSound();
+  const canvas = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (embedded || !canvas.current) return;
+    const scene = createCommandSpaceScene(canvas.current);
+    scene.start();
+    if (preferences.accessibility.reducedMotion) scene.stop();
+
+    const onResize = () => scene.resize();
+    const onPointer = (event: PointerEvent) => {
+      scene.setPointer(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        (event.clientY / window.innerHeight) * 2 - 1,
+      );
+    };
+    window.addEventListener('resize', onResize);
+    if (!preferences.accessibility.reducedMotion) window.addEventListener('pointermove', onPointer);
+    return () => {
+      scene.stop();
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('pointermove', onPointer);
+    };
+  }, [embedded, preferences.accessibility.reducedMotion]);
+
+  if (embedded) {
+    return <SettingsPanel preferences={preferences} onBack={onBack} onSave={onSave} isEmbedded />;
+  }
+
+  const hover = () => sound.playHover({ pitch: 560 });
+  const select = () => sound.playSelect();
+
+  return (
+    <main className="vi-settings vi-screen">
+      <canvas ref={canvas} className="vi-settings-canvas" aria-hidden="true" />
+      <header className="vi-screen__header">
+        <Brand />
+        <div className="vi-header-actions">
+          <LanguageToggle />
+          <button className="vi-text-button" onMouseEnter={hover} onClick={() => { select(); onBack(); }}>
+            ← {t('backToCommand')}
+          </button>
+        </div>
+      </header>
+
+      <SettingsPanel preferences={preferences} onBack={onBack} onSave={onSave} />
+
+      <footer className="vi-screen__footer">
+        <span>IMPULSO // {t('settings').toUpperCase()}</span>
+        <span>LOCAL // v0.4</span>
+      </footer>
+    </main>
+  );
 }
