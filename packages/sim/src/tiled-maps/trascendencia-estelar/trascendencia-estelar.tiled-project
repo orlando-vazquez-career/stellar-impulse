@@ -1,0 +1,447 @@
+{
+  "automappingRulesFile": "",
+  "commands": [],
+  "compatibilityVersion": 1100,
+  "extensionsPath": "extensions",
+  "folders": [
+    "."
+  ],
+  "propertyTypes": [
+    {
+      "id": 1,
+      "name": "Terreno",
+      "type": "enum",
+      "storageType": "string",
+      "values": [
+        "empty",
+        "nebula",
+        "asteroid",
+        "boost",
+        "slow",
+        "blocked",
+        "ice",
+        "ion_storm"
+      ],
+      "valuesAsFlags": false
+    },
+    {
+      "id": 2,
+      "name": "spawn",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#2F7FD8",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "owner",
+          "type": "int",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "pronexo",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#E04848",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "index",
+          "type": "int",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "pilar",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#E8B730",
+      "drawFill": true,
+      "members": []
+    },
+    {
+      "id": 5,
+      "name": "barrera",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#30B8E8",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "hp",
+          "type": "int",
+          "value": 500
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "mob_spawn",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#8C6A4A",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "count",
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "recurso",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#F0A030",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "amount",
+          "type": "int",
+          "value": 300
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "agujero",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#3CC870",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "pairId",
+          "type": "string",
+          "value": "A"
+        },
+        {
+          "name": "cycleSeconds",
+          "type": "int",
+          "value": 90
+        },
+        {
+          "name": "openSeconds",
+          "type": "int",
+          "value": 30
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "asteroid_gate",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#A07850",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "cycleSeconds",
+          "type": "int",
+          "value": 60
+        },
+        {
+          "name": "openSeconds",
+          "type": "int",
+          "value": 20
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "CRITTER_SPAWN",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#45F0DF",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "entity_type",
+          "type": "string",
+          "value": "maintenance_drone"
+        },
+        {
+          "name": "max_units",
+          "type": "int",
+          "value": 3
+        },
+        {
+          "name": "flee_distance",
+          "type": "float",
+          "value": 150.0
+        },
+        {
+          "name": "flee_threshold_units",
+          "type": "int",
+          "value": 5
+        },
+        {
+          "name": "fow_sensitive",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "name": "sprite_sheet",
+          "type": "string",
+          "value": "critter_drone.png"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "OBSTACLE_RING",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#72C1E8",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "collision_type",
+          "type": "string",
+          "value": "HEAVY_ONLY"
+        },
+        {
+          "name": "height_level",
+          "type": "int",
+          "value": -30
+        },
+        {
+          "name": "rotation_speed",
+          "type": "int",
+          "value": 12
+        },
+        {
+          "name": "blocks_vision",
+          "type": "bool",
+          "value": false
+        },
+        {
+          "name": "damage_on_collision",
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "ENVIRONMENTAL_HAZARD",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#A855F7",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "collision_type",
+          "type": "string",
+          "value": "NONE"
+        },
+        {
+          "name": "height_level",
+          "type": "int",
+          "value": -60
+        },
+        {
+          "name": "vision_modifier",
+          "type": "string",
+          "value": "REDUCE_TO_1_TILE"
+        },
+        {
+          "name": "disable_radar",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "name": "shield_drain_per_sec",
+          "type": "float",
+          "value": 5.0
+        },
+        {
+          "name": "blocks_vision",
+          "type": "bool",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "SOLID_BLOCKER",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#9DA8BE",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "collision_type",
+          "type": "string",
+          "value": "ALL_UNITS_BLOCKED"
+        },
+        {
+          "name": "height_level",
+          "type": "int",
+          "value": -90
+        },
+        {
+          "name": "blocks_vision",
+          "type": "bool",
+          "value": true
+        },
+        {
+          "name": "indestructible",
+          "type": "bool",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "zona_caida",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#FF5A3C",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "objeto",
+          "type": "string",
+          "value": "satelite"
+        },
+        {
+          "name": "damage",
+          "type": "int",
+          "value": 40
+        },
+        {
+          "name": "radius",
+          "type": "int",
+          "value": 1
+        },
+        {
+          "name": "intervalSeconds",
+          "type": "int",
+          "value": 45
+        },
+        {
+          "name": "warningSeconds",
+          "type": "int",
+          "value": 4
+        },
+        {
+          "name": "amount",
+          "type": "int",
+          "value": 1
+        },
+        {
+          "name": "grupo",
+          "type": "int",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "niebla_movil",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#A855F7",
+      "drawFill": true,
+      "members": [
+        {
+          "name": "maxCells",
+          "type": "int",
+          "value": 13
+        },
+        {
+          "name": "cellsPerSecond",
+          "type": "float",
+          "value": 1.25
+        },
+        {
+          "name": "warningSeconds",
+          "type": "int",
+          "value": 5
+        },
+        {
+          "name": "holdSeconds",
+          "type": "int",
+          "value": 6
+        },
+        {
+          "name": "restSeconds",
+          "type": "int",
+          "value": 20
+        },
+        {
+          "name": "startSeconds",
+          "type": "int",
+          "value": 40
+        },
+        {
+          "name": "slowFactor",
+          "type": "int",
+          "value": 2
+        },
+        {
+          "name": "visionRadius",
+          "type": "int",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "ruta_niebla",
+      "type": "class",
+      "useAs": [
+        "object"
+      ],
+      "color": "#D9A8FF",
+      "drawFill": false,
+      "members": [
+        {
+          "name": "niebla",
+          "type": "string",
+          "value": ""
+        },
+        {
+          "name": "orden",
+          "type": "int",
+          "value": 1
+        }
+      ]
+    }
+  ]
+}

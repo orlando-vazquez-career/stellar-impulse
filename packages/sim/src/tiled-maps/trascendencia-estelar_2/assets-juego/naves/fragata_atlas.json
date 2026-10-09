@@ -1,0 +1,21 @@
+{
+  "image": "fragata_naves.png",
+  "shadowImage": "fragata_sombras.png",
+  "frameWidth": 320,
+  "frameHeight": 320,
+  "frames": {
+    "N": 0,
+    "NE": 1,
+    "E": 2,
+    "SE": 3,
+    "S": 4,
+    "SO": 5,
+    "O": 6,
+    "NO": 7
+  },
+  "origin": {
+    "x": 0.5,
+    "y": 0.59375
+  },
+  "scaleForTile64x32": 0.25
+}
