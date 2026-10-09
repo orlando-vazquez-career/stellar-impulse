@@ -25,6 +25,25 @@ de entorno con la configuración predeterminada.
 | Cliente | http://127.0.0.1:5173 | `pnpm --filter @impulso/web dev` |
 | Servidor | http://127.0.0.1:2567/health | `pnpm --filter @impulso/server start` |
 
+### Cuentas: archivo o Postgres
+
+Sin `DATABASE_URL`, el servidor guarda cuentas y progreso en `AUTH_DATA_FILE`
+(`apps/server/data/users.json`). Con `DATABASE_URL`, usa Postgres: al iniciar aplica las
+migraciones de Prisma (`apps/server/prisma/migrations`) y, si la base está vacía, importa
+una sola vez las cuentas de `AUTH_DATA_FILE`. `pnpm install` genera el cliente de Prisma
+en `apps/server/src/generated` (ignorado por Git).
+
+Para probar con Postgres en local, con Docker:
+
+```sh
+docker run -d --name impulso-pg -e POSTGRES_USER=impulso -e POSTGRES_PASSWORD=impulso -e POSTGRES_DB=impulso -p 127.0.0.1:55432:5432 postgres:17-alpine
+DATABASE_URL=postgresql://impulso:impulso@127.0.0.1:55432/impulso pnpm --filter @impulso/server start
+```
+
+Un cambio de esquema se escribe en `apps/server/prisma/schema.prisma` y se genera con
+`DATABASE_URL=... pnpm --filter @impulso/server db:migrate -- --name <cambio>`, que crea
+la migración SQL que se versiona.
+
 Para cambiar el backend, copia `apps/web/.env.example` a `apps/web/.env.local`
 y reinicia Vite. Las variables `VITE_` son públicas. Para el servidor configura
 `HOST`, `PORT` y `WEB_ORIGIN` en el entorno de la terminal; el archivo de ejemplo

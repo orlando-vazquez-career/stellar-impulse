@@ -1,6 +1,11 @@
-/** Versioned message envelopes; campaign uses v2 while v1 remains available to legacy consumers. */
+/**
+ * Versioned message envelopes. Campaign v3 runs the match engine (Espiral, augments, base);
+ * the battlefield room keeps v2 and v1 remains available to legacy consumers.
+ */
 export const PROTOCOL_VERSION = 1;
-export const CAMPAIGN_PROTOCOL_VERSION = 2;
+export const BATTLEFIELD_PROTOCOL_VERSION = 2;
+export const CAMPAIGN_PROTOCOL_VERSION = 3;
+export type CampaignMap = 'espiral' | 'sector-01';
 
 export type EnvelopeResult =
   | { ok: true; body: unknown }
@@ -9,13 +14,17 @@ export type JoinResult =
   | { ok: true; name: string }
   | { ok: false; reason: 'invalid_join' | 'unsupported_version' };
 export type CampaignJoinResult =
-  | { ok: true; name: string; token?: string; map?: 'sector-01' }
+  | { ok: true; name: string; token?: string; map?: CampaignMap }
   | { ok: false; reason: 'invalid_join' | 'unsupported_version' };
-export type TechResult = { ok: true; techId: string } | { ok: false; reason: 'invalid_tech' };
+export type AugmentPickResult = { ok: true; choice: number; id: string } | { ok: false; reason: 'invalid_augment_pick' };
+export type AugmentRerollResult = { ok: true; choice: number } | { ok: false; reason: 'invalid_augment_reroll' };
 
 const DEFAULT_NAME = 'Comandante';
 const NAME = /^[\p{L}\p{N} _.-]{1,24}$/u;
-const TECH_ID = /^[a-z0-9-]{1,40}$/;
+const AUGMENT_ID = /^[a-z]-[a-z0-9-]{1,40}$/;
+const MAPS: readonly CampaignMap[] = ['espiral', 'sector-01'];
+/** Campaign sectors offer one augment each: choice 0, 1 or 2. */
+const isChoice = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 2;
 
 /** Own data properties of a plain object, or null when the value could smuggle getters or a prototype. */
 function plainFields(value: unknown): Record<string, unknown> | null {
@@ -34,6 +43,13 @@ function plainFields(value: unknown): Record<string, unknown> | null {
 const onlyKeys = (fields: Record<string, unknown>, allowed: string[]): boolean =>
   Object.keys(fields).every((key) => allowed.includes(key));
 
+/** A commander name, trimmed: 1 to 24 letters, digits, spaces, `_`, `.` or `-`. Rooms and accounts share the rule. */
+export function parseDisplayName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const name = value.trim();
+  return NAME.test(name) ? name : null;
+}
+
 function openVersionedEnvelope(value: unknown, expectedVersion: number): EnvelopeResult {
   const fields = plainFields(value);
   if (!fields || !onlyKeys(fields, ['protocolVersion', 'body']) || !('body' in fields)) return { ok: false, reason: 'invalid_envelope' };
@@ -51,28 +67,32 @@ export function openCampaignEnvelope(value: unknown): EnvelopeResult {
   return openVersionedEnvelope(value, CAMPAIGN_PROTOCOL_VERSION);
 }
 
+export function openBattlefieldEnvelope(value: unknown): EnvelopeResult {
+  return openVersionedEnvelope(value, BATTLEFIELD_PROTOCOL_VERSION);
+}
+
 function parseVersionedJoinOptions(value: unknown, expectedVersion: number): JoinResult {
   const fields = plainFields(value);
   if (!fields) return { ok: false, reason: 'invalid_join' };
   if (fields.protocolVersion !== expectedVersion) return { ok: false, reason: 'unsupported_version' };
   if (!onlyKeys(fields, ['protocolVersion', 'name'])) return { ok: false, reason: 'invalid_join' };
   if (fields.name === undefined) return { ok: true, name: DEFAULT_NAME };
-  if (typeof fields.name !== 'string') return { ok: false, reason: 'invalid_join' };
-  const name = fields.name.trim();
-  return NAME.test(name) ? { ok: true, name } : { ok: false, reason: 'invalid_join' };
+  const name = parseDisplayName(fields.name);
+  return name === null ? { ok: false, reason: 'invalid_join' } : { ok: true, name };
 }
 
 export function parseJoinOptions(value: unknown): JoinResult {
   return parseVersionedJoinOptions(value, PROTOCOL_VERSION);
 }
 
-export function parseCampaignJoinOptions(value: unknown): CampaignJoinResult {
+/** Room admission: version, optional name, session token and one of the room's maps. */
+function parseRoomJoinOptions(value: unknown, version: number, maps: readonly CampaignMap[]): CampaignJoinResult {
   const fields = plainFields(value);
   if (!fields) return { ok: false, reason: 'invalid_join' };
-  if (fields.protocolVersion !== CAMPAIGN_PROTOCOL_VERSION) return { ok: false, reason: 'unsupported_version' };
+  if (fields.protocolVersion !== version) return { ok: false, reason: 'unsupported_version' };
   if (!onlyKeys(fields, ['protocolVersion', 'name', 'token', 'map'])) return { ok: false, reason: 'invalid_join' };
-  if (fields.map !== undefined && fields.map !== 'sector-01') return { ok: false, reason: 'invalid_join' };
-  const parsed = parseVersionedJoinOptions({ protocolVersion: fields.protocolVersion, name: fields.name }, CAMPAIGN_PROTOCOL_VERSION);
+  if (fields.map !== undefined && !maps.includes(fields.map as CampaignMap)) return { ok: false, reason: 'invalid_join' };
+  const parsed = parseVersionedJoinOptions({ protocolVersion: fields.protocolVersion, name: fields.name }, version);
   if (!parsed.ok) return parsed;
   if (fields.token !== undefined && (typeof fields.token !== 'string' || fields.token.length > 256)) {
     return { ok: false, reason: 'invalid_join' };
@@ -80,8 +100,16 @@ export function parseCampaignJoinOptions(value: unknown): CampaignJoinResult {
   return {
     ...parsed,
     ...(typeof fields.token === 'string' ? { token: fields.token } : {}),
-    ...(fields.map === 'sector-01' ? { map: fields.map } : {}),
+    ...(fields.map !== undefined ? { map: fields.map as CampaignMap } : {}),
   };
+}
+
+export function parseCampaignJoinOptions(value: unknown): CampaignJoinResult {
+  return parseRoomJoinOptions(value, CAMPAIGN_PROTOCOL_VERSION, MAPS);
+}
+
+export function parseBattlefieldJoinOptions(value: unknown): CampaignJoinResult {
+  return parseRoomJoinOptions(value, BATTLEFIELD_PROTOCOL_VERSION, ['sector-01']);
 }
 
 export function parseReady(body: unknown): boolean {
@@ -89,10 +117,15 @@ export function parseReady(body: unknown): boolean {
   return fields !== null && Object.keys(fields).length === 0;
 }
 
-export function parseTechChoice(body: unknown): TechResult {
+export function parseAugmentPick(body: unknown): AugmentPickResult {
   const fields = plainFields(body);
-  if (!fields || !onlyKeys(fields, ['techId']) || typeof fields.techId !== 'string' || !TECH_ID.test(fields.techId)) {
-    return { ok: false, reason: 'invalid_tech' };
-  }
-  return { ok: true, techId: fields.techId };
+  if (!fields || !onlyKeys(fields, ['choice', 'id']) || !isChoice(fields.choice)
+    || typeof fields.id !== 'string' || !AUGMENT_ID.test(fields.id)) return { ok: false, reason: 'invalid_augment_pick' };
+  return { ok: true, choice: fields.choice, id: fields.id };
+}
+
+export function parseAugmentReroll(body: unknown): AugmentRerollResult {
+  const fields = plainFields(body);
+  if (!fields || !onlyKeys(fields, ['choice']) || !isChoice(fields.choice)) return { ok: false, reason: 'invalid_augment_reroll' };
+  return { ok: true, choice: fields.choice };
 }

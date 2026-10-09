@@ -23,7 +23,7 @@ export interface MatchLobbyView {
 }
 export interface AugmentView {
   started: boolean; own: AugmentCardView[]; rival: AugmentCardView[]; nextChoiceTick: number | null;
-  offer: {choice:number;tier:Augment['tier'];cards:AugmentCardView[];remainingSeconds:number;rerolls:number} | null;
+  offer: {choice:number;tier:Augment['tier'];cards:AugmentCardView[];remainingSeconds:number;rerolls:number;rerollLimit:number} | null;
 }
 export interface PlayerView {
   schemaVersion: 1;
@@ -35,8 +35,6 @@ export interface PlayerView {
   width: number;
   height: number;
   obstacles: Position[];
-  walkable?: boolean[];
-  level?: number[];
   rules: Rules;
   unitStats?: Record<UnitKind, ShipStats>;
   augments?: AugmentView;
@@ -50,7 +48,8 @@ export interface PlayerView {
   enemyBase?: {x:number;y:number;visible:boolean;hp?:number;maxHp?:number};
   productionForbidden?: UnitKind[];
   /** Metal and the hangar queue are private to their owner. */
-  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; baseUpgrades?: { damage: number; capacity: number }; production?: { kind: UnitKind; remainingTicks: number } | null }>;
+  /** `lastSequence`: owner only, so a restored client keeps numbering its orders after the server's last accepted one. */
+  players: Record<PlayerId, { id: PlayerId; base: Position; metal?: number; lastSequence?: number; baseUpgrades?: { damage: number; capacity: number }; production?: { kind: UnitKind; remainingTicks: number } | null }>;
   squads: VisibleSquad[];
   guardians: Guardian[];
   /** `fraction`: each side's capture progress from 0 to 1, with its own capture time. */
@@ -78,6 +77,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     p2: { id: 'p2', base: { ...world.players.p2.base } },
   };
   players[playerId].metal = world.players[playerId].metal;
+  players[playerId].lastSequence = world.players[playerId].lastSequence;
   players[playerId].baseUpgrades = { ...(world.players[playerId].baseUpgrades ?? { damage: 0, capacity: 0 }) };
   const order = world.production[playerId];
   players[playerId].production = order ? { kind: order.kind, remainingTicks: Math.max(0, order.readyTick - world.tick) } : null;
@@ -91,7 +91,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     coreFraction:Math.max(...(['p1','p2'] as const).map(p=>world.core.progress[p]/captureDuration(world,p,world.rules.coreCaptureTicks,true))),
     augments: match && augmentPlayer ? {started:match.started,own:augmentPlayer.chosen.map(card),rival:match.players[rivalId].chosen.map(card),
       nextChoiceTick:world.duration && augmentPlayer.nextChoice<3 ? DURATION_MODES[world.duration].choices[augmentPlayer.nextChoice]! : null,
-      offer:offer ? {choice:offer.choice,tier:offer.tier,cards:offer.cards.map(card),remainingSeconds:Math.max(0,Math.ceil((offer.deadline-match.clock)/world.rules.tickRate)),rerolls:offer.rerolls} : null} : undefined,
+      offer:offer ? {choice:offer.choice,tier:offer.tier,cards:offer.cards.map(card),remainingSeconds:Math.max(0,Math.ceil((offer.deadline-match.clock)/world.rules.tickRate)),rerolls:offer.rerolls,rerollLimit:offer.rerollLimit ?? 1} : null} : undefined,
     chart:augmentPlayer?.chart ? {nodes:augmentPlayer.chart.nodes.map((p)=>({...p})),guardians:augmentPlayer.chart.guardians.map((p)=>({...p}))} : undefined,
     base:{damage:effectiveBaseDamage(world,playerId)+baseDefense(world,playerId).damage,range:Math.max(baseDefense(world,playerId).range,4),fleetCap:effectiveFleetCap(world,playerId),upgradeCosts:{damage:baseUpgradeCost('damage',world.players[playerId].baseUpgrades),capacity:baseUpgradeCost('capacity',world.players[playerId].baseUpgrades)},
       ...(world.baseRules && own.structure && own.modules ? {
@@ -104,7 +104,6 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     productionForbidden:effectsFor(world,playerId).flatMap((e)=>e.hook==='no-production'?[e.kind]:[]),
     schemaVersion: 1, mode: 'training', tick: world.tick, playerId, duration: world.duration, suddenDeath: world.suddenDeath,
     width: world.width, height: world.height, obstacles: world.obstacles.map((point) => ({ ...point })),
-    ...(world.surface ? { walkable: [...world.surface.walkable], level: [...world.surface.level] } : {}),
     rules: { ...world.rules }, players,
     unitStats: Object.fromEntries(['explorer', 'interceptor', 'frigate', 'bomber'].map((kind) => [kind, statsFor(world, playerId, kind as UnitKind)])) as Record<UnitKind, ShipStats>,
     squads: world.squads.filter((unit) => unit.ownerId === playerId || (unit.hp > 0 && visible(unit) && !isConcealed(world,unit))).map((unit) => {

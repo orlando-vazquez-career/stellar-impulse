@@ -19,22 +19,38 @@ errores y adapter de wallet con test double. Rust: versión del contrato de arra
 Los tests de wallet no prueban una aprobación humana en extensión.
 
 E2E multijugador: dos contextos de navegador con cuentas diferentes crean y comparten
-una sala, esperan ambos estados listo, entran juntos y envían órdenes confirmadas.
-Una recarga conserva sala, asiento y secuencia; abandonar concede victoria al rival,
-y recargar resultados conserva esa victoria. También se comprueban código inválido,
+una sala, esperan ambos estados listo y entran juntos a la campaña en Espiral. Cada uno
+elige su aumento de apertura y produce un Explorador con una orden confirmada por el
+servidor. Una recarga conserva sala, asiento, flota y secuencia; abandonar concede la
+victoria de la campaña al rival, y recargar resultados conserva esa victoria. También se comprueban código inválido,
 corrección de nombre de sala y salida del lobby incluso durante una caída de red.
 Las pruebas de transporte cubren
 tercer jugador, privacidad, pausa, reconexión automática y ausencia de órdenes reenviadas.
 La suite mantiene login, entrenamiento, mapa, cámara, hangar y ajustes.
-Estas pruebas no certifican la campaña completa, accesibilidad completa ni balance.
+`tests/e2e/account.spec.ts` crea una cuenta desde la pantalla de acceso, sale, vuelve a
+entrar con el campo de alias vacío y desde otro contexto de navegador, y recupera el alias
+de la cuenta; también comprueba los mensajes de alias no válido y correo ya registrado.
+Los tres sectores con aumentos arrastrados se prueban en el servidor
+(`apps/server/src/campaign-flow.test.ts`), no en el navegador.
+Estas pruebas no certifican accesibilidad completa ni balance.
 
 Ejecutar solo la aceptación de salas con `pnpm test:e2e tests/e2e/multiplayer.spec.ts`.
+
+Cuentas en Postgres: `apps/server/src/postgres-store.test.ts` corre solo con
+`DATABASE_URL_TEST` apuntando a una base descartable (vacía las tablas en cada caso).
+En CI lo ejecuta el job `database` contra un servicio Postgres 17. En local, con el
+contenedor de [desarrollo](development.md):
+`DATABASE_URL_TEST=postgresql://impulso:impulso@127.0.0.1:55432/impulso pnpm exec vitest run apps/server/src/postgres-store.test.ts`.
+Cubre reinicio y login, XP, desafíos y mejores marcas de una partida, emblemas de campaña,
+resultados repetidos desde otro proceso, correo duplicado entre procesos, dos resultados
+simultáneos, alias de comandante (registro, cambio y reinicio) e importación del archivo
+anterior con su alias.
 
 ## Aceptación futura del MVP
 
 | Caso | Evidencia requerida | Estado inicial |
 |---|---|---|
-| Tres sectores1v1 | Dos navegadores, tecnologías, resets y resultado final | Pendiente |
+| Tres sectores 1v1 | Dos navegadores, aumentos, resets y resultado final | Servidor cubierto; navegador cubre sector 1, recarga y abandono |
 | Bot y reconexión | Cortar red, sustitución10s, reserva60s, control recuperado | Pendiente |
 | Niebla | Captura de mensajes por jugador; cero unidades ocultas | Base con tests unitarios; ampliar |
 | Órdenes | Ownership, visión, recursos, frecuencia y duplicados rechazados | Base parcial; ampliar |

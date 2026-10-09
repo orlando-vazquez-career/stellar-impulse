@@ -1,5 +1,6 @@
 import { AudioChannelBus, channelVolume, getAudioMix, subscribeAudioMix, type AudioChannel } from '../audio-mix';
 import type { GameplayEvent } from './model';
+import { equippedCosmetic } from '../hangar/loadout';
 
 /**
  * Match sound effects and announcer.
@@ -52,6 +53,7 @@ export class MatchAudio {
   private speech: { slot: VoiceSlot; line: SpeechSynthesisUtterance } | null = null;
   private static speechOwner: MatchAudio | null = null;
   private readonly unsubscribe: () => void;
+  private readonly announcer = equippedCosmetic('voice').announcer;
 
   /** Volumes are read from the live mix on every sound, so slider changes apply mid-match. */
   constructor(private locale: 'es' | 'en', manifestUrl = '/audio/manifest.json') {
@@ -157,7 +159,8 @@ export class MatchAudio {
     MatchAudio.speechOwner?.stopSpeech();
     const line = new SpeechSynthesisUtterance(VOICE_TEXT[this.locale][slot]);
     line.lang = this.locale === 'es' ? 'es-ES' : 'en-US';
-    line.rate = 1.08;
+    line.rate = this.announcer?.rate ?? 1.08;
+    line.pitch = this.announcer?.pitch ?? 1;
     line.volume = Math.min(1, this.voiceVolume * 1.2);
     this.speech = { slot, line };
     MatchAudio.speechOwner = this;

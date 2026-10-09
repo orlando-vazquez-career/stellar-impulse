@@ -6,6 +6,8 @@ export const defaultCosmeticLoadout: CosmeticLoadout = {
   hull: 'aegis',
   trail: 'ion',
   insignia: 'vanguard',
+  voice: 'voz-comandante',
+  music: 'musica-iron-vanguard',
 };
 
 const storageKey = 'impulso.cosmetic-loadout';
@@ -25,4 +27,10 @@ export function loadCosmeticLoadout(): CosmeticLoadout {
 
 export function saveCosmeticLoadout(loadout: CosmeticLoadout) {
   localStorage.setItem(storageKey, JSON.stringify(loadout));
+}
+
+/** Resolve only local, unlocked catalog entries; stored values never become audio URLs. */
+export function equippedCosmetic(category: HangarCategory) {
+  const loadout = loadCosmeticLoadout();
+  return cosmeticCatalog.find((item) => item.category === category && item.id === loadout[category])!;
 }

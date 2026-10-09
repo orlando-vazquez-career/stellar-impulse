@@ -423,6 +423,7 @@
 }
 
 .vi-loadout-summary > div span {
+  min-width: 0;
   padding: 0 8px;
   border-right: 1px solid rgba(113, 229, 220, 0.15);
   display: grid;
@@ -500,8 +501,8 @@
   padding: 6px 14px;
   border-bottom: 1px solid rgba(113, 229, 220, 0.2);
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
   background: rgba(4, 12, 19, 0.6);
 }
 

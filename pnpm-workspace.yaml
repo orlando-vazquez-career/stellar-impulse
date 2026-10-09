@@ -2,7 +2,13 @@ packages:
   - apps/*
   - packages/*
 allowBuilds:
+  '@prisma/engines': true
   esbuild: true
   msgpackr-extract: false
+  prisma: true
 minimumReleaseAgeExclude:
   - '@colyseus/core@0.18.15'
+# Run scripts with pnpm's own shell, the same on every OS. On Linux `sh -c` (dash) stays
+# between pnpm and the server and dies on SIGTERM, so Railway marked every replaced
+# deployment as failed. pnpm 11 ignores this setting in .npmrc.
+shellEmulator: true

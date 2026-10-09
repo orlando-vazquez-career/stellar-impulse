@@ -1,19 +1,19 @@
 import { Room, ServerError, type Client } from '@colyseus/core';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 import {
-  CAMPAIGN_PROTOCOL_VERSION, openCampaignEnvelope, parseBattlefieldCommand,
-  parseCampaignJoinOptions, parseReady, parseTechChoice,
+  CAMPAIGN_PROTOCOL_VERSION, openCampaignEnvelope, parseAugmentPick, parseAugmentReroll,
+  parseCampaignJoinOptions, parseCommand, parseReady, type CampaignMap,
 } from '@impulso/input';
-import { createBattlefieldWorld, SECTOR_01_BATTLEFIELD_MAP, type MatchReward, type PlayerId } from '@impulso/sim';
-import { battlefieldViewFor } from '@impulso/state';
+import { createMatchWorld, type MatchReward, type PlayerId } from '@impulso/sim';
+import { viewFor } from '@impulso/state';
 import * as campaigns from './campaign/machine';
-import { publicMapMetadata } from './map-catalog';
 import type { AuthService } from './auth';
+import { savedReward } from './rewards';
 
 const TICK_MS = 100;
 const LOBBY_TIMEOUT_MS = 15 * 60_000;
+/** Squad-weighted actions per player and second: a group order costs one per squad. */
 const SQUAD_ACTIONS_PER_SECOND = 32;
-const SEARCH_EXPANSIONS_PER_TICK = 32768;
 
 /** Colyseus adapter for the campaign machine: admission, messages, reconnection and per-player views. */
 export class CampaignRoom extends Room {
@@ -26,41 +26,45 @@ export class CampaignRoom extends Room {
   private seats = new Map<string, PlayerId>();
   private users = new Map<string, PlayerId>();
   private rates = new Map<PlayerId, { second: number; count: number }>();
-  private remainingExpansions = SEARCH_EXPANSIONS_PER_TICK;
-  private budgetSector = -1;
-  private budgetTick = -1;
   private ticks = 0;
   private announcedEnd = false;
-  private renderMap?: 'sector-01';
+  /** Every sector of this campaign is played on this map. */
+  private map: CampaignMap = 'espiral';
 
   onCreate(options?: unknown) {
     this.roomId = randomBytes(6).toString('hex').toUpperCase();
     const parsed = parseCampaignJoinOptions(options);
-    this.renderMap = parsed.ok && parsed.map === 'sector-01' && !this.overrides.createSector ? 'sector-01' : undefined;
+    this.map = parsed.ok && parsed.map ? parsed.map : 'espiral';
+    const map = this.map;
     this.campaign = campaigns.createCampaign({
-      ...(this.renderMap ? { createSector: () => createBattlefieldWorld(SECTOR_01_BATTLEFIELD_MAP) } : {}),
+      createSector: (_sector, seed) => createMatchWorld(map, 'skirmish', seed),
       ...this.overrides,
-    });
+    }, randomInt(0x100000000));
     void this.setPrivate(true);
     this.onMessage('ready', (client, message) => this.withEnvelope(client, message, (player, body) => {
       if (!parseReady(body)) return this.reject(client, 'invalid_ready');
       campaigns.ready(this.campaign, player, Date.now());
       this.sendPhase();
     }));
-    this.onMessage('tech', (client, message) => this.withEnvelope(client, message, (player, body) => {
-      const parsed = parseTechChoice(body);
-      if (!parsed.ok) return this.reject(client, parsed.reason);
-      const chosen = campaigns.chooseTech(this.campaign, player, parsed.techId);
-      if (!chosen.ok) return this.reject(client, chosen.reason);
-      this.sendPhase();
-    }));
     this.onMessage('command', (client, message) => this.withEnvelope(client, message, (player, body) => {
-      const parsed = parseBattlefieldCommand(body);
-      const cost = parsed.ok ? parsed.command.squadIds.length : 1;
+      const parsed = parseCommand(body);
+      const cost = parsed.ok && 'squadIds' in parsed.command ? parsed.command.squadIds.length : 1;
       if (!this.withinRate(player, cost)) return this.reject(client, 'rate_limit');
-      const result = this.runCommand(player, body);
-      if (!result.accepted) this.reject(client, result.reason);
-      else if (parsed.ok) client.send('ack', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, seq: parsed.command.seq });
+      const result = campaigns.command(this.campaign, player, body);
+      if (!result.accepted) return this.reject(client, result.reason);
+      if (parsed.ok) client.send('ack', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, seq: parsed.command.seq });
+    }));
+    this.onMessage('augmentPick', (client, message) => this.withEnvelope(client, message, (player, body) => {
+      const parsed = parseAugmentPick(body);
+      if (!parsed.ok) return this.reject(client, parsed.reason);
+      const result = campaigns.augmentPick(this.campaign, player, parsed.choice, parsed.id);
+      if (!result.ok) this.reject(client, result.reason);
+    }));
+    this.onMessage('augmentReroll', (client, message) => this.withEnvelope(client, message, (player, body) => {
+      const parsed = parseAugmentReroll(body);
+      if (!parsed.ok) return this.reject(client, parsed.reason);
+      const result = campaigns.augmentReroll(this.campaign, player, parsed.choice);
+      if (!result.ok) this.reject(client, result.reason);
     }));
     this.setSimulationInterval(() => this.step(), TICK_MS);
     this.clock.setTimeout(() => {
@@ -68,7 +72,7 @@ export class CampaignRoom extends Room {
     }, LOBBY_TIMEOUT_MS);
   }
 
-  /** Admission: the client must speak this protocol version. A wallet is never an identity here. */
+  /** Admission: the client must speak this protocol version and hold an account session. */
   onAuth(_client: Client, options: unknown) {
     const parsed = parseCampaignJoinOptions(options);
     if (!parsed.ok) throw new ServerError(4002, parsed.reason);
@@ -85,6 +89,8 @@ export class CampaignRoom extends Room {
     this.seats.set(client.sessionId, seated.player);
     const userId = (client.auth as { userId: string }).userId;
     this.users.set(userId, seated.player);
+    // The account's unlocked augments feed every sector offer.
+    this.campaign.pools[seated.player] = this.auth.profile(userId).unlocked;
     if (this.campaign.seats.p1 && this.campaign.seats.p2) void this.lock();
     this.sendPhase();
   }
@@ -107,10 +113,7 @@ export class CampaignRoom extends Room {
     const player = this.seats.get(client.sessionId);
     if (!player) return;
     campaigns.reconnect(this.campaign, player, Date.now());
-    if (this.campaign.phase === 'sector' && this.campaign.world) {
-      this.sendMap(client);
-      client.send('view', battlefieldViewFor(this.campaign.world, player));
-    }
+    if (this.campaign.phase === 'sector' && this.campaign.world) client.send('view', this.viewOf(player));
     this.sendPhase();
   }
 
@@ -123,6 +126,7 @@ export class CampaignRoom extends Room {
       this.seats.delete(client.sessionId);
       const userId = (client.auth as { userId: string }).userId;
       this.users.delete(userId);
+      delete this.campaign.pools[player];
       void this.unlock();
     }
     this.sendPhase();
@@ -134,36 +138,37 @@ export class CampaignRoom extends Room {
     const beforeSector = this.campaign.sector;
     campaigns.tick(this.campaign, now);
     const { world, phase, pause, resumeAt } = this.campaign;
-    this.syncSearchBudget();
-    const newSector = phase === 'sector' && world && (before !== 'sector' || beforeSector !== this.campaign.sector);
-    if (newSector) {
+    // A new sector shows its opening offer at once, even while a dropped player keeps it paused.
+    const newSector = phase === 'sector' && (before !== 'sector' || beforeSector !== this.campaign.sector);
+    if (world && phase === 'sector' && (newSector || (!pause && resumeAt === null))) {
       for (const client of this.clients) {
         const player = this.seats.get(client.sessionId);
-        if (player) { this.sendMap(client); client.send('view', battlefieldViewFor(world, player)); }
-      }
-    }
-    if (phase === 'sector' && world && !pause && resumeAt === null && !newSector) {
-      for (const client of this.clients) {
-        const player = this.seats.get(client.sessionId);
-        if (player) client.send('view', battlefieldViewFor(world, player));
+        if (player) client.send('view', this.viewOf(player));
       }
     }
     this.ticks += 1;
     if (phase !== before || this.ticks % 10 === 0) this.sendPhase(now);
     if (phase === 'results' && !this.announcedEnd) {
       this.announcedEnd = true;
-      this.announceEnd();
+      void this.announceEnd();
     }
     if (phase === 'closed') void this.disconnect();
   }
 
-  /** Saves each seated account's campaign XP once, then tells every player its own reward. */
-  private announceEnd() {
-    const { result, sectorResults } = this.campaign;
+  /** The player's private view of the current sector, from the same projection training uses. */
+  private viewOf(player: PlayerId) {
+    return { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, ...viewFor(this.campaign.world!, player) };
+  }
+
+  /** Saves each seated account's campaign reward once, then tells every player its own reward. */
+  private async announceEnd() {
+    const { result, sectorResults, sectorProgress } = this.campaign;
     const rewards = new Map<PlayerId, MatchReward>();
-    for (const [userId, player] of this.users) {
-      rewards.set(player, this.auth.awardCampaign(userId, `campaign:${this.roomId}`, result!, sectorResults.length, player));
-    }
+    await Promise.all([...this.users].map(async ([userId, player]) => {
+      const sectors = sectorProgress.map((progress) => progress[player]);
+      rewards.set(player, await savedReward(this.auth, userId,
+        () => this.auth.awardCampaign(userId, `campaign:${this.roomId}`, result!, sectorResults.length, player, sectors)));
+    }));
     for (const client of this.clients) {
       const player = this.seats.get(client.sessionId);
       const reward = player ? rewards.get(player) : undefined;
@@ -171,14 +176,14 @@ export class CampaignRoom extends Room {
     }
   }
 
-  /** Each player gets its own phase view: technology picks stay private until they activate. */
+  /** Each player gets its own phase view. */
   private sendPhase(now = Date.now()) {
     for (const client of this.clients) {
       const player = this.seats.get(client.sessionId);
       if (player) client.send('phase', {
         protocolVersion: CAMPAIGN_PROTOCOL_VERSION,
         ...campaigns.phaseView(this.campaign, player, now),
-        ...(this.renderMap ? { renderMap: this.renderMap } : {}),
+        renderMap: this.map,
       });
     }
   }
@@ -198,29 +203,6 @@ export class CampaignRoom extends Room {
     current.count += cost;
     this.rates.set(player, current);
     return current.count <= SQUAD_ACTIONS_PER_SECOND;
-  }
-
-  private runCommand(player: PlayerId, body: unknown): ReturnType<typeof campaigns.command> {
-    this.syncSearchBudget();
-    const result = campaigns.command(this.campaign, player, body, this.remainingExpansions);
-    this.remainingExpansions -= result.expansions;
-    return result;
-  }
-
-  /** Reset only when the authoritative world advances or a new sector starts. */
-  private syncSearchBudget(): void {
-    const world = this.campaign.world;
-    if (this.campaign.phase !== 'sector' || !world) return;
-    if (this.budgetSector !== this.campaign.sector || this.budgetTick !== world.tick) {
-      this.budgetSector = this.campaign.sector;
-      this.budgetTick = world.tick;
-      this.remainingExpansions = SEARCH_EXPANSIONS_PER_TICK;
-    }
-  }
-
-  private sendMap(client: Client): void {
-    const world = this.campaign.world;
-    if (world) client.send('map', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, ...publicMapMetadata(world.map) });
   }
 
   private reject(client: Client, reason: string) {
