@@ -54,6 +54,11 @@ export function canEquip(item: CosmeticItem, ownedClasses: ReadonlySet<number>):
   return item.unlocked && (!item.chain || ownedClasses.has(item.chain.classId));
 }
 
+/** A wallet balance rounded to cents: "9985.11 XLM". */
+export function formatBalance(stroops: bigint): string {
+  return `${(Number(stroops) / 10_000_000).toFixed(2)} XLM`;
+}
+
 /** "5 XLM", "2.5 XLM": stroops shown the way players read prices. */
 export function formatXlm(stroops: bigint): string {
   const whole = stroops / 10_000_000n;

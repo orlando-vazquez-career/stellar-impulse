@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { MarketListing } from '@impulso/chain';
 import { useI18n } from '../i18n';
-import { formatXlm, itemForClass, type CosmeticItem } from './catalog';
+import { formatBalance, formatXlm, itemForClass, type CosmeticItem } from './catalog';
 import { short, type ChainBusy, type ChainNotice } from './useHangarChain';
 
 const EXPLORER = 'https://stellar.expert/explorer/testnet';
@@ -37,7 +37,7 @@ export function WalletStrip({ signedIn, wallet, balance, busy, onLink, onUnlink,
       {!signedIn && <p>{t('chainSignInFirst')}</p>}
       {signedIn && !wallet && <p>{t('chainConnectHelp')}</p>}
       {wallet && <p><b title={wallet}>{short(wallet)}</b><span className="vi-wallet-badge">{t('chainLinked')}</span>
-        {balance !== null && <span>{t('chainBalance', { amount: formatXlm(balance) })}</span>}</p>}
+        {balance !== null && <span>{t('chainBalance', { amount: formatBalance(balance) })}</span>}</p>}
     </div>
     <div className="vi-wallet-strip__actions">
       {busy === 'loading' && <span className="vi-wallet-busy">{t('chainLoading')}</span>}
@@ -116,7 +116,7 @@ export function MarketView({ listings, wallet, busy, onBuy, onCancel }: {
           {mine
             ? <button type="button" disabled={locked} onClick={() => onCancel(listing.listingId)}>{t('chainCancel')}</button>
             : <button type="button" className="is-primary" disabled={!wallet || locked} onClick={() => onBuy(listing)}>
-              {t('chainBuy', { price: formatXlm(listing.priceStroops) })}
+              {t('marketBuy')}
             </button>}
         </article>;
       })}

@@ -249,7 +249,8 @@ export function HangarScreen({ onBack, account = null, onAccountChange = () => {
                 );
               })}
             </div>
-            {selectedItem?.chain && <ItemDetail key={selectedItem.id} item={selectedItem} wallet={chain.wallet}
+            {/* An owned merit emblem has nothing left to do; everything else gets its actions. */}
+            {selectedItem?.chain && !(selectedItem.chain.family === 'merit' && chain.ownedClasses.has(selectedItem.chain.classId)) && <ItemDetail key={selectedItem.id} item={selectedItem} wallet={chain.wallet}
               tokens={tokensOf(selectedItem.chain.classId)} listingByToken={chain.listingByToken} busy={chain.busy}
               onBuy={chain.buy} onList={chain.list} onCancel={chain.cancel} />}
               </>}

@@ -815,12 +815,15 @@
 .vi-collection {
   display: flex;
   flex-direction: column;
+  /* The wallet strip and the detail panel can outgrow the panel: scroll inside it. */
+  overflow-y: auto;
 }
 
 .vi-collection > .vi-cosmetic-grid,
 .vi-collection > .vi-market {
   flex: 1 1 auto;
-  min-height: 0;
+  /* Always room for about three pieces, even with the detail panel open. */
+  min-height: 210px;
 }
 
 .vi-view-toggle {
