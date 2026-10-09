@@ -76,4 +76,17 @@ describe('map selection', () => {
     expect(map.sectorMap.width).toBe(29);
     expect(map.mapImageUrl('stellar-plataformas.png')).toBeTruthy();
   });
+
+  it('loads Caos Estelar from espiral-estelar_2', async () => {
+    const map = await import('./sector-map');
+    expect(map.playableMapLabel('espiral')).toBe('Espiral Estelar');
+    expect(map.playableMapLabel('espiral-2')).toBe('Caos Estelar');
+    map.selectMap('espiral-2');
+    expect(map.activeMapId).toBe('espiral-2');
+    expect(map.sectorMap.width).toBe(96);
+    expect(map.sectorSurface.width).toBe(96);
+    expect(map.activeMapSourceFile()).toBe('espiral-estelar_2.json');
+    map.selectMap('sector-01');
+    expect(map.sectorMap.width).toBe(29);
+  });
 });

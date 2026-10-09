@@ -2,7 +2,7 @@ import type { DurationMode, MatchReward } from '@impulso/sim';
 import { Client, type Room } from '@colyseus/sdk';
 import { FLEET_CAP, BASE_DEFENSE_RANGE, findTiledPath } from '@impulso/sim';
 import { type PlayerView, type UnitKind } from '@impulso/state';
-import { sectorSurface, type TrainingMapId } from '../map/sector-map';
+import { sectorSurface, syncTerrain, type TrainingMapId } from '../map/sector-map';
 import { formationSeats, readStoredFormation, storeFormation } from './formation';
 import type {
   CoreState, GameplayEvent, GameplayPresentationAdapter, GameplayViewModel, NodeViewModel, PresentationIntent, SquadOwner, SquadViewModel,
@@ -26,6 +26,7 @@ const UNIT_LABEL: Record<UnitKind, string> = {
 /** Server rejection codes shown to the player. Unknown codes fall back to a generic line. */
 export const REJECTION_TEXT: Record<string, string> = {
   insufficient_metal: 'No alcanza el Metal.',
+  not_owner: 'Eso no es tuyo.',
   fleet_full: 'Flota completa.',
   production_busy: 'El hangar ya está construyendo.',
   upgrade_maxed: 'Esta mejora ya está al máximo.',
@@ -121,7 +122,7 @@ export function diffViews(previous: PlayerView | null, next: PlayerView): Gamepl
   for (const guardian of previous.guardians) {
     if (guardian.hp <= 0) continue;
     const now = next.guardians.find((unit) => unit.id === guardian.id);
-    if ((!now || now.hp <= 0) && visible.has(`${guardian.x},${guardian.y}`)) events.push({ kind: 'guardian-down' });
+    if ((!now || now.hp <= 0) && visible.has(`${guardian.x},${guardian.y}`)) events.push({ kind: guardian.role === 'turret' ? 'turret-down' : guardian.role === 'barrier' ? 'barrier-down' : 'guardian-down' });
   }
   for (const node of next.nodes) {
     const old = previous.nodes.find((candidate) => candidate.id === node.id);
@@ -133,6 +134,14 @@ export function diffViews(previous: PlayerView | null, next: PlayerView): Gamepl
   const known = new Set((previous.satellites ?? []).map((fall) => fall.id));
   if ((next.satellites ?? []).some((fall) => !known.has(fall.id))) events.push({ kind: 'satellite-warning' });
   if ((next.satellites ?? []).some((fall) => previous.tick < fall.impactTick && next.tick >= fall.impactTick)) events.push({ kind: 'satellite-impact' });
+  const warned = new Set((previous.nebulas ?? []).filter((cloud) => cloud.phase === 'warning').map((cloud) => cloud.id));
+  if ((next.nebulas ?? []).some((cloud) => cloud.phase === 'warning' && !warned.has(cloud.id))) events.push({ kind: 'nebula-warning' });
+  const held = new Set((previous.stations ?? []).map((station) => station.id));
+  const holds = new Set((next.stations ?? []).map((station) => station.id));
+  if ([...holds].some((id) => !held.has(id))) events.push({ kind: 'station-captured' });
+  if ([...held].some((id) => !holds.has(id))) events.push({ kind: 'station-lost' });
+  const closing = new Set((previous.belts ?? []).filter((gate) => gate.phase === 'warning').map((gate) => gate.id));
+  if ((next.belts ?? []).some((gate) => gate.phase === 'warning' && !closing.has(gate.id))) events.push({ kind: 'belt-warning' });
   const opensIn = (view: PlayerView) => (view.rules.coreOpenTick - view.tick) / TICKS_PER_SECOND;
   if (opensIn(previous) > 30 && opensIn(next) <= 30) events.push({ kind: 'core-soon' });
   if (!previous.core.open && next.core.open) events.push({ kind: 'core-open' });
@@ -214,7 +223,7 @@ function roomTransport(room: Room): MatchTransport {
  * session as a transport. The browser only sends intentions.
  */
 export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy' | 'medium' | 'hard' = 'medium',
-  map: TrainingMapId = 'espiral', duration: DurationMode = 'skirmish', source?: Room | MatchTransport): GameplayPresentationAdapter {
+  map: TrainingMapId = 'espiral', duration: DurationMode = 'skirmish', source?: Room | MatchTransport, carried: readonly string[] = []): GameplayPresentationAdapter {
   let snapshot = blankSnapshot();
   let latest: PlayerView | null = null;
   let link: MatchTransport | null = null;
@@ -312,9 +321,14 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     });
     // Neutral guardians are drawn as heavy ships in their own colour and can be attacked.
     for (const guardian of view.guardians.filter((unit) => unit.hp > 0)) {
-      const isCore = guardian.objectiveId === view.core.id;
+      const turret = guardian.role === 'turret';
+      const barrier = guardian.role === 'barrier';
+      const isCore = !guardian.role && guardian.objectiveId === view.core.id;
       squads.push({
-        id: guardian.id, callSign: isCore ? 'GUARDIÁN Ω' : 'GUARDIÁN', owner: 'neutral',
+        id: guardian.id, callSign: turret ? 'TORRETA' : barrier ? 'BARRERA' : isCore ? 'GUARDIÁN Ω' : 'GUARDIÁN', owner: 'neutral',
+        ...(barrier ? { barrier: true, hp: guardian.hp, maxHp: guardian.maxHp } : {}),
+        ...(turret ? { turret: { range: guardian.range ?? 1 }, hp: guardian.hp, maxHp: guardian.maxHp } : {}),
+        ...(turret && guardian.lastShot ? { lastShot: { tick: guardian.lastShot.tick, from: { x: guardian.x, y: guardian.y }, to: guardian.lastShot.to, splashRadius: 0 } } : {}),
         unitType: isCore ? 'bomber' : 'frigate', gridX: shown.get(guardian.id)?.x ?? guardian.x, gridY: shown.get(guardian.id)?.y ?? guardian.y,
         healthPercent: Math.round(guardian.hp / guardian.maxHp * 100), selected: false, visible: true,
         composition: { interceptors: 0, frigates: 0 }, status: 'idle',
@@ -346,12 +360,17 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         fleet: alive.filter((u)=>u.ownerId===me && !u.isDecoy).length, fleetCap: view.base?.fleetCap ?? FLEET_CAP,
       },
       satellites: view.satellites?.map((fall) => ({ id: fall.id, x: fall.x, y: fall.y, radius: fall.radius, warnTick: fall.warnTick, impactTick: fall.impactTick })),
+      nebulas: view.nebulas?.map((cloud) => ({ id: cloud.id, x: cloud.x, y: cloud.y, size: cloud.size, phase: cloud.phase, phaseEndsAt: cloud.phaseEndsAt, path: cloud.path.map((cell) => ({ ...cell })) })),
+      belts: view.belts?.map((gate) => ({ ...gate })),
+      fallenBarriers: view.fallenBarriers,
+      stations: view.stations?.map((station) => ({ ...station, prices: { ...station.prices } })),
       squads, unitStats: view.unitStats, augments:view.augments, chart:view.chart, productionForbidden:view.productionForbidden,
       nodes: [
         ...view.nodes.map((node) => ({
           id: node.id, kind: node.kind, x: node.x, y: node.y,
           owner: node.ownerId === null ? null : ownerOf(node.ownerId),
           ...(node.radius !== undefined ? { radius: node.radius } : {}),
+          ...(node.station ? { station: true } : {}),
           ...nodeCapture(node, view.rules.nodeCaptureTicks, ownerOf),
           ...(node.activeAt !== undefined ? { stabilizingSeconds: Math.ceil((node.activeAt - view.tick) / TICKS_PER_SECOND) } : {}),
         })),
@@ -465,6 +484,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     const previous = latest;
     latest = view;
     if (rememberView(memory, view)) explored = [...memory.explored!];
+    syncTerrain(view.tick, view.rules.tickRate, view.fallenBarriers);
     const units = [...view.squads, ...view.guardians].filter((unit) => unit.hp > 0);
     const present = new Set(units.map((unit) => unit.id));
     for (const id of shown.keys()) if (!present.has(id)) { shown.delete(id); trails.delete(id); }
@@ -535,7 +555,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     try {
       const testing = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
       const token=typeof sessionStorage==='undefined'?null:sessionStorage.getItem('impulso.auth-token');
-      const joined = await new Client(serverUrl).create('training', { difficulty, map, duration,token,
+      const joined = await new Client(serverUrl).create('training', { difficulty, map, duration,token, ...(carried.length?{carried:[...carried]}:{}),
         testTimeScale: Number(testing.get('testTimeScale') ?? 1), ...(testing.has('testSeed')?{testSeed:Number(testing.get('testSeed'))}:{}) });
       if (destroyed) { void joined.leave(); return; }
       start(roomTransport(joined));
@@ -643,6 +663,12 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
           && (intent.type === 'attack-selected' || squad.id === intent.squadId));
         for (const squad of attackers) send({ type: 'attack', squadId: squad.id, targetId: intent.targetId });
         snapshot = { ...snapshot, activeAction: null, notice: null };
+        emit();
+        return;
+      }
+      if (intent.type === 'station-produce') {
+        send({ type: 'station_produce', kind: intent.kind, stationId: intent.stationId });
+        snapshot = { ...snapshot, notice: null };
         emit();
         return;
       }

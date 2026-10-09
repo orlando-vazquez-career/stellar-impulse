@@ -54,8 +54,10 @@ export function captureContext(world: MechanicsWorld): CaptureContext {
 /** Simultaneous shots with class-specific cadence, counter-before-armor and hostile-only splash. */
 export function resolveCombat(world: MechanicsWorld): void {
   const squads = world.squads.filter((unit) => unit.hp > 0);
-  const guardians = world.guardians.filter((unit) => guardianActive(world, unit));
-  const all = [...squads, ...guardians];
+  const standing = world.guardians.filter((unit) => guardianActive(world, unit));
+  // Barriers never fire, and ships only shoot at one when ordered to.
+  const guardians = standing.filter((unit) => unit.role !== 'barrier');
+  const all = [...squads, ...standing];
   const hits = new Map<string, { damage: number; attacker?: Squad; shot: string }[]>();
   const gap = (a: { x: number; y: number }, b: { x: number; y: number }) => world.diagonalReach
     ? Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) : Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
@@ -70,7 +72,8 @@ export function resolveCombat(world: MechanicsWorld): void {
       && (world.visible ? world.visible[squad.ownerId][unit.y * world.width + unit.x] === true
         : !world.players || canSee(world as World, squad.ownerId, unit))
       && (!('kind' in unit) || !isConcealed(world as World, unit))
-      && (!('ownerId' in unit) || unit.ownerId !== squad.ownerId))
+      && (!('ownerId' in unit) || unit.ownerId !== squad.ownerId)
+      && (!('role' in unit) || unit.role !== 'barrier' || unit.id === squad.attackTargetId))
       .sort((a, b) => gap(squad, a) - gap(squad, b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const chosen = squad.attackTargetId ? inRange.find((unit) => unit.id === squad.attackTargetId) : undefined;
     const target = world.mode === 'battlefield'
@@ -97,9 +100,19 @@ export function resolveCombat(world: MechanicsWorld): void {
     }
   }
   if (world.tick % world.rules.attackEveryTicks === 0) for (const guardian of guardians) {
-    const target = squads.filter((unit) => withinReach(world, guardian, unit))
+    const range = guardian.range;
+    const target = squads.filter((unit) => range === undefined ? withinReach(world, guardian, unit) : gap(guardian, unit) <= range)
       .sort((a,b) => gap(guardian,a) - gap(guardian,b) || (a.id < b.id ? -1 : 1))[0];
-    if (target) add(target, Math.max(1, guardian.damage - statsForUnit(world,target).armor), `${world.tick}:${guardian.id}`);
+    if (!target) continue;
+    add(target, Math.max(1, guardian.damage - statsForUnit(world,target).armor), `${world.tick}:${guardian.id}`);
+    if (guardian.role !== 'turret') continue;
+    guardian.lastShot = { tick: world.tick, to: { x: target.x, y: target.y } };
+    // An armed ship with nothing else to do answers the turret instead of sitting under its fire.
+    if (world.mode !== 'battlefield' && target.stance === 'march' && !target.attackTargetId && !target.target
+      && !target.gather && target.route.length === 0 && statsForUnit(world, target).damage > 0) {
+      target.attackTargetId = guardian.id;
+      target.attackMemory = { x: guardian.x, y: guardian.y, seenAt: world.tick };
+    }
   }
   for (const unit of all) {
     const attacks = hits.get(unit.id) ?? [];

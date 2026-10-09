@@ -1,4 +1,6 @@
 import { AUGMENTS_BY_ID, DURATION_MODES, effectsFor, effectiveFleetCap, effectiveBaseDamage, visionSources, isConcealed, statsForUnit, baseUpgradeCost, metalIncomeRate, captureDuration, type Augment } from '@impulso/sim';
+import { nebulaClouds, nebulaHides, nebulaSlowdown, type NebulaCloudState } from '@impulso/sim';
+import { beltGates, fallenBarriers, stationPrice, type BeltGateState } from '@impulso/sim';
 import { baseArmor, baseDefense, type ExtraModule, type ModuleKind, type ModuleSpec } from '@impulso/sim';
 import { distance, statsFor, marchInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
 import { weaponView, type WeaponView } from './weapons.js';
@@ -18,7 +20,7 @@ export interface VisibleSquad extends Omit<Squad, 'target' | 'attackTargetId' | 
 export type AugmentCardView = Pick<Augment,'id'|'tier'|'icon'|'text'>;
 export interface MatchLobbyView {
   roomId:string; phase:'lobby'|'sector'|'results'; playerId:PlayerId;
-  map:'sector-01'|'espiral'; duration:'complete'|'skirmish';
+  map:'sector-01'|'espiral'|'espiral-2'|'trascendencia'; duration:'complete'|'skirmish';
   seats:Record<PlayerId,{name:string;ready:boolean}|null>;
 }
 export interface AugmentView {
@@ -34,6 +36,7 @@ export interface PlayerView {
   playerId: PlayerId;
   width: number;
   height: number;
+  /** Static terrain is not repeated here: the client reads it from its own copy of the map. */
   obstacles: Position[];
   rules: Rules;
   unitStats?: Record<UnitKind, ShipStats>;
@@ -54,6 +57,8 @@ export interface PlayerView {
   guardians: Guardian[];
   /** `fraction`: each side's capture progress from 0 to 1, with its own capture time. */
   nodes: (ResourceNode & { fraction?: Record<PlayerId, number> })[];
+  /** Stations the player holds, in or out of sight, and what each ship costs there. */
+  stations?: { id: string; x: number; y: number; prices: Record<UnitKind, number> }[];
   core: World['core'];
   visibleCells: Position[];
   winner: PlayerId | null;
@@ -62,16 +67,35 @@ export interface PlayerView {
   reward?: import('@impulso/sim').MatchReward;
   /** Announced satellite falls. Public: the warning crosses the whole sky. */
   satellites?: import('@impulso/sim').SatelliteFall[];
+  /** Drifting purple clouds and their next route. Public: the mass is visible from anywhere. */
+  nebulas?: NebulaCloudState[];
+  /** Passages of the asteroid belt and whether each is clear, about to close or closed. Public. */
+  belts?: BeltGateState[];
+  /** Destructible barriers already shot down: their cells are open ground for everyone. Public. */
+  fallenBarriers?: string[];
+}
+/** Row-major cells within reach of any vision source. Each source only scans its own bounding box. */
+function cellsInSight(world: World, sources: readonly { position: Position; radius: number }[]): Position[] {
+  const seen = new Uint8Array(world.width * world.height);
+  for (const { position, radius } of sources) {
+    const reach = Math.ceil(radius);
+    const top = Math.max(0, Math.ceil(position.y) - reach), bottom = Math.min(world.height - 1, Math.floor(position.y) + reach);
+    const left = Math.max(0, Math.ceil(position.x) - reach), right = Math.min(world.width - 1, Math.floor(position.x) + reach);
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) if (distance(position, { x, y }) <= radius) seen[y * world.width + x] = 1;
+    }
+  }
+  const cells: Position[] = [];
+  seen.forEach((inSight, index) => { if (inSight) cells.push({ x: index % world.width, y: Math.floor(index / world.width) }); });
+  return cells;
 }
 /** Fresh whitelist snapshot. Never send the authoritative world to a player. */
 export function viewFor(world: World, playerId: PlayerId): PlayerView {
   if (playerId !== 'p1' && playerId !== 'p2') throw new Error('Unknown player');
   const sources=visionSources(world,playerId);
   const visible=(position:Position)=>sources.some((source)=>distance(source.position,position)<=source.radius);
-  const visibleCells: Position[] = [];
-  for (let y = 0; y < world.height; y += 1) {
-    for (let x = 0; x < world.width; x += 1) if (visible({ x, y })) visibleCells.push({ x, y });
-  }
+  // Nebula cells stay dark unless one of the player's ships is right beside them.
+  const visibleCells = cellsInSight(world, sources).filter((cell) => !nebulaHides(world, playerId, cell));
   const players: PlayerView['players'] = {
     p1: { id: 'p1', base: { ...world.players.p1.base } },
     p2: { id: 'p2', base: { ...world.players.p2.base } },
@@ -127,6 +151,8 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     guardians: world.guardians.filter(visible).map((unit) => ({
       id: unit.id, objectiveId: unit.objectiveId, x: unit.x, y: unit.y,
       hp: unit.hp, maxHp: unit.maxHp, damage: unit.damage,
+      ...(unit.role ? { role: unit.role, range: unit.range } : {}),
+      ...(unit.lastShot ? { lastShot: { tick: unit.lastShot.tick, to: { ...unit.lastShot.to } } } : {}),
     })),
     nodes: world.nodes.filter(visible).map((node) => ({
       id: node.id, kind: node.kind, guardianId: node.guardianId, x: node.x, y: node.y,
@@ -134,6 +160,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
       fraction: { p1: node.progress.p1 / captureDuration(world, 'p1', world.rules.nodeCaptureTicks, false),
         p2: node.progress.p2 / captureDuration(world, 'p2', world.rules.nodeCaptureTicks, false) },
       ...(node.radius !== undefined ? { radius: node.radius } : {}),
+      ...(node.station ? { station: { ...node.station } } : {}),
       ...(node.activeAt !== undefined && node.activeAt > world.tick ? { activeAt: node.activeAt } : {}),
     })),
     // The central objective timer and capture score are public rules.
@@ -143,6 +170,13 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     },
     visibleCells, winner: world.winner,
     ...(world.satellites ? { satellites: world.satellites.falls.map((fall) => ({ ...fall })) } : {}),
+    ...(world.nebula?.clouds.length ? { nebulas: nebulaClouds(world) } : {}),
+    ...(world.belt ? { belts: beltGates(world) } : {}),
+    ...(world.barriers ? { fallenBarriers: fallenBarriers(world) } : {}),
+    ...(world.nodes.some((node) => node.station) ? { stations: world.nodes.filter((node) => node.station && node.ownerId === playerId).map((node) => ({
+      id: node.id, x: node.x, y: node.y,
+      prices: Object.fromEntries((['explorer', 'interceptor', 'frigate', 'bomber'] as const).map((kind) => [kind, stationPrice(world, playerId, node, kind)])) as Record<UnitKind, number>,
+    })) } : {}),
   };
 }
 

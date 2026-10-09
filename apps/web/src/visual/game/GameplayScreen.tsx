@@ -14,9 +14,11 @@ import { MatchAudio, playEvent, type Announcement } from './audio';
 import { useI18n } from '../i18n';
 import type { VisualPreferences } from '../settings/preferences';
 import type { RivalDifficulty } from '../lobby/PreparationLobby';
-import { DEFAULT_PLAYABLE_MAP, selectMap, type TrainingMapId } from '../map/sector-map';
+import { activeMapSourceFile, DEFAULT_PLAYABLE_MAP, selectMap, type TrainingMapId } from '../map/sector-map';
 import type { CameraView, GameplayPresentationAdapter } from './model';
 import type { PhaserBattlefieldHandle } from './phaser/PhaserBattlefield';
+import { RunOutcome, type RunLink } from '../run/RunOutcome';
+import { RUN_SECTORS } from '../run/run-state';
 
 const PhaserBattlefield = lazy(() => import('./phaser/PhaserBattlefield').then((module) => ({ default: module.PhaserBattlefield })));
 
@@ -27,29 +29,29 @@ const PRODUCTION_KEYS: Record<string, 'explorer' | 'interceptor' | 'frigate' | '
 const emptySubscribe = () => () => {};
 const emptyMultiplayer = () => null;
 
-export function GameplayScreen({ preferences, difficulty = 'medium', map = DEFAULT_PLAYABLE_MAP, duration = 'skirmish', multiplayerSession, onLeave, onAudioChange }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; duration?: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
+export function GameplayScreen({ preferences, difficulty = 'medium', map = DEFAULT_PLAYABLE_MAP, duration = 'skirmish', multiplayerSession, run, onLeave, onAudioChange }: { preferences: VisualPreferences; difficulty?: RivalDifficulty; map?: TrainingMapId; duration?: DurationMode; multiplayerSession?: MultiplayerSession; run?: RunLink; onLeave(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const [match, setMatch] = useState(0);
   // The campaign plays on the map its room announces; the offline mock keeps Sector 01.
   const chosen = multiplayerSession ? multiplayerSession.getSnapshot().phase?.renderMap ?? 'espiral'
     : wantsLocalMock() ? 'sector-01' : map;
   selectMap(chosen);
-  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} duration={duration} multiplayerSession={multiplayerSession} onLeave={onLeave} onAudioChange={onAudioChange} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
+  return <GameplayMatch key={match} preferences={preferences} difficulty={difficulty} map={chosen} duration={duration} multiplayerSession={multiplayerSession} run={multiplayerSession ? undefined : run} onLeave={onLeave} onAudioChange={onAudioChange} onRestart={multiplayerSession ? onLeave : () => setMatch((count) => count + 1)} />;
 }
 
 /** The adapter lives exactly as long as the mounted match, so a server room is never left orphaned. */
-function GameplayMatch({ preferences, difficulty, map, duration, multiplayerSession, onLeave, onRestart, onAudioChange }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; duration: DurationMode; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
+function GameplayMatch({ preferences, difficulty, map, duration, multiplayerSession, run, onLeave, onRestart, onAudioChange }: { preferences: VisualPreferences; difficulty: RivalDifficulty; map: TrainingMapId; duration: DurationMode; multiplayerSession?: MultiplayerSession; run?: RunLink; onLeave(): void; onRestart(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const [adapter, setAdapter] = useState<GameplayPresentationAdapter | null>(null);
   useEffect(() => {
     const created = multiplayerSession ? createServerGameplayAdapter(SERVER_URL, difficulty, map, 'skirmish', campaignTransport(multiplayerSession))
-      : wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL, difficulty, map, duration);
+      : wantsLocalMock() ? createMockGameplayAdapter() : createServerGameplayAdapter(SERVER_URL, difficulty, map, duration, undefined, run?.state.augments.map((augment) => augment.id));
     setAdapter(created);
     return () => created.destroy();
   }, []);
   if (!adapter) return <main className="vi-gameplay vi-screen" aria-busy="true" />;
-  return <GameplayView adapter={adapter} preferences={preferences} multiplayerSession={multiplayerSession} onLeave={onLeave} onRestart={onRestart} onAudioChange={onAudioChange} />;
+  return <GameplayView adapter={adapter} preferences={preferences} multiplayerSession={multiplayerSession} run={run} onLeave={onLeave} onRestart={onRestart} onAudioChange={onAudioChange} />;
 }
 
-function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRestart, onAudioChange }: { adapter: GameplayPresentationAdapter; preferences: VisualPreferences; multiplayerSession?: MultiplayerSession; onLeave(): void; onRestart(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
+function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, onRestart, onAudioChange }: { adapter: GameplayPresentationAdapter; preferences: VisualPreferences; multiplayerSession?: MultiplayerSession; run?: RunLink; onLeave(): void; onRestart(): void; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const view = useSyncExternalStore(adapter.subscribe, adapter.getSnapshot);
   const roomState = useSyncExternalStore(multiplayerSession?.subscribe ?? emptySubscribe, multiplayerSession?.getSnapshot ?? emptyMultiplayer);
   const { locale } = useI18n();
@@ -108,7 +110,7 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [adapter, preferences.controls, view.canProduce, view.formation, view.selectedSquadIds.length]);
   return <main className="vi-gameplay vi-screen" data-room-id={roomState?.roomId} data-player-id={roomState?.phase?.playerId} data-connection={roomState?.connection} data-sequence={roomState?.acknowledgedSequence} data-tick={view.tick}>
-    <Suspense fallback={<div className="vi-phaser" aria-busy="true" />}>
+    <Suspense fallback={<div className="vi-phaser" aria-busy="true" data-map-source={activeMapSourceFile()} />}>
       <PhaserBattlefield ref={battlefieldRef} view={view}
         onSelectSquads={(squadIds) => adapter.dispatch({ type: 'select-squads', squadIds })}
         onMoveSelected={(x, y) => adapter.dispatch({ type: 'move-selected', x, y })}
@@ -129,7 +131,12 @@ function GameplayView({ adapter, preferences, multiplayerSession, onLeave, onRes
       <h2>{resultReason === 'annulled' ? (english ? 'Match cancelled' : 'Partida anulada') : (english ? 'Draw' : 'Empate')}</h2>
       <button className="vi-primary" onClick={onLeave}>{english ? 'Back to command center' : 'Volver al mando'}</button>
     </div></div>}
-    {view.result && <div className="vi-result" role="dialog" aria-label={view.result === 'victory' ? 'Victoria' : 'Derrota'}>
+    {view.result && run && <RunOutcome won={view.result === 'victory'} run={run} locale={locale} onLeave={onLeave}
+      summary={{ sector: run.state.sector + 1, name: RUN_SECTORS[run.state.sector]!.name, seconds: view.elapsedSeconds,
+        nodesOwned: view.nodes.filter((node) => node.owner === 'blue').length, nodesTotal: view.nodes.length, augments: view.augments?.own ?? run.state.augments }}>
+      {view.reward && <MatchProgress reward={view.reward} />}
+    </RunOutcome>}
+    {view.result && !run && <div className="vi-result" role="dialog" aria-label={view.result === 'victory' ? 'Victoria' : 'Derrota'}>
       <div className={`vi-result__card vi-result__card--${view.result}`}>
         <div className="vi-result__crest" aria-hidden="true">{view.result === 'victory'?'✦':'⌁'}</div>
         <h2>{multiplayerSession ? (view.result === 'victory' ? (english ? 'Victory' : 'Victoria') : (english ? 'Defeat' : 'Derrota')) : view.result === 'victory' ? 'VICTORIA' : 'DERROTA'}</h2>

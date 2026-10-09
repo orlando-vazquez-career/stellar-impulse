@@ -14,6 +14,8 @@ export interface DropZoneSpec extends Position {
   warningSeconds: number;
   /** Satellites per wave. */
   amount: number;
+  /** Zones sharing a group fall together, and the groups take turns (`grupo` in Tiled). */
+  group?: number;
 }
 export interface DropZone extends Position {
   id: string;
@@ -24,6 +26,8 @@ export interface DropZone extends Position {
   intervalTicks: number;
   warningTicks: number;
   amount: number;
+  /** Grouped zones: fixed offset of the group's waves inside the interval. Ungrouped zones roll one from the seed. */
+  phaseTicks?: number;
 }
 /** One announced satellite: public from `warnTick`, it hits on `impactTick`. */
 export interface SatelliteFall extends Position {
@@ -43,13 +47,19 @@ export const SATELLITE_AFTERMATH_TICKS = 10;
 
 export function createSatellites(specs: readonly DropZoneSpec[] | undefined, tickRate: number): SatelliteState | undefined {
   if (!specs?.length) return undefined;
+  // Groups take turns in ascending order: with two groups, one falls every half interval.
+  const groups = [...new Set(specs.flatMap((spec) => spec.group === undefined ? [] : [spec.group]))].sort((a, b) => a - b);
   return {
-    zones: Object.freeze(specs.map((spec) => Object.freeze({
-      id: spec.id, x: spec.x, y: spec.y, width: spec.width, height: spec.height,
-      damage: spec.damage, radius: spec.radius, amount: spec.amount,
-      intervalTicks: Math.max(1, spec.intervalSeconds * tickRate),
-      warningTicks: Math.max(1, spec.warningSeconds * tickRate),
-    }))),
+    zones: Object.freeze(specs.map((spec) => {
+      const intervalTicks = Math.max(1, spec.intervalSeconds * tickRate);
+      const turn = spec.group === undefined ? -1 : groups.indexOf(spec.group);
+      return Object.freeze({
+        id: spec.id, x: spec.x, y: spec.y, width: spec.width, height: spec.height,
+        damage: spec.damage, radius: spec.radius, amount: spec.amount, intervalTicks,
+        warningTicks: Math.max(1, spec.warningSeconds * tickRate),
+        ...(turn >= 0 ? { phaseTicks: Math.floor(intervalTicks * turn / groups.length) } : {}),
+      });
+    })),
     falls: [],
   };
 }
@@ -66,8 +76,8 @@ export function runSatellites(world: World): void {
   for (const fall of state.falls) if (fall.impactTick === world.tick) strike(world, fall);
   const seed = world.seed ?? 1;
   for (const zone of state.zones) {
-    // Each zone keeps its own beat, offset by the seed so they do not all fire together.
-    const phase = Math.floor(randomFor(seed, 'satellite', zone.id, 'phase')() * zone.intervalTicks);
+    // Each zone keeps its own beat, offset by the seed so they do not all fire together; a group shares one.
+    const phase = zone.phaseTicks ?? Math.floor(randomFor(seed, 'satellite', zone.id, 'phase')() * zone.intervalTicks);
     if (world.tick < zone.intervalTicks || (world.tick - phase) % zone.intervalTicks !== 0) continue;
     const wave = Math.floor((world.tick - phase) / zone.intervalTicks);
     const cells = openCells(world, zone);

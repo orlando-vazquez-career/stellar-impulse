@@ -9,7 +9,7 @@ export interface CampaignPhaseView {
   protocolVersion: 3;
   playerId: PlayerId;
   /** Map every sector of this campaign is played on. */
-  renderMap?: 'espiral' | 'sector-01';
+  renderMap?: 'espiral' | 'espiral-2' | 'sector-01';
   phase: CampaignPhase;
   sector: number;
   sectors: number;
