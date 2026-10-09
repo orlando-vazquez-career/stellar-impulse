@@ -1,5 +1,6 @@
 import { AUGMENTS_BY_ID, DURATION_MODES, effectsFor, effectiveFleetCap, effectiveBaseDamage, visionSources, isConcealed, statsForUnit, baseUpgradeCost, metalIncomeRate, captureDuration, type Augment } from '@impulso/sim';
 import { nebulaClouds, nebulaHides, nebulaSlowdown, type NebulaCloudState } from '@impulso/sim';
+import { beltGates, fallenBarriers, stationPrice, type BeltGateState } from '@impulso/sim';
 import { baseArmor, baseDefense, type ExtraModule, type ModuleKind, type ModuleSpec } from '@impulso/sim';
 import { distance, statsFor, marchInterval, type ShipStats, type Guardian, type PlayerId, type PlayerStance, type Position, type ResourceNode, type Rules, type Squad, type UnitKind, type World } from '@impulso/sim';
 import { weaponView, type WeaponView } from './weapons.js';
@@ -19,7 +20,7 @@ export interface VisibleSquad extends Omit<Squad, 'target' | 'attackTargetId' | 
 export type AugmentCardView = Pick<Augment,'id'|'tier'|'icon'|'text'>;
 export interface MatchLobbyView {
   roomId:string; phase:'lobby'|'sector'|'results'; playerId:PlayerId;
-  map:'sector-01'|'espiral'|'espiral-2'; duration:'complete'|'skirmish';
+  map:'sector-01'|'espiral'|'espiral-2'|'trascendencia'; duration:'complete'|'skirmish';
   seats:Record<PlayerId,{name:string;ready:boolean}|null>;
 }
 export interface AugmentView {
@@ -56,6 +57,8 @@ export interface PlayerView {
   guardians: Guardian[];
   /** `fraction`: each side's capture progress from 0 to 1, with its own capture time. */
   nodes: (ResourceNode & { fraction?: Record<PlayerId, number> })[];
+  /** Stations the player holds, in or out of sight, and what each ship costs there. */
+  stations?: { id: string; x: number; y: number; prices: Record<UnitKind, number> }[];
   core: World['core'];
   visibleCells: Position[];
   winner: PlayerId | null;
@@ -66,6 +69,10 @@ export interface PlayerView {
   satellites?: import('@impulso/sim').SatelliteFall[];
   /** Drifting purple clouds and their next route. Public: the mass is visible from anywhere. */
   nebulas?: NebulaCloudState[];
+  /** Passages of the asteroid belt and whether each is clear, about to close or closed. Public. */
+  belts?: BeltGateState[];
+  /** Destructible barriers already shot down: their cells are open ground for everyone. Public. */
+  fallenBarriers?: string[];
 }
 /** Row-major cells within reach of any vision source. Each source only scans its own bounding box. */
 function cellsInSight(world: World, sources: readonly { position: Position; radius: number }[]): Position[] {
@@ -144,6 +151,8 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     guardians: world.guardians.filter(visible).map((unit) => ({
       id: unit.id, objectiveId: unit.objectiveId, x: unit.x, y: unit.y,
       hp: unit.hp, maxHp: unit.maxHp, damage: unit.damage,
+      ...(unit.role ? { role: unit.role, range: unit.range } : {}),
+      ...(unit.lastShot ? { lastShot: { tick: unit.lastShot.tick, to: { ...unit.lastShot.to } } } : {}),
     })),
     nodes: world.nodes.filter(visible).map((node) => ({
       id: node.id, kind: node.kind, guardianId: node.guardianId, x: node.x, y: node.y,
@@ -151,6 +160,7 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
       fraction: { p1: node.progress.p1 / captureDuration(world, 'p1', world.rules.nodeCaptureTicks, false),
         p2: node.progress.p2 / captureDuration(world, 'p2', world.rules.nodeCaptureTicks, false) },
       ...(node.radius !== undefined ? { radius: node.radius } : {}),
+      ...(node.station ? { station: { ...node.station } } : {}),
       ...(node.activeAt !== undefined && node.activeAt > world.tick ? { activeAt: node.activeAt } : {}),
     })),
     // The central objective timer and capture score are public rules.
@@ -161,6 +171,12 @@ export function viewFor(world: World, playerId: PlayerId): PlayerView {
     visibleCells, winner: world.winner,
     ...(world.satellites ? { satellites: world.satellites.falls.map((fall) => ({ ...fall })) } : {}),
     ...(world.nebula?.clouds.length ? { nebulas: nebulaClouds(world) } : {}),
+    ...(world.belt ? { belts: beltGates(world) } : {}),
+    ...(world.barriers ? { fallenBarriers: fallenBarriers(world) } : {}),
+    ...(world.nodes.some((node) => node.station) ? { stations: world.nodes.filter((node) => node.station && node.ownerId === playerId).map((node) => ({
+      id: node.id, x: node.x, y: node.y,
+      prices: Object.fromEntries((['explorer', 'interceptor', 'frigate', 'bomber'] as const).map((kind) => [kind, stationPrice(world, playerId, node, kind)])) as Record<UnitKind, number>,
+    })) } : {}),
   };
 }
 

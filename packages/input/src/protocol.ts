@@ -7,7 +7,7 @@ import { PLAYABLE_MAPS, type PlayableMapId } from './playable-maps.js';
 export const PROTOCOL_VERSION = 1;
 export const BATTLEFIELD_PROTOCOL_VERSION = 2;
 export const CAMPAIGN_PROTOCOL_VERSION = 3;
-export type CampaignMap = PlayableMapId;
+export type CampaignMap = PlayableMapId | 'sector-01';
 
 export type EnvelopeResult =
   | { ok: true; body: unknown }

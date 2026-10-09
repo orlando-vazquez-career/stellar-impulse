@@ -15,5 +15,15 @@ export const PLAYABLE_MAPS = [{
   },
 }] as const;
 
+/** Practice against the AI also offers maps that are not open to matches between players yet. */
+export const PRACTICE_MAPS = [...PLAYABLE_MAPS, {
+  id: 'trascendencia',
+  name: { es: 'Trascendencia Estelar', en: 'Stellar Transcendence' },
+  description: {
+    es: '115×115. Archipiélago en el vacío: estaciones capturables, barreras que se rompen y una señal que no debería estar ahí.',
+    en: '115×115. An archipelago in the void: capturable stations, breakable barriers and a signal that should not be there.',
+  },
+}] as const;
+
 export type PlayableMapId = typeof PLAYABLE_MAPS[number]['id'];
 export const DEFAULT_CAMPAIGN_MAP: PlayableMapId = PLAYABLE_MAPS[0].id;

@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto';
 import { Room, ServerError, type Client } from '@colyseus/core';
 import type { AuthService } from './auth';
 import { savedReward } from './rewards';
-import { setAugmentPool, emptyProgress, profileFor, type MatchReward } from '@impulso/sim';
+import { setAugmentPool, carryAugments, emptyProgress, profileFor, type MatchReward } from '@impulso/sim';
 import { parseCommand } from '@impulso/input';
 import { createSectorWorld, createMatchWorld, initializeAugments, applyCommand, runTrainingRival, stepWorld, effectiveFleetCap, pickAugment, rerollAugments, chooseAiAugment, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId, type World } from '@impulso/sim';
 import { viewFor, type MatchLobbyView } from '@impulso/state';
@@ -32,6 +32,8 @@ export class TrainingRoom extends Room {
   private map:TrainingMapId=DEFAULT_MAP;
   private offerKeys = new Map<string, string>();
   private chosenKeys = new Map<string, string>();
+  /** Augments the creator won in earlier sectors of a run against the AI. */
+  private carried: string[] = [];
 
   private reject(client: Client, reason: string): void {
     const messages: Record<string, string> = {
@@ -51,7 +53,9 @@ export class TrainingRoom extends Room {
     const fields = typeof options === 'object' && options !== null ? options as { difficulty?: unknown; map?: unknown; duration?: unknown; opponent?:unknown; lobby?:unknown; testTimeScale?: unknown; testSeed?: unknown } : {};
     this.lobby=fields.lobby===true;
     this.aiRival=!this.lobby && fields.opponent!=='human';
-    this.map=fields.map==='sector-01'||fields.map==='espiral-2'?fields.map:DEFAULT_MAP;
+    this.map=fields.map==='sector-01'||fields.map==='espiral-2'||fields.map==='trascendencia'?fields.map:DEFAULT_MAP;
+    const carried = (options as { carried?: unknown } | undefined)?.carried;
+    if (this.aiRival && Array.isArray(carried)) this.carried = [...new Set(carried.filter((id): id is string => typeof id === 'string'))].slice(0, 9);
     const requested = fields.difficulty;
     if (requested === 'easy' || requested === 'medium' || requested === 'hard') this.difficulty = requested;
     this.world = createMatchWorld(this.map, fields.duration === 'complete' ? 'complete' : 'skirmish', randomInt(0x100000000));
@@ -144,6 +148,7 @@ export class TrainingRoom extends Room {
       this.accountIds.set(player,user.id);
       setAugmentPool(this.world,player,this.auth.profile(user.id).unlocked);
     }
+    if(player==='p1' && this.carried.length) carryAugments(this.world,'p1',this.carried);
     this.usedSeats.add(player);
     this.seats.set(client.sessionId, player);
     this.names.set(player,typeof options?.name==='string'?options.name.trim().slice(0,24):'Comandante');
