@@ -34,6 +34,27 @@ const putProfile = (token: string | null, body: unknown) => fetch(`${URL}/auth/p
 });
 
 describe('account and multiplayer admission', () => {
+  it('rejects a new account that does not meet the password policy', async () => {
+    const weak = await register('weak-policy@example.com', 'secret-1234');
+    expect(weak.response.status).toBe(400);
+    const missingSpecial = await register('no-special@example.com', 'Secret1234');
+    expect(missingSpecial.response.status).toBe(400);
+    const tooLong = await register('long-policy@example.com', `Secret-${'x'.repeat(122)}`);
+    expect(tooLong.response.status).toBe(400);
+    const accepted = await register('strong-policy@example.com', 'Secret-1234');
+    expect(accepted.response.status).toBe(201);
+  });
+
+  it('signs in again with a long passphrase, past the old 20-character limit', async () => {
+    const passphrase = 'Una-frase-de-paso-bastante-larga';
+    expect((await register('passphrase@example.com', passphrase)).response.status).toBe(201);
+    const login = await fetch(`${URL}/auth/login`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'passphrase@example.com', password: passphrase }),
+    });
+    expect(login.status).toBe(200);
+  });
+
   it('keeps password hashes on disk and accepts the account after a restart', async () => {
     const file = join(process.cwd(), '.local', `auth-test-${randomUUID()}.json`);
     try {

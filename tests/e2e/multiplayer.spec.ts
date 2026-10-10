@@ -5,7 +5,7 @@ import { chooseOpening } from './helpers';
 
 async function signIn(page: Page, request: APIRequestContext, name: string) {
   const email = `multiplayer-${randomUUID()}@example.com`;
-  const password = `Pilot-${randomUUID()}`;
+  const password = `Pilot-${randomUUID().slice(0, 8)}`;
   const response = await request.post(`${TEST_SERVER_URL}/auth/register`, { data: { email, password } });
   expect(response.status()).toBe(201);
   const { token } = await response.json() as { token: string };

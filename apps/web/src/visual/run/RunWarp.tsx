@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { AugmentCardView } from '@impulso/state';
 import { mapName } from '../map/map-name';
 import { useTyped } from './RunOutcome';
-import type { RunSector } from './run-state';
+import { MapPreview } from '../map/MapPreview';
+import { RUN_SECTORS, type RunSector } from './run-state';
 import type { RunSfx } from './run-sfx';
 import './run.css';
 
@@ -138,6 +139,13 @@ export function RunWarp({ sector, number, label, augments, locale, sfx, onDone }
       <h2>SECTOR {number}</h2>
       <h3>{name || ' '}</h3>
       <p className="vi-run-line vi-run-fade" style={{ animationDelay: '950ms' }}>{sector.hint[locale].toUpperCase()}</p>
+      <ol className="vi-run-route vi-run-fade" style={{ animationDelay: '1050ms' }}>
+        {RUN_SECTORS.map((stop, index) => <li key={stop.map} className={index + 1 === number ? 'is-current' : index + 1 < number ? 'is-cleared' : ''}
+          aria-current={index + 1 === number ? 'step' : undefined}>
+          <MapPreview mapId={stop.map} />
+          <span>{index + 1} · {stop.name}</span>
+        </li>)}
+      </ol>
       {augments.length > 0 && <p className="vi-run-line vi-run-line--corrupt vi-run-fade" style={{ animationDelay: '1150ms' }}>
         {locale === 'en' ? 'ACTIVE AUGMENTS' : 'AUMENTOS ACTIVOS'}: {augments.map((augment) => augment.text[locale].name.toUpperCase()).join(' · ')}
       </p>}
