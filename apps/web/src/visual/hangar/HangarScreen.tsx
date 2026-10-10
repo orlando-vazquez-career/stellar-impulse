@@ -7,7 +7,7 @@ import { createCommandSpaceScene } from '../menu/command-space';
 import type { AccountUser } from '../../auth/client';
 import type { SquadType } from '../game/model';
 import { GAME_ASSET_MANIFEST, GAME_SHIP_TYPES } from '../game/phaser/game-assets';
-import { canEquip, cosmeticCatalog, formatXlm, hangarCategories, imageForCosmetic, itemsForCategory, type HangarCategory } from './catalog';
+import { canEquip, cosmeticCatalog, formatXlm, hangarCategories, hullFilter, imageForCosmetic, itemsForCategory, type HangarCategory } from './catalog';
 import { defaultCosmeticLoadout, loadCosmeticLoadout, saveCosmeticLoadout, type CosmeticLoadout } from './loadout';
 import { ChainNoticeBar, ItemDetail, MarketView, WalletStrip } from './HangarChainPanels';
 import { useHangarChain } from './useHangarChain';
@@ -19,12 +19,6 @@ const HANGAR_SHIPS = GAME_SHIP_TYPES.map((shipType, index) => {
   if (!asset) throw new Error(`Missing Hangar preview for ${shipType}`);
   return { shipType, src: asset.src, number: String(index + 1).padStart(2, '0') };
 });
-
-const HULL_PREVIEW_FILTERS: Record<string, string> = {
-  aegis: 'saturate(1.18)',
-  polar: 'grayscale(.78) brightness(1.35) saturate(.4)',
-  obsidian: 'grayscale(.65) brightness(.68) sepia(.3) hue-rotate(205deg) saturate(1.6)',
-};
 
 export function HangarPanel({
   onBack,
@@ -92,7 +86,7 @@ export function HangarPanel({
     '--hangar-hull': equippedItems.hull.tone,
     '--hangar-trail': equippedItems.trail.tone,
     '--hangar-insignia': equippedItems.insignia.tone,
-    '--hangar-finish-filter': HULL_PREVIEW_FILTERS[loadout.hull] ?? 'none',
+    '--hangar-finish-filter': hullFilter(equippedItems.hull),
   } as CSSProperties;
 
   const equip = (itemId: string) => {
