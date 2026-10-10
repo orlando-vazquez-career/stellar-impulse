@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { GAME_TEXT, gameText, guardianLabel, hasGameText, noticeText } from './game-copy';
+import { coreHint, coreTag, GAME_TEXT, gameText, guardianLabel, hasGameText, noticeText } from './game-copy';
+import type { CoreHud } from './hud-logic';
 import { REJECTION_TEXT } from './server-adapter';
 
 const placeholders = (template: string) => [...template.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
@@ -61,6 +62,28 @@ describe('match copy', () => {
     expect(guardianLabel('en', 'core')).toBe('GUARDIAN Ω');
     expect(guardianLabel('es', 'node')).toBe('GUARDIÁN');
     expect(guardianLabel('en', 'node')).toBe('GUARDIAN');
+  });
+
+  it('tags the Core on the map with what the HUD says about it', () => {
+    const hud = (change: Partial<CoreHud>): CoreHud => ({ status: 'idle', percent: 0, secondsLeft: null, hint: null, ...change });
+    expect(coreTag('es', hud({ status: 'locked', percent: 40, secondsLeft: 30 }))).toBeNull();
+    expect(coreTag('es', hud({ status: 'idle' }))).toBeNull();
+    expect(coreTag('es', hud({ status: 'idle', percent: 34 }))).toBe('34%');
+    expect(coreTag('es', hud({ status: 'capturing-own', percent: 62, secondsLeft: 11.2 }))).toBe('62% · 12 s');
+    expect(coreTag('en', hud({ status: 'capturing-rival', percent: 5, secondsLeft: 20 }))).toBe('5% · 20 s');
+    expect(coreTag('es', hud({ status: 'contested', percent: 40, hint: 'contested' }))).toBe('DISPUTADO');
+    expect(coreTag('en', hud({ status: 'contested', percent: 40, hint: 'contested' }))).toBe('CONTESTED');
+    expect(coreTag('es', hud({ status: 'idle', hint: 'guardian' }))).toBe('Guardián Ω');
+    expect(coreTag('en', hud({ status: 'capturing-own', percent: 10, secondsLeft: 9, hint: 'guardian' }))).toBe('Guardian Ω');
+  });
+
+  it('gives the Core panel a hint for why nobody takes it or when the captor will', () => {
+    const hud = (change: Partial<CoreHud>): CoreHud => ({ status: 'idle', percent: 0, secondsLeft: null, hint: null, ...change });
+    expect(coreHint('es', hud({ status: 'locked', secondsLeft: 30 }))).toBeNull();
+    expect(coreHint('es', hud({ status: 'idle' }))).toBeNull();
+    expect(coreHint('es', hud({ status: 'contested', hint: 'contested' }))).toBe('Ambos bandos dentro');
+    expect(coreHint('en', hud({ status: 'idle', hint: 'guardian' }))).toBe('Take down Guardian Ω');
+    expect(coreHint('es', hud({ status: 'capturing-own', percent: 50, secondsLeft: 7.4 }))).toBe('Captura en 8 s');
   });
 
   it('translates a notice by its code and falls back to the text it came with', () => {

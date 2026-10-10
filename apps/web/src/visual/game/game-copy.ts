@@ -1,4 +1,5 @@
 import { formatMessage, type Locale, type MessageValues } from '../i18n';
+import type { CoreHud } from './hud-logic';
 import type { SquadViewModel } from './model';
 
 /**
@@ -202,6 +203,26 @@ export function hasGameText(code: string): code is GameTextKey {
 /** A notice in the player's language when its code is known; the text it came with otherwise. */
 export function noticeText(locale: Locale, code: string | null, fallback: string): string {
   return code && hasGameText(code) ? gameText(locale, code) : fallback;
+}
+
+/**
+ * The tag floating by the Core on the map, from what the HUD says about it: nothing while it is locked; the dispute
+ * or the guardian that stops a capture; the captor's progress and countdown; otherwise any progress left on it.
+ */
+export function coreTag(locale: Locale, hud: CoreHud): string | null {
+  if (hud.status === 'locked') return null;
+  if (hud.hint === 'contested') return gameText(locale, 'coreTagContested');
+  if (hud.hint === 'guardian') return gameText(locale, 'coreTagGuardian');
+  if (hud.secondsLeft !== null) return gameText(locale, 'coreTagProgress', { percent: hud.percent, seconds: Math.ceil(hud.secondsLeft) });
+  return hud.percent > 0 ? gameText(locale, 'coreTagPercent', { percent: hud.percent }) : null;
+}
+
+/** The Core panel's hint: why nobody is taking an open Core, or when the captor takes it. Null while locked or idle. */
+export function coreHint(locale: Locale, hud: CoreHud): string | null {
+  if (hud.status === 'locked') return null;
+  if (hud.hint === 'contested') return gameText(locale, 'coreHintContested');
+  if (hud.hint === 'guardian') return gameText(locale, 'coreHintGuardian');
+  return hud.secondsLeft === null ? null : gameText(locale, 'coreHintCapture', { seconds: Math.ceil(hud.secondsLeft) });
 }
 
 const GUARDIAN_LABEL: Record<NonNullable<SquadViewModel['guardianKind']>, GameTextKey> = {
