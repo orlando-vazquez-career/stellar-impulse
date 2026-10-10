@@ -15,6 +15,12 @@ describe('cosmetic loadout', () => {
 
   it('loads the default cosmetic-only selection', () => {
     expect(loadCosmeticLoadout()).toEqual(defaultCosmeticLoadout);
+    expect(defaultCosmeticLoadout.voice).toBe('voz-vela');
+  });
+
+  it('moves a saved commander voice to the onboard AI until the commander is recorded', () => {
+    saveCosmeticLoadout({ ...defaultCosmeticLoadout, voice: 'voz-comandante' });
+    expect(loadCosmeticLoadout().voice).toBe('voz-vela');
   });
 
   it('persists unlocked selections', () => {

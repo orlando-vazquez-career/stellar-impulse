@@ -3,11 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { itemsForCategory } from './catalog';
 
 describe('local audio cosmetics', () => {
-  it('offers both unlocked announcer profiles with distinct speech settings', () => {
+  it('offers the onboard AI as the free voice, the analyst as a collection piece and the commander as coming soon', () => {
     const voices = itemsForCategory('voice');
-    expect(voices.map((item) => item.id)).toEqual(['voz-comandante', 'voz-analista']);
-    expect(voices.every((item) => item.unlocked && item.announcer)).toBe(true);
-    expect(voices[0]!.announcer).not.toEqual(voices[1]!.announcer);
+    expect(voices.map((item) => item.id)).toEqual(['voz-vela', 'voz-comandante', 'voz-analista']);
+    expect(voices.map((item) => [item.unlocked, item.chain?.classId ?? null])).toEqual([[true, null], [false, null], [true, 5]]);
+    // Speech settings only shape the browser fallback, but each pack keeps its own.
+    expect(new Set(voices.map((item) => JSON.stringify(item.announcer))).size).toBe(3);
   });
 
   it('offers both unlocked music tracks backed by existing local files', () => {

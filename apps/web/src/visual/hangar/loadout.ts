@@ -7,7 +7,7 @@ export const defaultCosmeticLoadout: CosmeticLoadout = {
   hull: 'aegis',
   trail: 'ion',
   insignia: 'vanguard',
-  voice: 'voz-comandante',
+  voice: 'voz-vela',
   music: 'musica-iron-vanguard',
 };
 

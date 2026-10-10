@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import type { Room } from '@colyseus/sdk';
 import type { PlayerView } from '@impulso/state';
+import type { GameplayEvent } from './model';
 import { createServerGameplayAdapter, diffViews, nearestOpenCell, rememberView, type FogMemory, type MatchTransport, type TransportEvents } from './server-adapter';
 import { selectMap } from '../map/sector-map';
 
@@ -19,9 +20,83 @@ function view(patch: Partial<PlayerView> = {}): PlayerView {
   };
 }
 
+type BaseView = NonNullable<PlayerView['base']>;
+const base = (patch: Partial<BaseView> = {}): BaseView =>
+  ({ damage: 12, fleetCap: 12, upgradeCosts: { damage: 12, capacity: 10 }, hp: 2500, maxHp: 2500, vulnerableTick: 3000, ...patch });
+const augments = (patch: Partial<NonNullable<PlayerView['augments']>> = {}): NonNullable<PlayerView['augments']> =>
+  ({ started: true, own: [], rival: [], nextChoiceTick: null, offer: null, ...patch });
+const offer = (choice: number) => ({ choice, tier: 'silver' as const, cards: [], remainingSeconds: 30, rerolls: 0, rerollLimit: 1 });
+
 describe('match events from server views', () => {
-  it('announces the start on the first view', () => {
-    expect(diffViews(null, view())).toEqual([{ kind: 'match-start' }]);
+  it('starts the battle on the first view when no augment choice holds it back', () => {
+    expect(diffViews(null, view())).toEqual([{ kind: 'match-start' }, { kind: 'battle-start' }]);
+  });
+
+  it('waits for the opening augment choice before starting the battle', () => {
+    const choosing = view({ augments: augments({ started: false, offer: offer(0) }) });
+    expect(diffViews(null, choosing)).toEqual([{ kind: 'match-start' }, { kind: 'augment-offer' }]);
+    const started = view({ tick: 400, augments: augments({ started: true }) });
+    expect(diffViews(choosing, started).map((event) => event.kind)).toEqual(['battle-start']);
+  });
+
+  it('announces a new augment offer during the match', () => {
+    const before = view({ augments: augments() });
+    expect(diffViews(before, view({ augments: augments({ offer: offer(1) }) })).map((event) => event.kind)).toEqual(['augment-offer']);
+  });
+
+  it('tells a hit on the base apart from a hit on the fleet', () => {
+    const before = view({ base: base(), squads: [ship('p1-a', 'p1', 3, 3)] });
+    expect(diffViews(before, view({ base: base({ hp: 2400 }), squads: [ship('p1-a', 'p1', 3, 3)] })).map((event) => event.kind))
+      .toEqual(['base-under-attack']);
+    expect(diffViews(before, view({ base: base(), squads: [ship('p1-a', 'p1', 3, 3, 80)] })).map((event) => event.kind))
+      .toEqual(['under-attack']);
+  });
+
+  it('does not take a lower maximum hull from an augment for an attack', () => {
+    const before = view({ squads: [{ ...ship('p1-a', 'p1', 3, 3, 100), maxHp: 120 }] });
+    const after = view({ squads: [{ ...ship('p1-a', 'p1', 3, 3, 75), maxHp: 90 }] });
+    expect(diffViews(before, after)).toEqual([]);
+  });
+
+  it('warns when the base hull falls below 30 percent', () => {
+    const before = view({ base: base({ hp: 800 }) });
+    expect(diffViews(before, view({ base: base({ hp: 700 }) })).map((event) => event.kind)).toEqual(['base-hull-critical', 'base-under-attack']);
+    expect(diffViews(view({ base: base({ hp: 700 }) }), view({ base: base({ hp: 650 }) })).map((event) => event.kind)).toEqual(['base-under-attack']);
+  });
+
+  it('reports the shields falling, sudden death and a finished module', () => {
+    const building = { refinery: 0 as const, extras: [], building: { kind: 'refinery' as const, remainingTicks: 5 } };
+    const before = view({ tick: 2995, base: base({ modules: building }) });
+    const after = view({ tick: 3000, suddenDeath: true, base: base({ modules: { refinery: 1, extras: [], building: null } }) });
+    expect(diffViews(before, after).map((event) => event.kind)).toEqual(['shields-down', 'sudden-death', 'module-online']);
+  });
+
+  it('names the fall of the Core guardian and a contested Core', () => {
+    const guardian = { id: 'core-guardian', objectiveId: 'core', x: 5, y: 5, hp: 10, maxHp: 400, damage: 20 };
+    const open = { id: 'core', guardianId: 'core-guardian', x: 14, y: 14, open: true, progress: { p1: 0, p2: 0 } };
+    const before = view({ guardians: [guardian], core: open });
+    const after = view({ guardians: [{ ...guardian, hp: 0 }], core: open });
+    expect(diffViews(before, after).map((event) => event.kind)).toEqual(['core-guardian-down']);
+    const contested = view({ core: { ...open, progress: { p1: 5, p2: 5 } } });
+    expect(diffViews(view({ core: { ...open, progress: { p1: 5, p2: 0 } } }), contested).map((event) => event.kind))
+      .toEqual(['core-rival-capturing', 'core-contested']);
+  });
+
+  it('warns when the rival starts taking one of our nodes', () => {
+    const node = { id: 'metal-1', kind: 'metal' as const, guardianId: 'g', x: 5, y: 5, ownerId: 'p1' as const, progress: { p1: 30, p2: 0 } };
+    const after = view({ nodes: [{ ...node, progress: { p1: 30, p2: 3 } }] });
+    expect(diffViews(view({ nodes: [node] }), after).map((event) => event.kind)).toEqual(['node-threatened']);
+  });
+
+  it('does not mourn an own decoy that expires', () => {
+    const before = view({ squads: [{ ...ship('p1-d', 'p1', 3, 3), isDecoy: true }] });
+    expect(diffViews(before, view({ squads: [] }))).toEqual([]);
+  });
+
+  it('stays quiet about hits once the match is decided', () => {
+    const before = view({ base: base(), squads: [ship('p1-a', 'p1', 3, 3)] });
+    const after = view({ base: base({ hp: 0 }), squads: [ship('p1-a', 'p1', 3, 3, 50)], winner: 'p2' });
+    expect(diffViews(before, after).map((event) => event.kind)).toEqual(['defeat']);
   });
 
   it('counts an enemy as destroyed only when its cell is still in sight', () => {
@@ -148,6 +223,34 @@ describe('campaign transport', () => {
       fake.setOutcome({ result: 'defeat', reward });
       fake.events().refresh();
       expect(adapter.getSnapshot()).toMatchObject({ result: 'defeat', reward });
+    } finally { adapter.destroy(); }
+  });
+
+  it('reports refused orders, a lost link and its return as match events', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    const events: GameplayEvent[] = [];
+    adapter.subscribeEvents!((event) => events.push(event));
+    try {
+      fake.events().view(view());
+      events.length = 0;
+      fake.events().rejected('insufficient_metal');
+      fake.events().connection('offline');
+      fake.events().connection('connecting');
+      fake.events().view(view({ tick: 101 }));
+      expect(events).toEqual([{ kind: 'order-rejected', reason: 'insufficient_metal' }, { kind: 'link-lost' }, { kind: 'link-restored' }]);
+    } finally { adapter.destroy(); }
+  });
+
+  it('spaces out repeated hits on the base like hits on the fleet', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    const kinds: string[] = [];
+    adapter.subscribeEvents!((event) => kinds.push(event.kind));
+    try {
+      const hull = { damage: 12, fleetCap: 12, upgradeCosts: { damage: 12, capacity: 10 }, maxHp: 2500, vulnerableTick: 9000 };
+      for (let tick = 100; tick < 105; tick += 1) fake.events().view(view({ tick, base: { ...hull, hp: 2500 - tick } }));
+      expect(kinds.filter((kind) => kind === 'base-under-attack')).toHaveLength(1);
     } finally { adapter.destroy(); }
   });
 

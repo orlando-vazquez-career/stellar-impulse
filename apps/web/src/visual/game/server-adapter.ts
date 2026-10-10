@@ -71,6 +71,7 @@ export function nearestOpenCell(x: number, y: number): Point | null {
   return best;
 }
 
+/** Hits arrive with every view while a fight lasts: alert once per window, base and fleet apart. */
 const UNDER_ATTACK_COOLDOWN_MS = 10_000;
 
 /** What the player remembers between views: explored terrain and the last seen state of each node. */
@@ -105,9 +106,20 @@ export function rememberView(memory: FogMemory, view: Pick<PlayerView, 'width' |
 
 /** Compare two consecutive server views and name what changed for the player. */
 export function diffViews(previous: PlayerView | null, next: PlayerView): GameplayEvent[] {
-  if (!previous) return [{ kind: 'match-start' }];
+  const offered = (view: PlayerView | null) => view?.augments?.offer?.choice ?? null;
+  // The opening augment choice holds the battle back; without it the battle starts with the first view.
+  const battling = (view: PlayerView) => !view.augments || view.augments.started;
+  if (!previous) {
+    const opening: GameplayEvent[] = [{ kind: 'match-start' }];
+    if (battling(next)) opening.push({ kind: 'battle-start' });
+    if (offered(next) !== null) opening.push({ kind: 'augment-offer' });
+    return opening;
+  }
   const events: GameplayEvent[] = [];
   const me = next.playerId;
+  const rival = me === 'p1' ? 'p2' : 'p1';
+  if (!battling(previous) && battling(next)) events.push({ kind: 'battle-start' });
+  if (offered(next) !== null && offered(next) !== offered(previous)) events.push({ kind: 'augment-offer' });
   const visible = new Set(next.visibleCells.map((cell) => `${cell.x},${cell.y}`));
   const alive = (view: PlayerView) => new Map(view.squads.filter((squad) => squad.hp > 0).map((squad) => [squad.id, squad]));
   const before = alive(previous);
@@ -115,18 +127,26 @@ export function diffViews(previous: PlayerView | null, next: PlayerView): Gamepl
   for (const [id, squad] of before) {
     if (after.has(id)) continue;
     const own = squad.ownerId === me;
-    // An enemy that walked out of sight is not a kill: only count it if its cell is still watched.
+    // An own decoy simply expires; an enemy that walked out of sight is not a kill either.
+    if (own && squad.isDecoy) continue;
     if (own || visible.has(`${squad.x},${squad.y}`)) events.push({ kind: 'ship-destroyed', own });
   }
   for (const [id, squad] of after) if (!before.has(id) && squad.ownerId === me) events.push({ kind: 'ship-launched' });
   for (const guardian of previous.guardians) {
     if (guardian.hp <= 0) continue;
     const now = next.guardians.find((unit) => unit.id === guardian.id);
-    if ((!now || now.hp <= 0) && visible.has(`${guardian.x},${guardian.y}`)) events.push({ kind: guardian.role === 'turret' ? 'turret-down' : guardian.role === 'barrier' ? 'barrier-down' : 'guardian-down' });
+    if ((!now || now.hp <= 0) && visible.has(`${guardian.x},${guardian.y}`)) {
+      events.push({ kind: guardian.id === next.core.guardianId ? 'core-guardian-down'
+        : guardian.role === 'turret' ? 'turret-down' : guardian.role === 'barrier' ? 'barrier-down' : 'guardian-down' });
+    }
   }
   for (const node of next.nodes) {
     const old = previous.nodes.find((candidate) => candidate.id === node.id);
-    if (!old || old.ownerId === node.ownerId || node.kind !== 'metal') continue;
+    if (!old || node.kind !== 'metal') continue;
+    if (old.ownerId === node.ownerId) {
+      if (node.ownerId === me && old.progress[rival] === 0 && node.progress[rival] > 0) events.push({ kind: 'node-threatened' });
+      continue;
+    }
     if (node.ownerId === me) events.push({ kind: 'node-captured', own: true });
     else if (old.ownerId === me) events.push({ kind: 'node-lost' });
     else if (node.ownerId !== null) events.push({ kind: 'node-captured', own: false });
@@ -145,13 +165,28 @@ export function diffViews(previous: PlayerView | null, next: PlayerView): Gamepl
   const opensIn = (view: PlayerView) => (view.rules.coreOpenTick - view.tick) / TICKS_PER_SECOND;
   if (opensIn(previous) > 30 && opensIn(next) <= 30) events.push({ kind: 'core-soon' });
   if (!previous.core.open && next.core.open) events.push({ kind: 'core-open' });
-  const rival = me === 'p1' ? 'p2' : 'p1';
   if (previous.core.progress[me] === 0 && next.core.progress[me] > 0) events.push({ kind: 'core-own-capturing' });
   if (previous.core.progress[rival] === 0 && next.core.progress[rival] > 0) events.push({ kind: 'core-rival-capturing' });
-  if (previous.winner === null && next.winner !== null) events.push({ kind: next.winner === me ? 'victory' : 'defeat' });
-  const baseHit = (next.base?.hp ?? 0) < (previous.base?.hp ?? 0);
-  const hurt = baseHit || [...after.values()].some((squad) => squad.ownerId === me && squad.hp < (before.get(squad.id)?.hp ?? squad.hp));
-  if (hurt) events.push({ kind: 'under-attack' });
+  if (coreState(previous) !== 'contested' && coreState(next) === 'contested') events.push({ kind: 'core-contested' });
+  if (previous.winner === null && next.winner !== null) {
+    // The result says it all: no alerts for the hits that decided the match.
+    events.push({ kind: next.winner === me ? 'victory' : 'defeat' });
+    return events;
+  }
+  const shieldsAt = next.base?.vulnerableTick;
+  if (shieldsAt !== undefined && previous.tick < shieldsAt && next.tick >= shieldsAt) events.push({ kind: 'shields-down' });
+  if (!previous.suddenDeath && next.suddenDeath) events.push({ kind: 'sudden-death' });
+  if (previous.base?.modules?.building && !next.base?.modules?.building) events.push({ kind: 'module-online' });
+  const hull = (view: PlayerView) => (view.base?.hp ?? 0) / (view.base?.maxHp || 1);
+  if (next.base?.hp !== undefined && hull(previous) >= 0.3 && hull(next) < 0.3) events.push({ kind: 'base-hull-critical' });
+  if ((next.base?.hp ?? 0) < (previous.base?.hp ?? 0)) events.push({ kind: 'base-under-attack' });
+  // Compare health fractions: an augment that lowers maximum hull rescales ships without a fight.
+  const health = (squad: { hp: number; maxHp: number }) => squad.hp / (squad.maxHp || 1);
+  const fleetHit = [...after.values()].some((squad) => {
+    const old = before.get(squad.id);
+    return squad.ownerId === me && old !== undefined && health(squad) < health(old) - 1e-6;
+  });
+  if (fleetHit) events.push({ kind: 'under-attack' });
   return events;
 }
 
@@ -249,7 +284,9 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
   const listeners = new Set<() => void>();
   const eventListeners = new Set<(event: GameplayEvent) => void>();
   const emit = () => listeners.forEach((listener) => listener());
-  let lastAttackAlert = -Infinity;
+  const lastAttackAlert = new Map<GameplayEvent['kind'], number>();
+  let linkLost = false;
+  const tell = (event: GameplayEvent) => eventListeners.forEach((listener) => listener(event));
   /** Destination shown the moment the player clicks, until the server view carries the order. */
   let pendingOrder: { squadId: string; destination: Point; at: number } | null = null;
   /** Formation seats shown the moment the player clicks, until the server view carries them. */
@@ -468,19 +505,20 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     const final = link?.outcome?.();
     if (!final || final.result === announced) return;
     announced = final.result;
-    eventListeners.forEach((listener) => listener({ kind: final.result }));
+    tell({ kind: final.result });
   };
   const onView = (view: PlayerView) => {
     if (latest && view.tick < latest.tick) resetSector();
     const campaign = Boolean(link?.outcome);
     for (const event of diffViews(latest, view)) {
       if (campaign && (event.kind === 'victory' || event.kind === 'defeat')) continue;
-      if (event.kind === 'under-attack') {
-        if (performance.now() - lastAttackAlert < UNDER_ATTACK_COOLDOWN_MS) continue;
-        lastAttackAlert = performance.now();
+      if (event.kind === 'under-attack' || event.kind === 'base-under-attack') {
+        if (performance.now() - (lastAttackAlert.get(event.kind) ?? -Infinity) < UNDER_ATTACK_COOLDOWN_MS) continue;
+        lastAttackAlert.set(event.kind, performance.now());
       }
-      eventListeners.forEach((listener) => listener(event));
+      tell(event);
     }
+    if (linkLost) { linkLost = false; tell({ kind: 'link-restored' }); }
     const previous = latest;
     latest = view;
     if (rememberView(memory, view)) explored = [...memory.explored!];
@@ -535,10 +573,15 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       rejected: (reason) => {
         if (destroyed) return;
         snapshot = { ...snapshot, notice: REJECTION_TEXT[reason] ?? 'Orden rechazada.' };
+        tell({ kind: 'order-rejected', reason });
         emit();
       },
       notice: (text) => { if (destroyed) return; snapshot = { ...snapshot, notice: text }; emit(); },
-      connection: (state) => { if (destroyed) return; snapshot = { ...snapshot, connection: state }; emit(); },
+      connection: (state) => {
+        if (destroyed) return;
+        if (state === 'offline' && !linkLost) { linkLost = true; tell({ kind: 'link-lost' }); }
+        snapshot = { ...snapshot, connection: state }; emit();
+      },
       refresh: () => {
         if (destroyed) return;
         announceOutcome();

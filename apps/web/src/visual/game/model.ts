@@ -183,9 +183,14 @@ export interface GameplayViewModel {
 
 /** Things that happened between two server views, for sounds and announcements. */
 export type GameplayEvent =
-  | { kind: 'match-start' | 'ship-launched' | 'guardian-down' | 'node-lost' | 'under-attack'
-      | 'satellite-warning' | 'satellite-impact' | 'nebula-warning' | 'belt-warning' | 'turret-down' | 'barrier-down' | 'station-captured' | 'station-lost' | 'core-soon' | 'core-open' | 'core-own-capturing' | 'core-rival-capturing' | 'victory' | 'defeat' }
-  | { kind: 'ship-destroyed' | 'node-captured'; own: boolean };
+  | { kind: 'match-start' | 'battle-start' | 'augment-offer' | 'ship-launched' | 'guardian-down' | 'core-guardian-down' | 'node-lost' | 'node-threatened'
+      | 'under-attack' | 'base-under-attack' | 'base-hull-critical' | 'shields-down' | 'sudden-death' | 'module-online'
+      | 'satellite-warning' | 'satellite-impact' | 'nebula-warning' | 'belt-warning' | 'turret-down' | 'barrier-down' | 'station-captured' | 'station-lost'
+      | 'core-soon' | 'core-open' | 'core-own-capturing' | 'core-rival-capturing' | 'core-contested' | 'victory' | 'defeat'
+      | 'link-lost' | 'link-restored' }
+  | { kind: 'ship-destroyed' | 'node-captured'; own: boolean }
+  /** The server refused an order; `reason` is its rejection code. */
+  | { kind: 'order-rejected'; reason: string };
 
 export type PresentationIntent =
   | { type: 'select-squad'; squadId: string }

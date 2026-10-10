@@ -498,7 +498,7 @@ test.describe('visual interface foundation', () => {
     await expect(page.getByText('Configuración guardada localmente')).toBeVisible();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('impulso.cosmetic-loadout') ?? '{}'));
     expect(stored.hull).toBe('polar');
-    expect(stored.voice).toBe('voz-comandante');
+    expect(stored.voice).toBe('voz-vela');
     expect(stored.music).toBe('musica-iron-vanguard');
     const tabsFit = await page.locator('.vi-collection > nav').evaluate((element) => {
       const bounds = element.getBoundingClientRect();
