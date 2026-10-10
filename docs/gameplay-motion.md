@@ -18,6 +18,11 @@ casillas finales siempre son distintas. El intercambio directo puede cruzar las
 trayectorias visuales de ese par durante la interpolación.
 Las formaciones de llegada amplían su anillo cuando hace falta espacio.
 
+Ninguna nave nace sobre una base o una estación. La flota inicial, el hangar y los
+refuerzos de aumentos aparecen en el primer anillo de casillas alrededor de la base
+(o más afuera si está ocupado) y las compras de estación, en el segundo anillo de la
+estación. Así nada queda dentro del casco al empezar a moverse.
+
 El sandbox `?adapter=mock` usa aceleración y frenado, una separación mínima de
 0,9 casillas y destinos cercanos libres al hacer clic sobre una aliada. Comprueba
 el recorrido por pasos cortos para evitar atravesar una nave tras un frame lento.
