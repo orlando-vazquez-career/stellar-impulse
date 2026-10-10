@@ -45,6 +45,13 @@ describe('pickBase', () => {
     expect(pickBase({ x: 250, y: 200 }, { own, enemy: close }, flat)).toBe('enemy');
   });
 
+  it('breaks an exact tie in favour of the enemy base, the attack order', () => {
+    const adjacent = { x: 3, y: 2 };
+    // (250, 200) is 50 px from both centres: the same distance inside both ellipses.
+    expect(pickBase({ x: 250, y: 200 }, { own, enemy: adjacent }, flat)).toBe('enemy');
+    expect(pickBase({ x: 250, y: 200 }, { own: adjacent, enemy: own }, flat)).toBe('enemy');
+  });
+
   describe('on a real map with the isometric projection', () => {
     afterAll(() => selectMap('espiral'));
 

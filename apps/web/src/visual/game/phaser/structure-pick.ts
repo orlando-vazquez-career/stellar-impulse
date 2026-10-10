@@ -10,8 +10,12 @@ export type PickedBase = 'own' | 'enemy';
 /**
  * Which command base a world point falls on, if any: an ellipse centred on the projected centre of the
  * base cell. `own` is the player's base wherever it sits (bases.p1 or bases.p2); `enemy` is passed only
- * while that base can be targeted, so without it nothing on the enemy side can be picked. When the two
- * ellipses overlap the nearer centre wins.
+ * while that base can be targeted, so without it nothing on the enemy side can be picked.
+ *
+ * Contract for the scene: the result is null when the point is outside every ellipse that was passed.
+ * A missing `enemy` does not turn the whole pick off: the player's own base stays pickable while the
+ * rival one is hidden by the fog, which is most of the match. When the two ellipses overlap the nearer
+ * centre wins, and an exact tie goes to `enemy`, because picking it is the attack order.
  */
 export function pickBase(
   worldPoint: { x: number; y: number },
@@ -20,7 +24,8 @@ export function pickBase(
 ): PickedBase | null {
   let picked: PickedBase | null = null;
   let nearest = 1;
-  for (const side of ['enemy', 'own'] as const) {
+  // `enemy` goes last so that, at the same distance, it replaces `own`.
+  for (const side of ['own', 'enemy'] as const) {
     const cell = bases[side];
     if (!cell) continue;
     const center = project(cell.x, cell.y);
