@@ -1,5 +1,5 @@
 export type ColorProfile = 'default' | 'deuteranopia' | 'tritanopia';
-import { DEFAULT_CONTROL_BINDINGS, readControlBindings, type ControlBindings } from './control-bindings';
+import { CONTROL_ACTIONS, DEFAULT_CONTROL_BINDINGS, readControlBindings, type ControlBindings } from './control-bindings';
 export type { ControlAction } from './control-bindings';
 
 export interface VisualPreferences {
@@ -30,12 +30,28 @@ export const defaultVisualPreferences: VisualPreferences = {
 };
 
 const storageKey = 'impulso.visual-preferences';
+const COLOR_PROFILES: readonly ColorProfile[] = ['default', 'deuteranopia', 'tritanopia'];
+
+/** The operating system's reduced-motion request; false where it cannot be read. */
+function systemPrefersReducedMotion(): boolean {
+  try {
+    return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/** Accessibility before the player saves anything: motion follows the system setting. */
+function defaultAccessibility(): VisualPreferences['accessibility'] {
+  return { ...defaultVisualPreferences.accessibility, reducedMotion: systemPrefersReducedMotion() };
+}
 
 function cloneDefaults(): VisualPreferences {
   return {
     audio: { ...defaultVisualPreferences.audio },
     controls: Object.fromEntries(Object.entries(defaultVisualPreferences.controls).map(([action, bindings]) => [action, [...bindings]])) as ControlBindings,
-    accessibility: { ...defaultVisualPreferences.accessibility },
+    accessibility: defaultAccessibility(),
   };
 }
 
@@ -53,6 +69,19 @@ function readAudio(stored: unknown): VisualPreferences['audio'] {
   return audio;
 }
 
+/** Each stored switch must be a boolean and the profile a known one; anything else keeps its default. */
+function readAccessibility(stored: unknown): VisualPreferences['accessibility'] {
+  const accessibility = defaultAccessibility();
+  if (!stored || typeof stored !== 'object') return accessibility;
+  const fields = stored as Record<string, unknown>;
+  for (const flag of ['highContrast', 'reducedMotion', 'largeText'] as const) {
+    const value = fields[flag];
+    if (typeof value === 'boolean') accessibility[flag] = value;
+  }
+  if (COLOR_PROFILES.includes(fields.colorProfile as ColorProfile)) accessibility.colorProfile = fields.colorProfile as ColorProfile;
+  return accessibility;
+}
+
 function readControls(stored: unknown): VisualPreferences['controls'] {
   return readControlBindings(stored);
 }
@@ -65,7 +94,7 @@ export function loadVisualPreferences(): VisualPreferences {
     return {
       audio: readAudio(parsed.audio),
       controls: readControls(parsed.controls),
-      accessibility: { ...defaultVisualPreferences.accessibility, ...parsed.accessibility },
+      accessibility: readAccessibility(parsed.accessibility),
     };
   } catch {
     return cloneDefaults();
@@ -78,4 +107,26 @@ export function saveVisualPreferences(preferences: VisualPreferences) {
 
 export function freshDefaultVisualPreferences() {
   return cloneDefaults();
+}
+
+function sameFields<T extends object>(saved: T, draft: T): boolean {
+  const keys = new Set([...Object.keys(saved), ...Object.keys(draft)]) as Set<keyof T>;
+  return [...keys].every((key) => Object.is(saved[key], draft[key]));
+}
+
+function sameBindings(saved: ControlBindings, draft: ControlBindings): boolean {
+  const actions = new Set<string>([...CONTROL_ACTIONS, ...Object.keys(saved), ...Object.keys(draft)]);
+  return [...actions].every((action) => {
+    const before = saved[action as keyof ControlBindings] ?? [];
+    const after = draft[action as keyof ControlBindings] ?? [];
+    // In order: the HUD shows the first key of each action.
+    return before.length === after.length && before.every((binding, index) => binding === after[index]);
+  });
+}
+
+/** True when the draft differs from what is saved in audio, accessibility or controls. */
+export function hasUnsavedChanges(saved: VisualPreferences, draft: VisualPreferences): boolean {
+  return !sameFields(saved.audio, draft.audio)
+    || !sameFields(saved.accessibility, draft.accessibility)
+    || !sameBindings(saved.controls, draft.controls);
 }
