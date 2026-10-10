@@ -3,6 +3,7 @@ import {
   applyCommand, createMatchWorld, createSquad, effectiveFleetCap, grantAugment, MAX_PRODUCTION_QUEUE, runTrainingRival,
   statsFor, stepWorld, type AiMemory, type TrainingMapId, type UnitKind, type World,
 } from './index.js';
+import { rivalProduction } from './inteligencia-enemiga/estrategia.js';
 
 type Kind = UnitKind;
 /**
@@ -217,6 +218,16 @@ describe('hangar queue', () => {
       expect(world.productionQueue?.p2 ?? []).toEqual([]);
     }
     expect(world.built.p2).toBeGreaterThan(0);
+  });
+
+  // runTrainingRival never queues by itself, so the guard is checked on a queue the rival did not fill.
+  it('keeps the rival from ordering while anything waits in its queue, even with the hangar idle', () => {
+    const world = hangar('espiral');
+    world.players.p2.metal = 300;
+    expect(world.production.p2).toBeNull();
+    expect(rivalProduction(world, 'p2', 'hard')).not.toBeNull();
+    world.productionQueue = { p1: [], p2: [{ kind: 'frigate', paid: cost(world, 'frigate') }] };
+    expect(rivalProduction(world, 'p2', 'hard')).toBeNull();
   });
 
   it('reaches the same state from the same orders', () => {
