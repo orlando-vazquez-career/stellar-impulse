@@ -61,8 +61,10 @@ cola: solo encarga con el hangar libre.
 Las naves nacen fuera del casco. La flota inicial y el hangar usan el primer anillo
 de casillas alrededor de la base (la de combate en +1,0 y el Explorador en +1,+1,
 espejadas para p2) y, si está ocupado, buscan hacia afuera hasta el anillo 4. Las
-estaciones despachan desde el segundo anillo. Con todo ocupado el hangar retiene la
-nave terminada y la cola no avanza.
+estaciones despachan desde el segundo anillo. El hangar, los refuerzos de aumentos y
+las estaciones prueban primero las casillas del anillo más cercanas al Núcleo (con el
+orden de barrido como desempate), así que las dos bases lanzan a la misma distancia de
+él. Con todo ocupado el hangar retiene la nave terminada y la cola no avanza.
 
 ## Captura de objetivos
 

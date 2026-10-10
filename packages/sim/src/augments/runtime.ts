@@ -197,7 +197,7 @@ export function spawnPending(world: World, player: PlayerId): void {
     const cell=launchCell(world.players[player].base,world.width,world.height,
       (p) => !world.surface || world.surface.walkable[p.y*world.width+p.x] === true,
       (p) => [...world.squads,...world.guardians].some((u)=>u.hp>0 && ((u.x===p.x&&u.y===p.y)
-        || (u.transit && u.transit.untilTick>world.tick && u.transit.from.x===p.x&&u.transit.from.y===p.y))), 1);
+        || (u.transit && u.transit.untilTick>world.tick && u.transit.from.x===p.x&&u.transit.from.y===p.y))), 1, world.core);
     if (!cell) break;
     const unit=createSquad(`${player}-augment-${++state.spawnCount}`,player,spawn.kind,cell,world);
     if (spawn.decoy) { unit.isDecoy=true;unit.hp=unit.maxHp=30;unit.damage=0;unit.expiresAt=world.tick+(spawn.lifetime ?? 600); }

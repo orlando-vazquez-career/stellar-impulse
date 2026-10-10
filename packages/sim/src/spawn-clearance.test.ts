@@ -66,6 +66,59 @@ describe('ships are born outside the base hull', () => {
     }
   });
 
+  // The ring is scanned toward the Core, so neither side's hangar launches a step behind the other's.
+  it.each(Object.keys(TRAINING_MAPS) as TrainingMapId[])('launches both hangars at the same distance from the Core on %s', (map) => {
+    let world = running(map);
+    world.squads = [];
+    for (const player of ['p1', 'p2'] as const) {
+      world = applyCommand(world, player, { seq: 1, type: 'produce', kind: 'explorer' }).world;
+    }
+    for (let tick = 0; tick < 60; tick += 1) world = stepWorld(world);
+    const reach = (player: PlayerId) => ring(world.squads.find((unit) => unit.id === `${player}-explorer-1`)!, world.core);
+    expect(ring(world.players.p1.base, world.core)).toBe(ring(world.players.p2.base, world.core));
+    expect(reach('p1')).toBe(reach('p2'));
+    expect(reach('p1')).toBeLessThan(ring(world.players.p1.base, world.core));
+  });
+
+  it.each(['espiral', 'sector-01'] as TrainingMapId[])('drops both sides\' augment reinforcements at the same distance from the Core on %s', (map) => {
+    const world = running(map);
+    world.squads = [];
+    const reach = (player: PlayerId) => {
+      grantAugment(world, player, 'p-escuadra');
+      return world.squads.filter((unit) => unit.id.startsWith(`${player}-augment-`)).map((unit) => ring(unit, world.core));
+    };
+    expect(reach('p1')).toEqual(reach('p2'));
+  });
+
+  it('docks a ship bought at either Trascendencia station at the same distance from the Core', () => {
+    const world = createSectorWorld('trascendencia');
+    const stations = world.nodes.filter((node) => node.station);
+    expect(stations).toHaveLength(2);
+    const reach = stations.map((station) => {
+      const state = createSectorWorld('trascendencia');
+      state.nodes.find((node) => node.id === station.id)!.ownerId = 'p1';
+      state.players.p1.metal = 100;
+      const bought = applyCommand(state, 'p1', { type: 'station_produce', seq: 1, kind: 'frigate', stationId: station.id });
+      expect(bought.accepted).toBe(true);
+      const ship = bought.accepted ? bought.world.squads.at(-1)! : station;
+      expect(ring(ship, station)).toBe(2);
+      return ring(ship, world.core);
+    });
+    expect(ring(stations[0]!, world.core)).toBe(ring(stations[1]!, world.core));
+    expect(reach[0]).toBe(reach[1]);
+  });
+
+  it('scans a ring toward the point it is given, the scan order breaking ties', () => {
+    const open = () => true;
+    const free = () => false;
+    const base = { x: 5, y: 5 };
+    expect(launchCell(base, 20, 20, open, free, 1, { x: 15, y: 15 })).toEqual({ x: 6, y: 6 });
+    expect(launchCell(base, 20, 20, open, free, 1, { x: 0, y: 0 })).toEqual({ x: 4, y: 4 });
+    expect(launchCell(base, 20, 20, open, free, 1, { x: 5, y: 15 })).toEqual({ x: 5, y: 6 });
+    // (6,6) is taken: (6,5) and (5,6) are equally near, and the scan reaches (6,5) first.
+    expect(launchCell(base, 20, 20, open, (cell) => cell.x === 6 && cell.y === 6, 1, { x: 15, y: 15 })).toEqual({ x: 6, y: 5 });
+  });
+
   it('drops augment reinforcements around the base, never on it', () => {
     const world = running('espiral');
     world.squads = [];

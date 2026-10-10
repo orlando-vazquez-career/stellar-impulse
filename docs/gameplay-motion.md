@@ -21,7 +21,9 @@ Las formaciones de llegada amplían su anillo cuando hace falta espacio.
 Ninguna nave nace sobre una base o una estación. La flota inicial, el hangar y los
 refuerzos de aumentos aparecen en el primer anillo de casillas alrededor de la base
 (o más afuera si está ocupado) y las compras de estación, en el segundo anillo de la
-estación. Así nada queda dentro del casco al empezar a moverse.
+estación. Así nada queda dentro del casco al empezar a moverse. Dentro de cada anillo
+se elige primero la casilla más cercana al Núcleo, de modo que ningún bando lanza una
+casilla por detrás del otro.
 
 El sandbox `?adapter=mock` usa aceleración y frenado, una separación mínima de
 0,9 casillas y destinos cercanos libres al hacer clic sobre una aliada. Comprueba

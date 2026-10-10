@@ -5,7 +5,10 @@ import {
 } from './index.js';
 
 type Kind = UnitKind;
-/** A running match without income, guardians or augment offers, so every Metal change is the hangar's. */
+/**
+ * A running match without income, guardians, nodes to capture or augment offers, so every Metal change is the
+ * hangar's: an unguarded Metal node beside the base would otherwise pay whoever launches next to it.
+ */
 function hangar(map: TrainingMapId = 'sector-01'): World {
   const world = createMatchWorld(map, 'skirmish', 3);
   world.augmentMatch!.started = true;
@@ -15,6 +18,7 @@ function hangar(map: TrainingMapId = 'sector-01'): World {
   }
   world.baseRules = { ...world.baseRules!, baseIncome: 0 };
   world.guardians = [];
+  world.nodes = world.nodes.filter((node) => node.station);
   world.players.p1.metal = 200;
   return world;
 }
