@@ -7,16 +7,18 @@ import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
 import { createAnomalyScene } from './anomaly-scene';
+import { lobbyText, type LobbyKey } from './lobby-copy';
+import { MapPreview } from '../map/MapPreview';
 import type { TrainingMapId } from '../map/sector-map';
 import './lobby.css';
 
 export type LobbyMode = 'create' | 'join';
 export type RivalDifficulty = 'easy' | 'medium' | 'hard';
 
-const DIFFICULTIES: { value: RivalDifficulty; label: string; hint: string }[] = [
-  { value: 'easy', label: 'Fácil', hint: 'Flota chica y lenta. No ataca tus nodos.' },
-  { value: 'medium', label: 'Media', hint: 'Se expande rápido y pelea por todo.' },
-  { value: 'hard', label: 'Difícil', hint: 'Toma dos nodos a la vez y asalta los tuyos.' },
+const DIFFICULTIES: { value: RivalDifficulty; label: LobbyKey; hint: LobbyKey }[] = [
+  { value: 'easy', label: 'difficultyEasy', hint: 'difficultyEasyHint' },
+  { value: 'medium', label: 'difficultyMedium', hint: 'difficultyMediumHint' },
+  { value: 'hard', label: 'difficultyHard', hint: 'difficultyHardHint' },
 ];
 type FleetSide = 'blue' | 'red';
 /** How much of the interference's sideways slip each lobby panel takes, so they do not move as one block. */
@@ -26,14 +28,12 @@ export function PreparationLobby({
   alias,
   mode,
   onBack,
-  onExploreMap,
   onDeploy,
   initialJoinCode = '',
 }: {
   alias: string;
   mode: LobbyMode;
   onBack(): void;
-  onExploreMap(): void;
   onDeploy(difficulty: RivalDifficulty, map: TrainingMapId, duration: DurationMode): void;
   initialJoinCode?: string;
 }) {
@@ -160,13 +160,9 @@ export function PreparationLobby({
               <span>01</span>
               <h2 id="operation-brief-title">{t('operationBrief')}</h2>
             </header>
-            <div className="vi-map-preview" aria-hidden="true">
-              <div className="vi-map-preview__field">
-                <i className="vi-map-preview__core" />
-                <i className="vi-map-preview__blue" />
-                <i className="vi-map-preview__red" />
-              </div>
-              <span>{selectedMap.name[locale]}</span>
+            <div className="vi-map-preview">
+              <MapPreview mapId={map} />
+              <span aria-hidden="true">{selectedMap.name[locale]}</span>
             </div>
             <dl className="vi-briefing__data">
               <div>
@@ -186,16 +182,6 @@ export function PreparationLobby({
                 <dd>{t('fleetFormatValue')}</dd>
               </div>
             </dl>
-            <button
-              className="vi-map-explore"
-              onMouseEnter={() => hover(520)}
-              onClick={() => {
-                sound.playSelect();
-                onExploreMap();
-              }}
-            >
-              Explorar mapa Tiled
-            </button>
             {mode === 'create' && (
               <fieldset className="vi-difficulty vi-map-select">
                 <legend>{t('map')}</legend>
@@ -317,7 +303,7 @@ export function PreparationLobby({
 
                 {mode === 'create' && (
                   <fieldset className="vi-difficulty">
-                    <legend>Dificultad de la IA rival</legend>
+                    <legend>{lobbyText(locale, 'difficultyLegend')}</legend>
                     {DIFFICULTIES.map((option) => (
                       <button
                         key={option.value}
@@ -330,8 +316,8 @@ export function PreparationLobby({
                           setDifficulty(option.value);
                         }}
                       >
-                        <strong>{option.label}</strong>
-                        <small>{option.hint}</small>
+                        <strong>{lobbyText(locale, option.label)}</strong>
+                        <small>{lobbyText(locale, option.hint)}</small>
                       </button>
                     ))}
                   </fieldset>

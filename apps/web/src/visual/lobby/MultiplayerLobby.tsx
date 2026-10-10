@@ -4,7 +4,10 @@ import type { MultiplayerSession } from '../../multiplayer/session';
 import { sessionToken } from '../../auth/client';
 import { useSpaceSound } from '../../login/sound';
 import { useI18n } from '../i18n';
+import { MapPreview } from '../map/MapPreview';
+import { seatFactions } from '../map/map-preview';
 import { createCommandSpaceScene } from '../menu/command-space';
+import { isReducedMotion, subscribeAccessibility } from '../settings/accessibility-store';
 import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import './lobby.css';
@@ -190,9 +193,11 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
   const canReady = snapshot.connection === 'online' && phase?.phase === 'lobby' && Boolean(ownSeat?.connected) && !ownSeat?.ready && !leaving;
   const connectionMessage = leaving ? copy.leaving : copy[snapshot.connection];
 
+  // The saved accessibility (which follows the system until the player chooses) decides, not the media query alone.
+  const reducedMotion = useSyncExternalStore(subscribeAccessibility, isReducedMotion);
   useEffect(() => {
     const element = canvas.current;
-    if (!element || element.closest('.is-reduced-motion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!element || reducedMotion) return;
     const scene = createCommandSpaceScene(element);
     scene.start();
     const onResize = () => scene.resize();
@@ -207,7 +212,7 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
       window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onPointer);
     };
-  }, []);
+  }, [reducedMotion]);
 
   useEffect(() => setCopyState('idle'), [snapshot.roomId]);
 
@@ -293,13 +298,9 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
         <div className="vi-lobby__grid">
           <section className="vi-lobby-card vi-briefing" aria-labelledby="multiplayer-brief-title">
             <header><h2 id="multiplayer-brief-title">{copy.operationBrief}</h2></header>
-            <div className="vi-map-preview" aria-hidden="true">
-              <div className="vi-map-preview__field">
-                <i className="vi-map-preview__core" />
-                <i className="vi-map-preview__blue" />
-                <i className="vi-map-preview__red" />
-              </div>
-              <span>{selectedMap.name[locale]}</span>
+            <div className="vi-map-preview">
+              <MapPreview mapId={selectedMap.id} self={phase?.playerId ?? 'p1'} />
+              <span aria-hidden="true">{selectedMap.name[locale]}</span>
             </div>
             <p className="vi-multiplayer-map-hint">{selectedMap.description[locale]}</p>
             <dl className="vi-briefing__data">
@@ -404,16 +405,18 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
                         {(['p1', 'p2'] as const).map((playerId) => {
                           const seat = phase.seats[playerId];
                           const own = phase.playerId === playerId;
+                          // Like the preview and the match: each commander's own fleet is blue, the rival's red.
+                          const faction = seatFactions(phase.playerId)[playerId];
                           return (
                             <article
                               key={playerId}
-                              className={`vi-commander vi-commander--${playerId === 'p1' ? 'blue' : 'red'}${!seat ? ' is-muted' : ''}`}
+                              className={`vi-commander vi-commander--${faction}${!seat ? ' is-muted' : ''}`}
                               data-testid={`multiplayer-seat-${playerId}`}
                             >
                               <span className="vi-commander__mark" aria-hidden="true">{seat ? seat.name.slice(0, 1).toUpperCase() : '?'}</span>
                               <div>
                                 <strong>{seat ? seat.name : copy.emptySeat}</strong>
-                                <small>{own ? `${copy.you} · ` : ''}{playerId === 'p1' ? copy.blueFleet : copy.redFleet}</small>
+                                <small>{own ? `${copy.you} · ` : ''}{faction === 'blue' ? copy.blueFleet : copy.redFleet}</small>
                               </div>
                               <em className={seat?.connected && seat.ready ? 'is-ready' : ''}>
                                 {!seat ? copy.availableSeat : !seat.connected ? copy.disconnected : seat.ready ? copy.ready : copy.notReady}

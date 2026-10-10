@@ -2,13 +2,13 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { createGameServer } from '../../../server/src/app';
 import { createMatchWorld } from '@impulso/sim';
 import { AuthService } from '../../../server/src/auth';
-import { createMultiplayerSession, type MultiplayerSession, type MultiplayerSnapshot } from './session';
+import { createMultiplayerSession, roomFailure, type MultiplayerSession, type MultiplayerSnapshot } from './session';
 
 const port = 31_000 + Math.floor(Math.random() * 900);
 const url = `http://127.0.0.1:${port}`;
 const auth = new AuthService();
 const tokens = await Promise.all(['ana', 'beto', 'carla']
-  .map(async (name) => (await auth.register(`${name}-session@example.com`, 'secret-1234')).token));
+  .map(async (name) => (await auth.register(`${name}-session@example.com`, 'Secret-1234')).token));
 const server = createGameServer({ auth, campaign: {
   createSector: (_sector, seed) => createMatchWorld('sector-01', 'skirmish', seed),
   countdownMs: 100, reconnectWindowMs: 3_000, resumeCountdownMs: 150,
@@ -65,6 +65,26 @@ async function pair(storage?: StorageMemory) {
   return { host, guest };
 }
 
+describe('room failures', () => {
+  it.each([
+    ['authentication_required', 'authentication_required', 'Inicia sesión de nuevo para entrar a la sala.'],
+    ['rate_limit', 'rate_limit', 'Demasiadas órdenes seguidas.'],
+    ['ABCDEF012345 is already full.', 'full', 'La sala está completa.'],
+    ['maxClients reached', 'full', 'La sala está completa.'],
+    ['room "ABCDEF012345" is locked', 'started', 'La partida ya comenzó.'],
+    ['room "ABCDEF012345" not found', 'not_found', 'No se encontró la sala. Revisa el código.'],
+    ['fetch failed', 'network', 'No se pudo conectar con la sala. Comprueba la conexión e intenta de nuevo.'],
+    // Only server codes pass through as reasons; a client-side kind sent as a message is classified like any text.
+    ['expired', 'network', 'No se pudo conectar con la sala. Comprueba la conexión e intenta de nuevo.'],
+  ])('reads %j as %s, in Spanish', (message, errorReason, error) => {
+    expect(roomFailure(new Error(message))).toEqual({ errorReason, error });
+  });
+
+  it('reads anything that is not an Error as a network failure', () => {
+    expect(roomFailure(undefined).errorReason).toBe('network');
+  });
+});
+
 describe('shared multiplayer session over real transport', () => {
   it('retains admission, phase and private match views before the gameplay adapter mounts', async () => {
     const { host, guest } = await pair();
@@ -120,6 +140,37 @@ describe('shared multiplayer session over real transport', () => {
     expect(extra.getSnapshot().connection).toBe('offline');
   });
 
+  it('names why admission failed next to the Spanish error the lobby reads', async () => {
+    const invalid = session();
+    await expect(invalid.create('Ana', 'invalid')).rejects.toThrow();
+    expect(invalid.getSnapshot()).toMatchObject({ errorReason: 'authentication_required', error: 'Inicia sesión de nuevo para entrar a la sala.' });
+    const missing = session();
+    await expect(missing.join('ABCDEF012345', 'Carla', tokens[2]!)).rejects.toThrow();
+    expect(missing.getSnapshot()).toMatchObject({ errorReason: 'not_found', error: 'No se encontró la sala. Revisa el código.' });
+    const typo = session();
+    await expect(typo.join('ABC', 'Carla', tokens[2]!)).rejects.toThrow();
+    expect(typo.getSnapshot()).toMatchObject({ errorReason: 'room_code', error: 'El código de sala debe tener 12 caracteres (0–9, A–F).' });
+    // A seated pair locks the room: a third commander hears that the match already began.
+    const { host } = await pair();
+    const late = session();
+    await expect(late.join(host.getSnapshot().roomId!, 'Carla', tokens[2]!)).rejects.toThrow();
+    expect(late.getSnapshot()).toMatchObject({ errorReason: 'started', error: 'La partida ya comenzó.' });
+    // Nothing listens on port 1: the connection itself fails.
+    const unreachable = createMultiplayerSession('http://127.0.0.1:1');
+    sessions.push(unreachable);
+    await expect(unreachable.create('Ana', tokens[0]!)).rejects.toThrow();
+    expect(unreachable.getSnapshot()).toMatchObject({ connection: 'offline', errorReason: 'network',
+      error: 'No se pudo conectar con la sala. Comprueba la conexión e intenta de nuevo.' });
+  });
+
+  it('clears the reason together with the error', async () => {
+    const typo = session();
+    await expect(typo.join('ABC', 'Carla', tokens[2]!)).rejects.toThrow();
+    await typo.leave();
+    expect(typo.getSnapshot()).toMatchObject({ error: null });
+    expect(typo.getSnapshot().errorReason).toBeUndefined();
+  });
+
   it('does not create a connection with absent or expired restore data', async () => {
     const storage = new StorageMemory();
     const empty = session(storage);
@@ -128,6 +179,7 @@ describe('shared multiplayer session over real transport', () => {
     expect(await empty.restore()).toBe(false);
     expect(storage.values.size).toBe(0);
     expect(empty.getSnapshot().connection).toBe('offline');
+    expect(empty.getSnapshot()).toMatchObject({ errorReason: 'expired', error: 'La sesión de la sala caducó. Crea una sala o entra con su código.' });
   });
 
   it('cancels pending admission with an explicit exit without reserving a ghost seat', async () => {

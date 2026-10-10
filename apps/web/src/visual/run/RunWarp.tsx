@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AugmentCardView } from '@impulso/state';
+import { mapName } from '../map/map-name';
 import { useTyped } from './RunOutcome';
 import type { RunSector } from './run-state';
 import type { RunSfx } from './run-sfx';
@@ -35,7 +36,8 @@ export function RunWarp({ sector, number, label, augments, locale, sfx, onDone }
   const done = useRef(onDone);
   done.current = onDone;
   const heading = useTyped(card ? `${label} · ${locale === 'en' ? 'DESTINATION' : 'DESTINO'}` : '', 0, 24);
-  const name = useTyped(card ? sector.name.toUpperCase() : '', 420, 34);
+  const sectorName = mapName(sector.map, locale);
+  const name = useTyped(card ? sectorName.toUpperCase() : '', 420, 34);
 
   useEffect(() => {
     sfx.play('whoosh');
@@ -128,7 +130,7 @@ export function RunWarp({ sector, number, label, augments, locale, sfx, onDone }
     };
   }, []);
 
-  return <main className={`vi-run-warp vi-screen${leaving ? ' is-leaving' : ''}`} aria-label={`Sector ${number} · ${sector.name}`}>
+  return <main className={`vi-run-warp vi-screen${leaving ? ' is-leaving' : ''}`} aria-label={`Sector ${number} · ${sectorName}`}>
     <canvas ref={canvas} className="vi-run-warp__space" aria-hidden="true" />
     <i className="vi-run-warp__flash" aria-hidden="true" />
     {card && <div className="vi-run-warp__card">
