@@ -32,8 +32,11 @@ const PhaserBattlefield = lazy(() => import('./phaser/PhaserBattlefield').then((
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567';
 /** `?adapter=mock` keeps the offline visual sandbox (used by the visual E2E tests). */
 const wantsLocalMock = () => new URLSearchParams(window.location.search).get('adapter') === 'mock';
-/** The development panel exists only in the offline sandbox and in development builds. */
-const developmentAvailable = () => wantsLocalMock() || import.meta.env.DEV;
+/**
+ * The development panel exists only in the offline sandbox and in development builds, and never in a multiplayer
+ * match: the server ignores what it sets.
+ */
+const developmentAvailable = (multiplayer: boolean) => !multiplayer && (wantsLocalMock() || import.meta.env.DEV);
 const emptySubscribe = () => () => {};
 const emptyMultiplayer = () => null;
 
@@ -248,14 +251,14 @@ function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, 
       match={{
         onResetCamera: () => battlefieldRef.current?.resetCamera(),
         onMenu: () => (menuOpen ? closeMenu() : openMenu()),
-        onDevelopment: developmentAvailable() ? () => setDevelopmentOpen(!developmentOpen) : undefined,
+        onDevelopment: developmentAvailable(Boolean(multiplayerSession)) ? () => setDevelopmentOpen(!developmentOpen) : undefined,
         developmentOpen,
         onLeave,
         soundOpen,
         onSoundOpenChange: setSoundOpen,
       }}
       multiplayer={Boolean(multiplayerSession)} audio={preferences.audio} onAudioChange={onAudioChange} />
-    {developmentOpen && developmentAvailable() && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}
+    {developmentOpen && developmentAvailable(Boolean(multiplayerSession)) && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}
     <AugmentHud view={view} adapter={adapter} sound={!preferences.audio.muted && preferences.audio.effects > 0 && preferences.audio.master > 0} />
     {!multiplayerSession && <FirstMatchTutorial view={view} />}
     {announcement && !view.result && <div key={announcement.id} className={`vi-announcement vi-announcement--${announcement.tone}`} role="status">{announcement.text}</div>}
