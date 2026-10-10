@@ -1,8 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PRACTICE_MAPS } from '@impulso/input';
 import { SECTOR_RULES, TRAINING_MAPS } from '@impulso/sim';
 import { buildMapPreview, fitMapPreview, type PreviewPoint } from './map-preview';
-import { activeMapId, sectorMap } from './sector-map';
 
 const inside = (point: PreviewPoint, size: { width: number; height: number }) =>
   point.x >= 0 && point.x <= size.width && point.y >= 0 && point.y <= size.height;
@@ -41,12 +40,20 @@ describe('map preview', () => {
     expect(espiral.bases).not.toEqual(caos.bases);
   });
 
-  it('reads the map without selecting it, and builds it once', () => {
-    const before = { id: activeMapId, map: sectorMap };
-    const first = buildMapPreview('trascendencia');
-    expect(activeMapId).toBe(before.id);
-    expect(sectorMap).toBe(before.map);
-    expect(buildMapPreview('trascendencia')).toBe(first);
+  it('reads every map without selecting it, and builds each one once', async () => {
+    // A fresh module graph: the cache is empty and the default map is active, so every first call below really builds.
+    vi.resetModules();
+    const sector = await import('./sector-map');
+    const { buildMapPreview: build } = await import('./map-preview');
+    const before = { id: sector.activeMapId, map: sector.sectorMap, surface: sector.sectorSurface };
+    expect(PRACTICE_MAPS.some((map) => map.id !== before.id)).toBe(true);
+    for (const { id } of PRACTICE_MAPS) {
+      const first = build(id);
+      expect(sector.activeMapId).toBe(before.id);
+      expect(sector.sectorMap).toBe(before.map);
+      expect(sector.sectorSurface).toBe(before.surface);
+      expect(build(id)).toBe(first);
+    }
   });
 
   it('fits the whole map in a canvas, centred and with a margin', () => {
