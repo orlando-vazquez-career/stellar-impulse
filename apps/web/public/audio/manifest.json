@@ -4,42 +4,418 @@
     "match": "music/Iron_Vanguard.mp3"
   },
   "sfx": {
-    "explosion-small": null,
-    "explosion-large": null,
-    "capture-own": null,
-    "capture-rival": null,
-    "launch": null,
-    "alarm": null,
-    "horn": null,
-    "victory": null,
-    "defeat": null
+    "explosion-small": [
+      "sfx/explosion-small-1.mp3",
+      "sfx/explosion-small-2.mp3",
+      "sfx/explosion-small-3.mp3"
+    ],
+    "explosion-large": [
+      "sfx/explosion-large-1.mp3",
+      "sfx/explosion-large-2.mp3"
+    ],
+    "capture-own": "sfx/capture-own.mp3",
+    "capture-rival": [
+      "sfx/capture-rival-1.mp3",
+      "sfx/capture-rival-2.mp3"
+    ],
+    "launch": "sfx/launch.mp3",
+    "alarm": "sfx/alarm.mp3",
+    "horn": "sfx/horn.mp3",
+    "victory": "sfx/victory.mp3",
+    "defeat": "sfx/defeat.mp3"
   },
   "voice": {
     "es": {
-      "start": null,
-      "ship-lost": null,
-      "node-captured": null,
-      "node-lost": null,
-      "under-attack": null,
-      "core-soon": null,
-      "core-open": null,
-      "core-own-capturing": null,
-      "core-rival-capturing": null,
-      "victory": null,
-      "defeat": null
+      "start": [
+        "voice/es/start-1.mp3",
+        "voice/es/start-2.mp3"
+      ],
+      "ship-lost": [
+        "voice/es/ship-lost-1.mp3",
+        "voice/es/ship-lost-2.mp3",
+        "voice/es/ship-lost-3.mp3"
+      ],
+      "node-captured": [
+        "voice/es/node-captured-1.mp3",
+        "voice/es/node-captured-2.mp3"
+      ],
+      "node-lost": [
+        "voice/es/node-lost-1.mp3",
+        "voice/es/node-lost-2.mp3"
+      ],
+      "under-attack": [
+        "voice/es/under-attack-1.mp3",
+        "voice/es/under-attack-2.mp3",
+        "voice/es/under-attack-3.mp3"
+      ],
+      "core-soon": "voice/es/core-soon.mp3",
+      "core-open": [
+        "voice/es/core-open-1.mp3",
+        "voice/es/core-open-2.mp3"
+      ],
+      "core-own-capturing": [
+        "voice/es/core-own-capturing-1.mp3",
+        "voice/es/core-own-capturing-2.mp3"
+      ],
+      "core-rival-capturing": [
+        "voice/es/core-rival-capturing-1.mp3",
+        "voice/es/core-rival-capturing-2.mp3"
+      ],
+      "victory": [
+        "voice/es/victory-1.mp3",
+        "voice/es/victory-2.mp3"
+      ],
+      "defeat": [
+        "voice/es/defeat-1.mp3",
+        "voice/es/defeat-2.mp3"
+      ],
+      "base-under-attack": [
+        "voice/es/base-under-attack-1.mp3",
+        "voice/es/base-under-attack-2.mp3",
+        "voice/es/base-under-attack-3.mp3"
+      ],
+      "base-hull-critical": [
+        "voice/es/base-hull-critical-1.mp3",
+        "voice/es/base-hull-critical-2.mp3"
+      ],
+      "shields-down": "voice/es/shields-down.mp3",
+      "sudden-death": "voice/es/sudden-death.mp3",
+      "satellite-warning": [
+        "voice/es/satellite-warning-1.mp3",
+        "voice/es/satellite-warning-2.mp3"
+      ],
+      "nebula-advancing": "voice/es/nebula-advancing.mp3",
+      "belt-closing": "voice/es/belt-closing.mp3",
+      "core-guardian-down": [
+        "voice/es/core-guardian-down-1.mp3",
+        "voice/es/core-guardian-down-2.mp3"
+      ],
+      "core-contested": [
+        "voice/es/core-contested-1.mp3",
+        "voice/es/core-contested-2.mp3"
+      ],
+      "node-threatened": "voice/es/node-threatened.mp3",
+      "module-online": [
+        "voice/es/module-online-1.mp3",
+        "voice/es/module-online-2.mp3"
+      ],
+      "insufficient-metal": [
+        "voice/es/insufficient-metal-1.mp3",
+        "voice/es/insufficient-metal-2.mp3"
+      ],
+      "fleet-full": [
+        "voice/es/fleet-full-1.mp3",
+        "voice/es/fleet-full-2.mp3"
+      ],
+      "order-denied": [
+        "voice/es/order-denied-1.mp3",
+        "voice/es/order-denied-2.mp3"
+      ],
+      "augment-offer": "voice/es/augment-offer.mp3",
+      "link-lost": "voice/es/link-lost.mp3",
+      "ship-ready": [
+        "voice/es/ship-ready-1.mp3",
+        "voice/es/ship-ready-2.mp3",
+        "voice/es/ship-ready-3.mp3"
+      ],
+      "station-captured": "voice/es/station-captured.mp3",
+      "station-lost": "voice/es/station-lost.mp3",
+      "link-restored": "voice/es/link-restored.mp3"
     },
     "en": {
-      "start": null,
-      "ship-lost": null,
-      "node-captured": null,
-      "node-lost": null,
-      "under-attack": null,
-      "core-soon": null,
-      "core-open": null,
-      "core-own-capturing": null,
-      "core-rival-capturing": null,
-      "victory": null,
-      "defeat": null
+      "start": [
+        "voice/en/start-1.mp3",
+        "voice/en/start-2.mp3"
+      ],
+      "ship-lost": [
+        "voice/en/ship-lost-1.mp3",
+        "voice/en/ship-lost-2.mp3",
+        "voice/en/ship-lost-3.mp3"
+      ],
+      "node-captured": [
+        "voice/en/node-captured-1.mp3",
+        "voice/en/node-captured-2.mp3"
+      ],
+      "node-lost": [
+        "voice/en/node-lost-1.mp3",
+        "voice/en/node-lost-2.mp3"
+      ],
+      "under-attack": [
+        "voice/en/under-attack-1.mp3",
+        "voice/en/under-attack-2.mp3",
+        "voice/en/under-attack-3.mp3"
+      ],
+      "core-soon": "voice/en/core-soon.mp3",
+      "core-open": [
+        "voice/en/core-open-1.mp3",
+        "voice/en/core-open-2.mp3"
+      ],
+      "core-own-capturing": [
+        "voice/en/core-own-capturing-1.mp3",
+        "voice/en/core-own-capturing-2.mp3"
+      ],
+      "core-rival-capturing": [
+        "voice/en/core-rival-capturing-1.mp3",
+        "voice/en/core-rival-capturing-2.mp3"
+      ],
+      "victory": [
+        "voice/en/victory-1.mp3",
+        "voice/en/victory-2.mp3"
+      ],
+      "defeat": [
+        "voice/en/defeat-1.mp3",
+        "voice/en/defeat-2.mp3"
+      ],
+      "base-under-attack": [
+        "voice/en/base-under-attack-1.mp3",
+        "voice/en/base-under-attack-2.mp3",
+        "voice/en/base-under-attack-3.mp3"
+      ],
+      "base-hull-critical": [
+        "voice/en/base-hull-critical-1.mp3",
+        "voice/en/base-hull-critical-2.mp3"
+      ],
+      "shields-down": "voice/en/shields-down.mp3",
+      "sudden-death": "voice/en/sudden-death.mp3",
+      "satellite-warning": [
+        "voice/en/satellite-warning-1.mp3",
+        "voice/en/satellite-warning-2.mp3"
+      ],
+      "nebula-advancing": "voice/en/nebula-advancing.mp3",
+      "belt-closing": "voice/en/belt-closing.mp3",
+      "core-guardian-down": [
+        "voice/en/core-guardian-down-1.mp3",
+        "voice/en/core-guardian-down-2.mp3"
+      ],
+      "core-contested": "voice/en/core-contested.mp3",
+      "node-threatened": [
+        "voice/en/node-threatened-1.mp3",
+        "voice/en/node-threatened-2.mp3"
+      ],
+      "module-online": [
+        "voice/en/module-online-1.mp3",
+        "voice/en/module-online-2.mp3"
+      ],
+      "insufficient-metal": [
+        "voice/en/insufficient-metal-1.mp3",
+        "voice/en/insufficient-metal-2.mp3"
+      ],
+      "fleet-full": [
+        "voice/en/fleet-full-1.mp3",
+        "voice/en/fleet-full-2.mp3"
+      ],
+      "order-denied": [
+        "voice/en/order-denied-1.mp3",
+        "voice/en/order-denied-2.mp3"
+      ],
+      "augment-offer": "voice/en/augment-offer.mp3",
+      "link-lost": "voice/en/link-lost.mp3",
+      "ship-ready": [
+        "voice/en/ship-ready-1.mp3",
+        "voice/en/ship-ready-2.mp3",
+        "voice/en/ship-ready-3.mp3"
+      ],
+      "station-captured": "voice/en/station-captured.mp3",
+      "station-lost": "voice/en/station-lost.mp3",
+      "link-restored": "voice/en/link-restored.mp3"
+    }
+  },
+  "voicePacks": {
+    "voz-analista": {
+      "es": {
+        "start": [
+          "voice/analista/es/start-1.mp3",
+          "voice/analista/es/start-2.mp3"
+        ],
+        "ship-lost": [
+          "voice/analista/es/ship-lost-1.mp3",
+          "voice/analista/es/ship-lost-2.mp3",
+          "voice/analista/es/ship-lost-3.mp3"
+        ],
+        "node-captured": [
+          "voice/analista/es/node-captured-1.mp3",
+          "voice/analista/es/node-captured-2.mp3"
+        ],
+        "node-lost": [
+          "voice/analista/es/node-lost-1.mp3",
+          "voice/analista/es/node-lost-2.mp3"
+        ],
+        "under-attack": [
+          "voice/analista/es/under-attack-1.mp3",
+          "voice/analista/es/under-attack-2.mp3",
+          "voice/analista/es/under-attack-3.mp3"
+        ],
+        "core-soon": "voice/analista/es/core-soon.mp3",
+        "core-open": [
+          "voice/analista/es/core-open-1.mp3",
+          "voice/analista/es/core-open-2.mp3"
+        ],
+        "core-own-capturing": [
+          "voice/analista/es/core-own-capturing-1.mp3",
+          "voice/analista/es/core-own-capturing-2.mp3"
+        ],
+        "core-rival-capturing": [
+          "voice/analista/es/core-rival-capturing-1.mp3",
+          "voice/analista/es/core-rival-capturing-2.mp3"
+        ],
+        "victory": [
+          "voice/analista/es/victory-1.mp3",
+          "voice/analista/es/victory-2.mp3"
+        ],
+        "defeat": [
+          "voice/analista/es/defeat-1.mp3",
+          "voice/analista/es/defeat-2.mp3"
+        ],
+        "base-under-attack": [
+          "voice/analista/es/base-under-attack-1.mp3",
+          "voice/analista/es/base-under-attack-2.mp3",
+          "voice/analista/es/base-under-attack-3.mp3"
+        ],
+        "base-hull-critical": [
+          "voice/analista/es/base-hull-critical-1.mp3",
+          "voice/analista/es/base-hull-critical-2.mp3"
+        ],
+        "shields-down": "voice/analista/es/shields-down.mp3",
+        "sudden-death": "voice/analista/es/sudden-death.mp3",
+        "satellite-warning": [
+          "voice/analista/es/satellite-warning-1.mp3",
+          "voice/analista/es/satellite-warning-2.mp3"
+        ],
+        "nebula-advancing": "voice/analista/es/nebula-advancing.mp3",
+        "belt-closing": "voice/analista/es/belt-closing.mp3",
+        "core-guardian-down": [
+          "voice/analista/es/core-guardian-down-1.mp3",
+          "voice/analista/es/core-guardian-down-2.mp3"
+        ],
+        "core-contested": [
+          "voice/analista/es/core-contested-1.mp3",
+          "voice/analista/es/core-contested-2.mp3"
+        ],
+        "node-threatened": "voice/analista/es/node-threatened.mp3",
+        "module-online": [
+          "voice/analista/es/module-online-1.mp3",
+          "voice/analista/es/module-online-2.mp3"
+        ],
+        "insufficient-metal": [
+          "voice/analista/es/insufficient-metal-1.mp3",
+          "voice/analista/es/insufficient-metal-2.mp3"
+        ],
+        "fleet-full": [
+          "voice/analista/es/fleet-full-1.mp3",
+          "voice/analista/es/fleet-full-2.mp3"
+        ],
+        "order-denied": [
+          "voice/analista/es/order-denied-1.mp3",
+          "voice/analista/es/order-denied-2.mp3"
+        ],
+        "augment-offer": "voice/analista/es/augment-offer.mp3",
+        "link-lost": "voice/analista/es/link-lost.mp3",
+        "ship-ready": [
+          "voice/analista/es/ship-ready-1.mp3",
+          "voice/analista/es/ship-ready-2.mp3",
+          "voice/analista/es/ship-ready-3.mp3"
+        ],
+        "station-captured": "voice/analista/es/station-captured.mp3",
+        "station-lost": "voice/analista/es/station-lost.mp3",
+        "link-restored": "voice/analista/es/link-restored.mp3"
+      },
+      "en": {
+        "start": [
+          "voice/analista/en/start-1.mp3",
+          "voice/analista/en/start-2.mp3"
+        ],
+        "ship-lost": [
+          "voice/analista/en/ship-lost-1.mp3",
+          "voice/analista/en/ship-lost-2.mp3",
+          "voice/analista/en/ship-lost-3.mp3"
+        ],
+        "node-captured": [
+          "voice/analista/en/node-captured-1.mp3",
+          "voice/analista/en/node-captured-2.mp3"
+        ],
+        "node-lost": [
+          "voice/analista/en/node-lost-1.mp3",
+          "voice/analista/en/node-lost-2.mp3"
+        ],
+        "under-attack": [
+          "voice/analista/en/under-attack-1.mp3",
+          "voice/analista/en/under-attack-2.mp3",
+          "voice/analista/en/under-attack-3.mp3"
+        ],
+        "core-soon": "voice/analista/en/core-soon.mp3",
+        "core-open": [
+          "voice/analista/en/core-open-1.mp3",
+          "voice/analista/en/core-open-2.mp3"
+        ],
+        "core-own-capturing": [
+          "voice/analista/en/core-own-capturing-1.mp3",
+          "voice/analista/en/core-own-capturing-2.mp3"
+        ],
+        "core-rival-capturing": [
+          "voice/analista/en/core-rival-capturing-1.mp3",
+          "voice/analista/en/core-rival-capturing-2.mp3"
+        ],
+        "victory": [
+          "voice/analista/en/victory-1.mp3",
+          "voice/analista/en/victory-2.mp3"
+        ],
+        "defeat": [
+          "voice/analista/en/defeat-1.mp3",
+          "voice/analista/en/defeat-2.mp3"
+        ],
+        "base-under-attack": [
+          "voice/analista/en/base-under-attack-1.mp3",
+          "voice/analista/en/base-under-attack-2.mp3",
+          "voice/analista/en/base-under-attack-3.mp3"
+        ],
+        "base-hull-critical": [
+          "voice/analista/en/base-hull-critical-1.mp3",
+          "voice/analista/en/base-hull-critical-2.mp3"
+        ],
+        "shields-down": "voice/analista/en/shields-down.mp3",
+        "sudden-death": "voice/analista/en/sudden-death.mp3",
+        "satellite-warning": [
+          "voice/analista/en/satellite-warning-1.mp3",
+          "voice/analista/en/satellite-warning-2.mp3"
+        ],
+        "nebula-advancing": "voice/analista/en/nebula-advancing.mp3",
+        "belt-closing": "voice/analista/en/belt-closing.mp3",
+        "core-guardian-down": [
+          "voice/analista/en/core-guardian-down-1.mp3",
+          "voice/analista/en/core-guardian-down-2.mp3"
+        ],
+        "core-contested": "voice/analista/en/core-contested.mp3",
+        "node-threatened": [
+          "voice/analista/en/node-threatened-1.mp3",
+          "voice/analista/en/node-threatened-2.mp3"
+        ],
+        "module-online": [
+          "voice/analista/en/module-online-1.mp3",
+          "voice/analista/en/module-online-2.mp3"
+        ],
+        "insufficient-metal": [
+          "voice/analista/en/insufficient-metal-1.mp3",
+          "voice/analista/en/insufficient-metal-2.mp3"
+        ],
+        "fleet-full": [
+          "voice/analista/en/fleet-full-1.mp3",
+          "voice/analista/en/fleet-full-2.mp3"
+        ],
+        "order-denied": [
+          "voice/analista/en/order-denied-1.mp3",
+          "voice/analista/en/order-denied-2.mp3"
+        ],
+        "augment-offer": "voice/analista/en/augment-offer.mp3",
+        "link-lost": "voice/analista/en/link-lost.mp3",
+        "ship-ready": [
+          "voice/analista/en/ship-ready-1.mp3",
+          "voice/analista/en/ship-ready-2.mp3",
+          "voice/analista/en/ship-ready-3.mp3"
+        ],
+        "station-captured": "voice/analista/en/station-captured.mp3",
+        "station-lost": "voice/analista/en/station-lost.mp3",
+        "link-restored": "voice/analista/en/link-restored.mp3"
+      }
     }
   }
 }
