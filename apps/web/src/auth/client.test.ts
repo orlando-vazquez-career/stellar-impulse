@@ -61,11 +61,34 @@ describe('account client', () => {
       .toMatchObject({ status: 400, code: 'invalid_display_name' });
     expect(accountErrorKey(await failure(updateDisplayName('<Vega>')), 'register')).toBe('accountAliasInvalid');
     const short = await failure(registerAccount('short-client@example.com', 'short', 'Vega'));
-    expect(accountErrorKey(short, 'register')).toBe('accountRegisterInvalid');
+    expect(accountErrorKey(short, 'register')).toBe('accountPasswordWeak');
+    const noAt = await failure(registerAccount('sin-arroba', 'Secret-1234', 'Vega'));
+    expect(noAt).toMatchObject({ status: 400, code: 'invalid_credentials' });
+    expect(accountErrorKey(noAt, 'register')).toBe('accountRegisterInvalid');
     const wrong = await failure(loginAccount('taken-client@example.com', 'wrong-password'));
     expect(accountErrorKey(wrong, 'login')).toBe('accountInvalid');
     expect(accountErrorKey(new AuthRequestError(429, 'rate_limited'), 'register')).toBe('accountUnavailable');
     expect(accountErrorKey(new TypeError('Failed to fetch'), 'login')).toBe('accountUnavailable');
+  });
+
+  it('refuses a weak password before asking the server', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const weak = await failure(registerAccount('weak-client@example.com', 'secret-1234', 'Vega'));
+      expect(weak).toBeInstanceOf(AuthRequestError);
+      expect(weak).toMatchObject({ status: 400, code: 'weak_password' });
+      expect(accountErrorKey(weak, 'register')).toBe('accountPasswordWeak');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('names the weak password the server reports after a taken email and an invalid alias', () => {
+    expect(accountErrorKey(new AuthRequestError(400, 'weak_password'), 'register')).toBe('accountPasswordWeak');
+    expect(accountErrorKey(new AuthRequestError(409, 'email_in_use'), 'register')).toBe('accountEmailInUse');
+    expect(accountErrorKey(new AuthRequestError(400, 'invalid_display_name'), 'register')).toBe('accountAliasInvalid');
+    expect(accountErrorKey(new AuthRequestError(400, 'invalid_credentials'), 'register')).toBe('accountRegisterInvalid');
   });
 
   it('needs a session to change the alias', async () => {
