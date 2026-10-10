@@ -230,12 +230,17 @@ test.describe('visual battle', () => {
     await expect(page.locator('.vi-minimap .map-base[data-owner="own"]')).toHaveCount(1);
     await expect(page.locator('.vi-minimap .map-base[data-owner="rival"]')).toHaveCount(1);
 
-    // Three Explorers by their shortcut: one in production and two paid and waiting behind it.
+    // A Bomber in production (8 s) and two paid Explorers waiting behind it, by their shortcuts. The slow Bomber holds
+    // the queue still while the test reads it: three Explorers alone drain in 9 s, faster than CI's software renderer.
     const metal = async () => Number(await page.locator('.vi-resource--metal strong').innerText());
-    const explorerCost = Number(/(\d+) M/.exec(await production.locator('.vi-production__list').getByRole('button', { name: /Explorador/ }).innerText())?.[1]);
+    const costOf = async (ship: RegExp) => Number(/(\d+) M/.exec(await production.locator('.vi-production__list').getByRole('button', { name: ship }).innerText())?.[1]);
+    const explorerCost = await costOf(/Explorador/);
+    const bomberCost = await costOf(/Bombardero/);
     expect(explorerCost).toBeGreaterThan(0);
-    await expect.poll(metal, { timeout: 40000 }).toBeGreaterThanOrEqual(3 * explorerCost);
-    for (let order = 0; order < 3; order++) await page.keyboard.press('t');
+    expect(bomberCost).toBeGreaterThan(0);
+    await expect.poll(metal, { timeout: 60000 }).toBeGreaterThanOrEqual(bomberCost + 2 * explorerCost);
+    await page.keyboard.press('r');
+    for (let order = 0; order < 2; order++) await page.keyboard.press('t');
     const slots = production.locator('.vi-hangar-queue .vi-hangar-slot');
     await expect(slots).toHaveCount(3, { timeout: 20000 });
     const first = slots.first();
@@ -262,10 +267,10 @@ test.describe('visual battle', () => {
     expect(after.metal).toBeLessThanOrEqual(before.metal + 1 + refund + income);
 
     // The queue shows the ship in production with its countdown; the hangar's own lines stay as they were.
-    await expect(production).toContainText(/Listo para construir|Explorador · \d+ s/);
+    await expect(production).toContainText(/Listo para construir|(Bombardero|Explorador) · \d+ s/);
     if (await slots.count()) {
       await expect(first).toHaveClass(/is-active/);
-      await expect(first).toHaveAttribute('title', label);
+      await expect(first).toHaveAttribute('title', /^Cancelar (Bombardero|Explorador) \(reembolso \+\d+ Metal\)$/);
     }
     // A build button the hangar would refuse says why.
     const bomber = production.locator('.vi-production__list').getByRole('button', { name: /Bombardero/ });
