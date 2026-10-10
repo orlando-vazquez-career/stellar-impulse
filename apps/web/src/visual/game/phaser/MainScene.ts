@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { OBSTACLE_MODELS } from '@impulso/sim';
 import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '../model';
 import type { CameraPanDirection } from '../../settings/control-bindings';
 import type { GridPoint } from './grid';
@@ -10,7 +11,10 @@ import { SatelliteEffects } from './satellite-effects';
 import { NebulaEffects } from './nebula-effects';
 import { shatterBarrier } from './barrier-effects';
 import { BeltEffects } from './belt-effects';
-import { GAME_ASSET_MANIFEST, SCENE_DEPTH, SHIP_DISPLAY_SIZE, STRUCTURE_DISPLAY_SIZE, coreFactionForState, platformDepth, shipTextureKey, structureTextureKey } from './game-assets';
+import {
+  GAME_ASSET_MANIFEST, SCENE_DEPTH, SHIP_DISPLAY_SIZE, STRUCTURE_DISPLAY_SIZE, TURRET_DISPLAY_SIZE, coreFactionForState, obstacleAnchor,
+  obstacleDisplaySize, platformDepth, shipTextureKey, structureTextureKey,
+} from './game-assets';
 import { drawableMapObjects, drawsNexusDisc, NEXUS_STYLE, objectCell } from '../../map/map-objects';
 import { baseFactions, coreHud } from '../hud-logic';
 import { captureEllipse, ellipseSweep } from './capture-geometry';
@@ -562,8 +566,12 @@ export class MainScene extends Phaser.Scene {
     for (const obstacle of sectorSurface.obstaculos ?? []) {
       const key = structureKey(obstacle.model);
       if (!key || !this.textures.exists(key)) continue;
-      const point = cellToIso(obstacle.x, obstacle.y);
-      const image = this.add.image(point.x, point.y - TILE_HALF_HEIGHT, key).setOrigin(0.5, 0.72).setDepth(DEPTH.units + point.y - TILE_HALF_HEIGHT);
+      // The Tiled point marks a cell corner; the art stands on that spot of the ground, no wider than what it closes.
+      const anchor = obstacleAnchor(obstacle);
+      const point = cellToIso(anchor.x, anchor.y);
+      const frame = this.textures.getFrame(key);
+      const size = obstacleDisplaySize({ width: frame.realWidth, height: frame.realHeight }, OBSTACLE_MODELS[obstacle.model]);
+      const image = this.add.image(point.x, point.y, key).setOrigin(0.5, 0.72).setDisplaySize(size.width, size.height).setDepth(DEPTH.units + point.y);
       (this.tileImages[Math.floor(obstacle.y) * sectorMap.width + Math.floor(obstacle.x)] ??= []).push(image);
     }
   }
@@ -946,14 +954,21 @@ export class MainScene extends Phaser.Scene {
     shadow.fillEllipse(0, 9, 46, 18);
     const primary = allied ? color.blue : neutral ? color.neutral : color.red;
     let hull: Phaser.GameObjects.Image | Phaser.GameObjects.Graphics;
-    if (squad.turret || squad.barrier) {
+    /** The turret's base plate, behind its turning head. */
+    let mount: Phaser.GameObjects.Image | null = null;
+    const turretArt = { base: structureTextureKey('turret-base', 'neutral'), head: structureTextureKey('turret-head', 'neutral') };
+    if (squad.turret && this.textures.exists(turretArt.base) && this.textures.exists(turretArt.head)) {
+      // A fixed gun: the base stays put and the head turns toward its last shot, pivoting on its centre.
+      mount = this.add.image(0, 0, turretArt.base).setOrigin(0.5).setDisplaySize(TURRET_DISPLAY_SIZE.base, TURRET_DISPLAY_SIZE.base);
+      hull = this.add.image(0, -4, turretArt.head).setOrigin(0.5).setDisplaySize(TURRET_DISPLAY_SIZE.head, TURRET_DISPLAY_SIZE.head);
+    } else if (squad.turret || squad.barrier) {
       // Fixed defences keep their drawn marker; ships use the game art.
       const marker = this.add.graphics();
       marker.fillStyle(allied ? 0xa4d8e5 : neutral ? 0xe6cf95 : 0xe1a1a9, 1);
       if (squad.barrier) {
         // The map already draws the barrier; this is only what the player clicks and its hull bar.
       } else if (squad.turret) {
-        // A fixed gun: armoured hexagon with a barrel that turns toward its last shot.
+        // Without its art, a fixed gun is an armoured hexagon with a barrel that turns toward its last shot.
         const hexagon = (radius: number) => polygon(Array.from({ length: 6 }, (_, side) => {
           const angle = side / 6 * Math.PI * 2;
           return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
@@ -982,7 +997,7 @@ export class MainScene extends Phaser.Scene {
     const health = this.add.rectangle(-19, 23, 38 * squad.healthPercent / 100, 3, squad.healthPercent > 35 ? 0x4ad69a : color.red).setOrigin(0, 0.5);
     const reloadBack = this.add.rectangle(0, 28, 38, 2, 0x303b48).setOrigin(0.5);
     const reload = this.add.rectangle(-19, 28, 38, 2, 0xa0aab6).setOrigin(0, 0.5);
-    container.add([selection, shadow, hull, hitFlash, label, healthBack, health, reloadBack, reload]);
+    container.add([selection, shadow, ...(mount ? [mount] : []), hull, hitFlash, label, healthBack, health, reloadBack, reload]);
     container.setInteractive(squad.barrier ? new Phaser.Geom.Ellipse(0, -14, 150, 96) : new Phaser.Geom.Ellipse(0, 0, 62, 55), Phaser.Geom.Ellipse.Contains);
     container.setData('unitId', squad.id);
     const visual = { container, selection, hull, label, hitFlash, health, reloadBack, reload, lastShotTick: -1,
