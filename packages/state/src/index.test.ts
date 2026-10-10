@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createMatchWorld, createSquad, createWorld, prepareCampaignSector } from '@impulso/sim';
+import { applyCommand, createMatchWorld, createSquad, createWorld, prepareCampaignSector, statsFor, stepWorld, type World } from '@impulso/sim';
 import { viewFor } from './index.js';
 
 describe('per-player visibility boundary', () => {
@@ -81,6 +81,101 @@ describe('campaign view fields', () => {
     prepareCampaignSector(world, { choice: 1, carried: { p1: [], p2: [] }, extraRerolls: { p1: 1 } });
     expect(viewFor(world, 'p1').augments!.offer).toMatchObject({ rerolls: 0, rerollLimit: 2 });
     expect(viewFor(world, 'p2').augments!.offer).toMatchObject({ rerolls: 0, rerollLimit: 1 });
+  });
+});
+
+/** A running Espiral match with no guardians in the way and no augment offers. */
+function match(): World {
+  const world = createMatchWorld('espiral', 'skirmish', 7);
+  world.augmentMatch!.started = true;
+  for (const player of ['p1', 'p2'] as const) {
+    world.augmentMatch!.players[player].offer = null;
+    world.augmentMatch!.players[player].nextChoice = 3;
+  }
+  world.players.p1.metal = 200;
+  world.players.p2.metal = 200;
+  return world;
+}
+const produce = (world: World, player: 'p1' | 'p2', seq: number, kind: 'explorer' | 'frigate') => {
+  const result = applyCommand(world, player, { seq, type: 'produce', kind });
+  expect(result.accepted).toBe(true);
+  return result.world;
+};
+
+describe('hangar view', () => {
+  it('shows the owner its ship in production and the paid orders behind it, and nothing of the rival hangar', () => {
+    let world = produce(produce(produce(match(), 'p1', 1, 'frigate'), 'p1', 2, 'explorer'), 'p2', 1, 'frigate');
+    world = stepWorld(stepWorld(world));
+    const frigate = statsFor(world, 'p1', 'frigate');
+    const own = viewFor(world, 'p1');
+    expect(own.players.p1.production).toEqual({ kind: 'frigate', remainingTicks: frigate.buildTicks - 2, totalTicks: frigate.buildTicks, refund: frigate.cost });
+    expect(own.players.p1.queue).toEqual([{ kind: 'explorer', refund: statsFor(world, 'p1', 'explorer').cost }]);
+    expect(own.players.p2).not.toHaveProperty('production');
+    expect(own.players.p2).not.toHaveProperty('queue');
+    const rival = viewFor(world, 'p2');
+    expect(rival.players.p2.queue).toEqual([]);
+    expect(rival.players.p1).not.toHaveProperty('production');
+    expect(rival.players.p1).not.toHaveProperty('queue');
+  });
+});
+
+describe('core view', () => {
+  /** The Core open, its guardian gone and only the given ships on the map. */
+  function core(ships: [string, 'p1' | 'p2', number, number][], progress = { p1: 0, p2: 0 }): World {
+    const world = match();
+    world.guardians = world.guardians.filter((guardian) => guardian.objectiveId !== 'core');
+    world.rules = { ...world.rules, coreOpenTick: 0 };
+    world.squads = ships.map(([id, owner, dx, dy]) => createSquad(id, owner, 'interceptor', { x: world.core.x + dx, y: world.core.y + dy }, world));
+    world.core.progress = { ...progress };
+    return stepWorld(world);
+  }
+
+  it('carries the capture radius and stays locked until it opens', () => {
+    const world = match();
+    const view = viewFor(world, 'p1');
+    expect(view.core.radius).toBe(2);
+    expect(view.core).toMatchObject({ status: 'locked', captor: null, fraction: { p1: 0, p2: 0 }, remainingTicks: null });
+  });
+
+  it('names the side capturing it, how far it got and how long it still needs', () => {
+    const world = core([['p1-a', 'p1', 1, 0]]);
+    const view = viewFor(world, 'p1');
+    const duration = world.rules.coreCaptureTicks;
+    expect(view.core).toMatchObject({ status: 'capturing', captor: 'p1', remainingTicks: duration - 1 });
+    expect(view.core.fraction!.p1).toBeCloseTo(1 / duration);
+    expect(viewFor(world, 'p2').core).toMatchObject({ status: 'capturing', captor: 'p1' });
+    expect(viewFor(core([]), 'p1').core).toMatchObject({ status: 'idle', captor: null, remainingTicks: null });
+  });
+
+  it('calls a frozen dispute contested even when one side is further along', () => {
+    const world = core([['p1-a', 'p1', 1, 0], ['p2-a', 'p2', -1, 0]], { p1: 40, p2: 5 });
+    expect(world.core.progress).toEqual({ p1: 40, p2: 5 });
+    expect(viewFor(world, 'p1').core).toMatchObject({ status: 'contested', captor: null, remainingTicks: null });
+  });
+
+  it('hands the captor to the side that arrives once the other leaves', () => {
+    const world = core([['p2-a', 'p2', 0, 1]], { p1: 60, p2: 0 });
+    expect(viewFor(world, 'p1').core).toMatchObject({ status: 'capturing', captor: 'p2' });
+    expect(world.core.progress.p1).toBeLessThan(60);
+  });
+
+  it('never reports a capture fraction above one, even in a sudden-death dispute', () => {
+    const world = core([['p1-a', 'p1', 1, 0], ['p2-a', 'p2', -1, 0]], { p1: 200, p2: 0 });
+    world.suddenDeath = true;
+    const view = viewFor(world, 'p1');
+    expect(view.coreFraction).toBeLessThanOrEqual(1);
+    expect(view.core.fraction!.p1).toBeLessThanOrEqual(1);
+    expect(view.core.fraction!.p1).toBeGreaterThan(0);
+  });
+
+  it('keeps an unseen Core guardian out of the view and never says whether it still stands', () => {
+    const guarded = match();
+    guarded.rules = { ...guarded.rules, coreOpenTick: 0 };
+    guarded.squads = [createSquad('p2-a', 'p2', 'interceptor', { x: guarded.core.x + 1, y: guarded.core.y }, guarded)];
+    const view = viewFor(stepWorld(guarded), 'p1');
+    expect(view.guardians.some((guardian) => guardian.objectiveId === 'core')).toBe(false);
+    expect(JSON.stringify(view)).not.toContain('guarded');
+    expect(view.core).toMatchObject({ status: 'idle', captor: null });
   });
 });
 
