@@ -22,6 +22,7 @@ import { controlActionForEvent, keyBindingFromEvent, panDirectionForControl, sho
 import { RunOutcome, type RunLink } from '../run/RunOutcome';
 import { RUN_SECTORS } from '../run/run-state';
 import { GameMenu, type GameMenuHandle } from './GameMenu';
+import { closeGameMenu, MENU_CLOSED, openGameMenu, type MenuState } from './game-menu-state';
 import { escapeAction, isEscapeKey } from './escape-action';
 import { gameText, type GameTextKey } from './game-copy';
 import { mapName } from '../map/map-name';
@@ -93,21 +94,31 @@ function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, 
   const [menuOpen, setMenuOpen] = useState(false);
   const [soundOpen, setSoundOpen] = useState(false);
   const menuRef = useRef<GameMenuHandle>(null);
+  // Whether the menu is open and whether opening it paused the match, so closing it restarts only its own pause.
+  const menuState = useRef<MenuState>(MENU_CLOSED);
   const escapeState = useRef({ menuOpen, soundOpen });
   escapeState.current = { menuOpen, soundOpen };
   const openMenu = useCallback(() => {
-    // The result dialog already offers every way out.
-    if (viewRef.current.result) return;
+    // Never over a finished match: the result dialog already offers every way out.
+    const next = openGameMenu(menuState.current, viewRef.current);
+    menuState.current = next.state;
+    if (!next.state.open) return;
     setSoundOpen(false);
     setMenuOpen(true);
-    if (viewRef.current.canPause) adapter.dispatch({ type: 'set-paused', paused: true });
+    if (next.intent) adapter.dispatch(next.intent);
   }, [adapter]);
   const closeMenu = useCallback(() => {
+    const next = closeGameMenu(menuState.current);
+    menuState.current = next.state;
     setMenuOpen(false);
-    if (viewRef.current.canPause) adapter.dispatch({ type: 'set-paused', paused: false });
+    if (next.intent) adapter.dispatch(next.intent);
   }, [adapter]);
   // A match that ends with the menu open hands the keyboard back to the result dialog.
-  useEffect(() => { if (view.result) setMenuOpen(false); }, [view.result]);
+  useEffect(() => {
+    if (!view.result) return;
+    menuState.current = MENU_CLOSED;
+    setMenuOpen(false);
+  }, [view.result]);
   const selectOwnBase = useCallback(() => {
     adapter.dispatch({ type: 'select-base', base: 'own' });
     const base = viewRef.current.base?.position;

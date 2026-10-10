@@ -148,6 +148,59 @@ test.describe('visual battle', () => {
     await expect.poll(tick, { timeout: 15000 }).toBeGreaterThan(resumed);
   });
 
+  test('keeps Tab inside the menu, guards unsaved settings and leaves Space to the match once it closes', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await expect(page.locator('.vi-resources')).toBeVisible();
+
+    const menuButton = page.getByRole('button', { name: 'Menú' });
+    const menu = page.getByRole('dialog', { name: 'Partida en pausa' });
+    const sector = page.locator('.vi-sector-status');
+    await menuButton.click();
+    await expect(menu).toBeVisible();
+    await expect(sector).toContainText('EN PAUSA');
+    // Tab goes round Resume, Settings and Leave and never reaches the HUD behind the overlay.
+    await expect(menu.getByRole('button', { name: 'Reanudar', exact: true })).toBeFocused();
+    for (const name of ['Configuración', 'Salir', 'Reanudar']) {
+      await page.keyboard.press('Tab');
+      await expect(menu.getByRole('button', { name, exact: true })).toBeFocused();
+    }
+    await page.keyboard.press('Shift+Tab');
+    await expect(menu.getByRole('button', { name: 'Salir', exact: true })).toBeFocused();
+
+    // An unsaved setting: Escape asks first, and discarding it closes the menu and lifts the pause.
+    await menu.getByRole('button', { name: 'Configuración', exact: true }).click();
+    await page.getByRole('button', { name: /Accesibilidad/ }).click();
+    await page.getByLabel(/Contraste reforzado/).check();
+    await page.keyboard.press('Escape');
+    const unsaved = page.getByRole('alertdialog', { name: 'Tienes cambios sin guardar' });
+    await expect(unsaved).toBeVisible();
+    await expect(page.locator('.vi-game-menu')).toHaveCount(1);
+    await unsaved.getByRole('button', { name: 'Descartar cambios' }).click();
+    await expect(page.locator('.vi-game-menu')).toHaveCount(0);
+    await expect(sector).not.toContainText('EN PAUSA');
+
+    // Opened with a click and closed with Resume or Escape, focus is not left on the Menu button: Space is the
+    // camera shortcut and must not press that button and reopen the menu.
+    for (const close of ['resume', 'escape'] as const) {
+      await menuButton.click();
+      await expect(menu).toBeVisible();
+      if (close === 'resume') await menu.getByRole('button', { name: 'Reanudar', exact: true }).click();
+      else await page.keyboard.press('Escape');
+      await expect(page.locator('.vi-game-menu')).toHaveCount(0);
+      await expect(menuButton).not.toBeFocused();
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(800);
+      await expect(page.locator('.vi-game-menu')).toHaveCount(0);
+      await expect(sector).not.toContainText('EN PAUSA');
+    }
+  });
+
   test('keeps HUD modules inside 1366×768 with the larger interface text', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await page.addInitScript(() => localStorage.setItem('impulso.visual-preferences', JSON.stringify({ accessibility: { largeText: true } })));
