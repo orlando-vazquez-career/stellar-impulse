@@ -285,6 +285,18 @@ test.describe('visual interface foundation', () => {
     expect((await storedAudio()).musicMuted).toBe(true);
   });
 
+  test('leaves the music switch nothing to do while all sound is muted', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.addInitScript(() => localStorage.setItem('impulso.visual-preferences', JSON.stringify({ audio: { muted: true } })));
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    const music = page.getByRole('button', { name: 'Silenciar música', exact: true });
+    await expect(music).toBeVisible();
+    await expect(music).toBeDisabled();
+    await expect(music).toHaveClass(/is-muted/);
+  });
+
   test('login music controls change and persist music only', async ({ page }) => {
     await openApp(page, '/visual?adapter=mock');
     await page.getByRole('button', { name: 'Opciones de música' }).click();
