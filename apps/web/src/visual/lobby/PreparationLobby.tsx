@@ -7,16 +7,17 @@ import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
 import { createAnomalyScene } from './anomaly-scene';
+import { lobbyText, type LobbyKey } from './lobby-copy';
 import type { TrainingMapId } from '../map/sector-map';
 import './lobby.css';
 
 export type LobbyMode = 'create' | 'join';
 export type RivalDifficulty = 'easy' | 'medium' | 'hard';
 
-const DIFFICULTIES: { value: RivalDifficulty; label: string; hint: string }[] = [
-  { value: 'easy', label: 'Fácil', hint: 'Flota chica y lenta. No ataca tus nodos.' },
-  { value: 'medium', label: 'Media', hint: 'Se expande rápido y pelea por todo.' },
-  { value: 'hard', label: 'Difícil', hint: 'Toma dos nodos a la vez y asalta los tuyos.' },
+const DIFFICULTIES: { value: RivalDifficulty; label: LobbyKey; hint: LobbyKey }[] = [
+  { value: 'easy', label: 'difficultyEasy', hint: 'difficultyEasyHint' },
+  { value: 'medium', label: 'difficultyMedium', hint: 'difficultyMediumHint' },
+  { value: 'hard', label: 'difficultyHard', hint: 'difficultyHardHint' },
 ];
 type FleetSide = 'blue' | 'red';
 /** How much of the interference's sideways slip each lobby panel takes, so they do not move as one block. */
@@ -305,7 +306,7 @@ export function PreparationLobby({
 
                 {mode === 'create' && (
                   <fieldset className="vi-difficulty">
-                    <legend>Dificultad de la IA rival</legend>
+                    <legend>{lobbyText(locale, 'difficultyLegend')}</legend>
                     {DIFFICULTIES.map((option) => (
                       <button
                         key={option.value}
@@ -318,8 +319,8 @@ export function PreparationLobby({
                           setDifficulty(option.value);
                         }}
                       >
-                        <strong>{option.label}</strong>
-                        <small>{option.hint}</small>
+                        <strong>{lobbyText(locale, option.label)}</strong>
+                        <small>{lobbyText(locale, option.hint)}</small>
                       </button>
                     ))}
                   </fieldset>
