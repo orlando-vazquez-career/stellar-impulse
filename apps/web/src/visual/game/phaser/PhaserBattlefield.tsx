@@ -23,9 +23,11 @@ interface PhaserBattlefieldProps {
   onMoveSelected(x: number, y: number): void;
   onAttackSelected(targetId: string): void;
   onCameraChange(view: CameraView): void;
+  /** A click on a command base (a ship under the cursor always wins). */
+  onSelectBase?(base: 'own' | 'enemy'): void;
 }
 
-export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattlefieldProps>(function PhaserBattlefield({ view, onSelectSquads, onMoveSelected, onAttackSelected, onCameraChange }, forwardedRef) {
+export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattlefieldProps>(function PhaserBattlefield({ view, onSelectSquads, onMoveSelected, onAttackSelected, onCameraChange, onSelectBase }, forwardedRef) {
   const { t, locale } = useI18n();
   const localeRef = useRef(locale);
   localeRef.current = locale;
@@ -41,6 +43,8 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
   moveCallbackRef.current = onMoveSelected;
   const attackCallbackRef = useRef(onAttackSelected);
   attackCallbackRef.current = onAttackSelected;
+  const baseCallbackRef = useRef(onSelectBase);
+  baseCallbackRef.current = onSelectBase;
   const snapshotRef = useRef(view);
   snapshotRef.current = view;
 
@@ -73,6 +77,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
         host.parentElement?.setAttribute('data-atlas-ready', 'true');
       },
       (message) => { if (!disposed) setLoadError(message); },
+      (base) => { if (!disposed) baseCallbackRef.current?.(base); },
     );
     scene.setLocale(localeRef.current);
     sceneRef.current = scene;

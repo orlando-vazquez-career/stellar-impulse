@@ -14,6 +14,7 @@ import { GAME_ASSET_MANIFEST, SCENE_DEPTH, SHIP_DISPLAY_SIZE, STRUCTURE_DISPLAY_
 import { drawableMapObjects, drawsNexusDisc, NEXUS_STYLE, objectCell } from '../../map/map-objects';
 import { baseFactions, coreHud } from '../hud-logic';
 import { captureEllipse, ellipseSweep } from './capture-geometry';
+import { pickBase, type PickedBase } from './structure-pick';
 import { coreTag, gameText, guardianLabel } from '../game-copy';
 import { isReducedMotion } from '../../settings/accessibility-store';
 import type { Locale } from '../../i18n';
@@ -46,6 +47,8 @@ const IDLE_AREA = 0x8aa0b8;
 const AMBER = 0xff9f43;
 /** Dashes of the dotted ring around the Core's capture area. */
 const CORE_RING_DASHES = 40;
+/** Inner ring of a selected base, in world pixels. */
+const BASE_SELECTION = { width: 120, height: 62 } as const;
 /** Opening zoom over your own fleet. The wheel goes from ZOOM_MIN (wider view of the sector)
  * to ZOOM_MAX (close-up). The whole 96×96 map at once is unreadable and costly to draw. */
 export const ZOOM_DEFAULT = 1.5;
@@ -188,6 +191,8 @@ export class MainScene extends Phaser.Scene {
     onCameraChange: (view: CameraView) => void,
     onReady: () => void,
     private readonly onError: (message: string) => void,
+    /** A click on a command base, never together with ships. */
+    private readonly onSelectBase: (base: PickedBase) => void = () => {},
   ) {
     super({ key: 'MainScene' });
     this.snapshot = snapshot;
@@ -751,6 +756,24 @@ export class MainScene extends Phaser.Scene {
         graphics.fillRect(center.x - width / 2 + pip * 10, top + 13, 7, 4);
       }
     }
+    const selected = this.snapshot.selectedBase === 'own' ? own?.position
+      : this.snapshot.selectedBase === 'enemy' && enemy?.visible ? enemy : undefined;
+    if (selected) this.drawBaseSelection(graphics, cellToIso(selected.x, selected.y));
+  }
+
+  /** A selected base: a double ring with corner brackets around its hull. */
+  private drawBaseSelection(graphics: Phaser.GameObjects.Graphics, center: { x: number; y: number }) {
+    const { width, height } = BASE_SELECTION;
+    graphics.lineStyle(2, color.blueLight, 0.95).strokeEllipse(center.x, center.y + 4, width, height);
+    graphics.lineStyle(1, color.blueLight, 0.45).strokeEllipse(center.x, center.y + 4, width + 14, height + 8);
+    const left = center.x - width / 2 - 10, right = center.x + width / 2 + 10;
+    const top = center.y + 4 - height / 2 - 8, bottom = center.y + 4 + height / 2 + 8;
+    const arm = 12;
+    graphics.lineStyle(2, color.blueLight, 0.95);
+    for (const [x, y, dx, dy] of [[left, top, 1, 1], [right, top, -1, 1], [left, bottom, 1, -1], [right, bottom, -1, -1]] as const) {
+      graphics.lineBetween(x, y, x + dx * arm, y);
+      graphics.lineBetween(x, y, x, y + dy * arm);
+    }
   }
 
   /** Render the authoritative base positions and retain the map's fog-of-war treatment. */
@@ -1085,6 +1108,13 @@ export class MainScene extends Phaser.Scene {
     return isoToPoint(world.x, world.y);
   }
 
+  /** The command base under a screen point: the player's own anywhere, the rival's only while it is in sight. */
+  private baseAt(position: { x: number; y: number }): PickedBase | null {
+    const world = this.cameras.main.getWorldPoint(position.x, position.y);
+    const rival = this.snapshot.enemyBase;
+    return pickBase(world, { own: this.snapshot.base?.position, enemy: rival?.visible ? rival : undefined });
+  }
+
   /** Double click: every own ship of the clicked ship's class that is currently on screen (StarCraft style). */
   private sameTypeOnScreen(clickedId: string): string[] {
     const clicked = this.snapshot.squads.find((squad) => squad.id === clickedId);
@@ -1157,10 +1187,10 @@ export class MainScene extends Phaser.Scene {
       }
       const cell = this.pointerPoint(pointer);
       if (!cell) return;
-      // A right click on the visible rival base orders an assault on it.
+      // A right click on the visible rival base, inside its on-screen ellipse, orders an assault on it.
       const rivalBase = this.snapshot.enemyBase;
       if (rivalBase?.visible && this.snapshot.selectedSquadIds.length && (this.snapshot.activeAction === null || this.snapshot.activeAction === 'attack')
-        && Math.max(Math.abs(cell.x - rivalBase.x), Math.abs(cell.y - rivalBase.y)) <= 1.5) {
+        && this.baseAt(this.pointerPosition(pointer)) === 'enemy') {
         this.onAttackSelected(rivalBase.id);
         return;
       }
@@ -1206,7 +1236,11 @@ export class MainScene extends Phaser.Scene {
           if (!this.lastClick.group) this.onSelectSquads(this.sameTypeOnScreen(clickedId));
           this.lastClick = { id: clickedId, at: pointer.downTime, group: true };
         } else {
-          this.onSelectSquads(clickedId ? [clickedId] : []);
+          // A ship under the cursor wins; otherwise a click on a base selects it, and anywhere else clears the selection.
+          // The drag box above never picks a base.
+          const base = clickedId ? null : this.baseAt(end);
+          if (base) this.onSelectBase(base);
+          else this.onSelectSquads(clickedId ? [clickedId] : []);
           this.lastClick = clickedId ? { id: clickedId, at: pointer.downTime, group: false } : null;
         }
         this.selectionDrag = undefined;
