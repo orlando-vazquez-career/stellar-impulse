@@ -4,7 +4,8 @@ import { useI18n } from '../../i18n';
 import type { CameraView, GameplayViewModel } from '../model';
 import type { CameraPanDirection } from '../../settings/control-bindings';
 import { MainScene } from './MainScene';
-import { activeMapId, activeMapSourceFile, playableMapLabel } from '../../map/sector-map';
+import { activeMapId, activeMapSourceFile } from '../../map/sector-map';
+import { mapName } from '../../map/map-name';
 
 export interface PhaserBattlefieldHandle {
   resetCamera(): void;
@@ -25,7 +26,9 @@ interface PhaserBattlefieldProps {
 }
 
 export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattlefieldProps>(function PhaserBattlefield({ view, onSelectSquads, onMoveSelected, onAttackSelected, onCameraChange }, forwardedRef) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const sceneRef = useRef<MainScene | null>(null);
@@ -42,6 +45,8 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
   snapshotRef.current = view;
 
   useEffect(() => { sceneRef.current?.sync(view); }, [view]);
+  // The scene draws guardian labels, the Core tag and the belt and fog countdowns in the player's language.
+  useEffect(() => { sceneRef.current?.setLocale(locale); }, [locale]);
 
   useImperativeHandle(forwardedRef, () => ({
     resetCamera: () => sceneRef.current?.resetCamera(),
@@ -69,6 +74,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
       },
       (message) => { if (!disposed) setLoadError(message); },
     );
+    scene.setLocale(localeRef.current);
     sceneRef.current = scene;
     const game = new Phaser.Game({
       type: Phaser.AUTO,
@@ -95,7 +101,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
 
   return <div className="vi-phaser" data-map-source={activeMapSourceFile()} aria-label={t('battlefieldReady')}>
     <div className="vi-phaser__canvas" ref={canvasHostRef} />
-    <div className="vi-phaser__status"><strong>{activeMapId === 'sector-01' ? t('battlefieldStatus') : playableMapLabel(activeMapId).toUpperCase()}</strong><span>{t('cameraHint')}</span><span>{t('controlGroupsHint')}</span></div>
+    <div className="vi-phaser__status"><strong>{mapName(activeMapId, locale).toUpperCase()}</strong><span>{t('cameraHint')}</span><span>{t('controlGroupsHint')}</span></div>
     {loadError && <div className="vi-phaser__error" role="alert">{loadError}</div>}
   </div>;
 });

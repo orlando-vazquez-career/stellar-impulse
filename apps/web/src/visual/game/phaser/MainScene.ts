@@ -3,7 +3,7 @@ import type { CameraView, CoreState, GameplayViewModel, SquadViewModel } from '.
 import type { CameraPanDirection } from '../../settings/control-bindings';
 import type { GridPoint } from './grid';
 import { activeMapId, HIDDEN_LAYERS, mapImageUrl, planSectorMove, sectorMap, sectorSurface, TILE_WIDTH, type Tileset } from '../../map/sector-map';
-import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, playerViewCenter, playerViewZoom, projectedWorldBounds } from './isometric';
+import { cellToIso, isoToPoint, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, TILE_HALF_HEIGHT, playerViewCenter, playerViewZoom, projectedWorldBounds } from './isometric';
 import { WeaponEffects } from './weapon-effects';
 import { DEFAULT_FORMATION, formationSeats } from '../formation';
 import { SatelliteEffects } from './satellite-effects';
@@ -12,7 +12,11 @@ import { shatterBarrier } from './barrier-effects';
 import { BeltEffects } from './belt-effects';
 import { GAME_ASSET_MANIFEST, SCENE_DEPTH, SHIP_DISPLAY_SIZE, STRUCTURE_DISPLAY_SIZE, coreFactionForState, platformDepth, shipTextureKey, structureTextureKey } from './game-assets';
 import { drawableMapObjects, drawsNexusDisc, NEXUS_STYLE, objectCell } from '../../map/map-objects';
-import { baseFactions } from '../hud-logic';
+import { baseFactions, coreHud } from '../hud-logic';
+import { captureEllipse, ellipseSweep } from './capture-geometry';
+import { coreTag, gameText, guardianLabel } from '../game-copy';
+import { isReducedMotion } from '../../settings/accessibility-store';
+import type { Locale } from '../../i18n';
 
 /** Tiled stores flip flags in the top bits of every gid. */
 const GID_MASK = 0x1fffffff;
@@ -36,6 +40,12 @@ const DECOR_LAYER = 'decoracion';
 const ROBOT_TILESET = 'robotsitoo';
 /** The nexus shield fades to this alpha once the Core opens. Never a tint: the fog tints the map art. */
 const OPEN_SHIELD_ALPHA = 0.35;
+/** Ground colour of a capture area nobody holds, or of the Core while it is locked. */
+const IDLE_AREA = 0x8aa0b8;
+/** Both sides inside a capture area. */
+const AMBER = 0xff9f43;
+/** Dashes of the dotted ring around the Core's capture area. */
+const CORE_RING_DASHES = 40;
 /** Opening zoom over your own fleet. The wheel goes from ZOOM_MIN (wider view of the sector)
  * to ZOOM_MAX (close-up). The whole 96×96 map at once is unreadable and costly to draw. */
 export const ZOOM_DEFAULT = 1.5;
@@ -100,7 +110,7 @@ interface UnitVisual {
 function coreColor(state: CoreState) {
   if (state === 'blue-capturing' || state === 'blue-controlled') return color.blue;
   if (state === 'red-capturing' || state === 'red-controlled') return color.red;
-  if (state === 'contested') return 0xff9f43;
+  if (state === 'contested') return AMBER;
   return color.core;
 }
 
@@ -121,8 +131,14 @@ export class MainScene extends Phaser.Scene {
   private attackRanges?:Phaser.GameObjects.Graphics;
   private showBaseRange=false;
   private selectionBox?: Phaser.GameObjects.Graphics;
+  /** The Core's progress, over the ships. */
   private core?: Phaser.GameObjects.Graphics;
+  /** The Core's capture area, on the ground. */
+  private coreArea?: Phaser.GameObjects.Graphics;
+  private coreTag?: Phaser.GameObjects.Text;
   private coreSprite?: Phaser.GameObjects.Image;
+  /** Language of the text the scene draws (guardian labels, the Core tag, belt and fog countdowns). */
+  private locale: Locale = 'es';
   private nodeMarks?: Phaser.GameObjects.Graphics;
   private baseMarks?: Phaser.GameObjects.Graphics;
   private readonly baseSprites = new Map<'p1' | 'p2', Phaser.GameObjects.Image>();
@@ -197,7 +213,7 @@ export class MainScene extends Phaser.Scene {
 
   create() {
     if (sectorMap.orientation !== 'isometric') {
-      this.onError('El mapa del sector no tiene el tamaño esperado.');
+      this.onError(gameText(this.locale, 'mapSizeError'));
       return;
     }
     this.scale.refresh();
@@ -211,12 +227,18 @@ export class MainScene extends Phaser.Scene {
     this.attackRanges=this.add.graphics().setDepth(DEPTH.nodes+1);
     this.selectionBox = this.add.graphics().setScrollFactor(0).setDepth(DEPTH.selection);
     this.core = this.add.graphics().setDepth(DEPTH.core);
+    this.coreArea = this.add.graphics().setDepth(DEPTH.nodes);
+    this.coreTag = this.add.text(0, 0, '', {
+      color: '#f7e77c', fontFamily: 'Rajdhani, sans-serif', fontSize: '16px', fontStyle: '700', stroke: '#071420', strokeThickness: 4,
+    }).setOrigin(0.5, 0).setDepth(DEPTH.core).setVisible(false);
     this.nodeMarks = this.add.graphics().setDepth(DEPTH.nodes);
     this.baseMarks = this.add.graphics().setDepth(DEPTH.core);
     this.weapons = new WeaponEffects(this);
     this.satellites = new SatelliteEffects(this);
     this.nebulas = new NebulaEffects(this, this.snapshot.tickRate ?? 10);
     this.belt = new BeltEffects(this, this.snapshot.tickRate ?? 10);
+    this.nebulas.setLocale(this.locale);
+    this.belt.setLocale(this.locale);
     this.serverTickAt = this.time.now;
 
     this.drawTerrain();
@@ -271,6 +293,9 @@ export class MainScene extends Phaser.Scene {
     this.satellites?.update(this.snapshot.tick + ahead, tickRate);
     this.nebulas?.update(this.snapshot.tick + ahead, tickRate);
     this.belt?.update(this.snapshot.tick + ahead, tickRate, (index) => (this.fogShown[index] ?? IN_SIGHT) === IN_SIGHT);
+    // An open or contested Core pulses; every other state only changes with a new view.
+    const coreState = this.snapshot.core.state;
+    if ((coreState === 'available' || coreState === 'contested') && !isReducedMotion()) this.drawCoreArea();
     const camera = this.cameras.main;
     const pointer = this.input.activePointer;
     const edge = this.pointerOnCanvas && !this.dragOrigin && !this.selectionDrag && pointer.x >= 0 && pointer.y >= 0
@@ -307,6 +332,25 @@ export class MainScene extends Phaser.Scene {
     this.snapshot = snapshot;
     if (snapshot.activeAction !== null && snapshot.activeAction !== 'move') this.hoverPoint = null;
     if (this.sys.isActive()) this.renderSnapshot();
+  }
+
+  /** Language of the text drawn on the map. Safe before the scene is created; labels already drawn are rewritten. */
+  setLocale(locale: Locale) {
+    if (locale === this.locale) return;
+    this.locale = locale;
+    this.nebulas?.setLocale(locale);
+    this.belt?.setLocale(locale);
+    if (!this.created) return;
+    for (const [id, visual] of this.unitVisuals) {
+      const squad = this.snapshot.squads.find((candidate) => candidate.id === id);
+      if (squad) visual.label.setText(this.unitLabel(squad));
+    }
+    this.drawCoreArea();
+  }
+
+  /** A ship's call sign; a neutral guardian is named by the post it holds. */
+  private unitLabel(squad: SquadViewModel): string {
+    return squad.owner === 'neutral' && squad.guardianKind ? guardianLabel(this.locale, squad.guardianKind) : squad.callSign.toUpperCase();
   }
 
   /** Zoom that frames both bases. A small sector (Sector 01) fits on screen at a readable zoom
@@ -520,10 +564,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   private drawCore() {
-    const graphics = this.core;
-    if (!graphics) return;
     const center = cellToIso(sectorSurface.core.x, sectorSurface.core.y);
-    const hue = coreColor(this.snapshot.core.state);
     const texture = structureTextureKey('nexus-core', coreFactionForState(this.snapshot.core.state));
     if (!drawsNexusDisc(NEXUS_STYLE)) {
       // The map's pillar and shield are the nexus; an open Core lowers the shield.
@@ -541,48 +582,98 @@ export class MainScene extends Phaser.Scene {
         this.coreSprite.setTexture(texture).setPosition(center.x, center.y).setDepth(platformDepth());
       }
     }
-    graphics.clear();
-    graphics.lineStyle(2, hue, 0.84);
-    const ringRadius = STRUCTURE_DISPLAY_SIZE.nexusCore / 2 + 12;
-    graphics.strokeEllipse(center.x, center.y + 4, ringRadius * 2, ringRadius);
-    if (this.snapshot.core.progress > 0 && this.snapshot.core.state !== 'locked') {
-      graphics.lineStyle(4, hue, 1);
-      graphics.beginPath();
-      graphics.arc(center.x, center.y + 4, ringRadius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.snapshot.core.progress / 100);
-      graphics.strokePath();
-    }
+    this.drawCoreArea();
   }
 
+  /** 0 to 1 and back, `perSecond` times a second; still at 1 when the player asked for reduced motion. */
+  private pulse(perSecond: number): number {
+    return isReducedMotion() ? 1 : 0.5 + 0.5 * Math.sin(this.time.now / 1000 * Math.PI * 2 * perSecond);
+  }
 
   /**
-   * Capture areas of the map's pronexos: always on the ground, grey until the node is in sight. In sight they
-   * take the owner's colour, turn amber while both sides have ships inside and fill with the captor's progress.
+   * The Core's capture area on the ground (grey while locked, pulsing gold once open, in the captor's colour, amber
+   * while contested) with a dotted outer ring, and over the ships its progress: the captor's sweep, a faint one for
+   * the other side, an amber pulse while both are inside and a floating tag with the percentage and countdown.
+   */
+  private drawCoreArea() {
+    const area = this.coreArea, graphics = this.core, tag = this.coreTag;
+    if (!area || !graphics) return;
+    const core = this.snapshot.core;
+    const center = cellToIso(sectorSurface.core.x, sectorSurface.core.y);
+    const { width, height } = captureEllipse(core.radius);
+    const pulse = core.state === 'available' ? this.pulse(0.6) : core.state === 'contested' ? this.pulse(1.4) : 1;
+    const hue = core.state === 'locked' ? IDLE_AREA : core.state === 'available' ? color.core : core.state === 'contested' ? AMBER : coreColor(core.state);
+    const stroke = core.state === 'locked' ? 0.4 : core.state === 'available' ? 0.35 + 0.55 * pulse : 0.8;
+    area.clear();
+    area.fillStyle(hue, 0.08).fillEllipse(center.x, center.y, width, height);
+    area.lineStyle(2, hue, stroke).strokeEllipse(center.x, center.y, width, height);
+    // Phaser strokes no dashes: the outer ring is short straight segments along a slightly larger ellipse.
+    area.lineStyle(1.5, hue, stroke * 0.7);
+    for (let dash = 0; dash < CORE_RING_DASHES; dash++) {
+      const from = dash / CORE_RING_DASHES * Math.PI * 2, to = from + Math.PI / CORE_RING_DASHES;
+      area.lineBetween(center.x + Math.cos(from) * (width / 2 + 10), center.y + Math.sin(from) * (height / 2 + 5),
+        center.x + Math.cos(to) * (width / 2 + 10), center.y + Math.sin(to) * (height / 2 + 5));
+    }
+    graphics.clear();
+    const hud = coreHud(core);
+    if (core.state !== 'locked') {
+      const sweep = (fraction: number, sweepHue: number, lineWidth: number, alpha: number, grow = 0) => {
+        const amount = Math.min(1, fraction);
+        if (amount <= 0) return;
+        graphics.lineStyle(lineWidth, sweepHue, alpha);
+        graphics.strokePoints(ellipseSweep(center, width + grow * 2, height + grow, amount, Math.max(2, Math.ceil(64 * amount)))
+          .map((point) => new Phaser.Math.Vector2(point.x, point.y)));
+      };
+      const { own, rival } = core.fractions;
+      if (core.captor) {
+        // The other side's progress stays visible, faint, just outside the captor's sweep.
+        const captor = core.captor === 'own' ? { fraction: own, hue: color.blue } : { fraction: rival, hue: color.red };
+        const other = core.captor === 'own' ? { fraction: rival, hue: color.red } : { fraction: own, hue: color.blue };
+        sweep(other.fraction, other.hue, 3, 0.35, 8);
+        sweep(captor.fraction, captor.hue, 4, 1);
+      } else if (own > 0 || rival > 0) {
+        sweep(own, color.blue, 3, 0.45);
+        sweep(rival, color.red, 3, 0.45, 8);
+      } else if (core.progress > 0) {
+        sweep(core.progress / 100, hue, 4, 1);
+      }
+      if (core.state === 'contested') graphics.lineStyle(3, AMBER, 0.3 + 0.6 * pulse).strokeEllipse(center.x, center.y, width + 16, height + 8);
+    }
+    if (!tag) return;
+    const text = coreTag(this.locale, hud);
+    if (!text) { tag.setVisible(false); return; }
+    const tone = hud.hint === 'contested' ? '#ffb066' : hud.hint === 'guardian' ? '#f7d774'
+      : hud.status === 'capturing-own' ? '#83d4ff' : hud.status === 'capturing-rival' ? '#ff9ba7' : '#f7e77c';
+    if (tag.text !== text) tag.setText(text);
+    tag.setColor(tone).setPosition(center.x, center.y + height / 2 + 6).setAlpha(hud.hint === 'contested' ? 0.6 + 0.4 * pulse : 1).setVisible(true);
+  }
+
+  /**
+   * Capture areas of the map's pronexos, stations and Metal nodes: always on the ground, grey until the node is in
+   * sight. In sight they take the owner's colour, turn amber while both sides have ships inside and fill with the
+   * captor's progress. A node in sight brings its own radius; otherwise the map's is used.
    */
   private drawCaptureAreas(graphics: Phaser.GameObjects.Graphics) {
-    for (const area of [...sectorSurface.captures, ...(sectorSurface.stations ?? [])]) {
-      if (!area.radius) continue;
+    for (const area of [...sectorSurface.captures, ...(sectorSurface.stations ?? []), ...sectorSurface.metals]) {
       const node = this.snapshot.nodes.find((candidate) => candidate.x === area.x && candidate.y === area.y);
+      const radius = node && !node.stale ? node.radius ?? area.radius : area.radius;
+      if (!radius) continue;
       const center = cellToIso(area.x, area.y);
-      // The area is a disc of cells: on the isometric ground that is an ellipse twice as wide as tall.
-      const reach = (area.radius + 0.5) * Math.SQRT2;
-      const width = reach * TILE_HALF_WIDTH * 2, height = reach * TILE_HALF_HEIGHT * 2;
+      const { width, height } = captureEllipse(radius);
       const inside = new Set(this.snapshot.squads.filter((squad) => squad.visible && squad.status !== 'destroyed' && (squad.owner === 'blue' || squad.owner === 'red')
         && squad.stats?.canCapture !== false && !squad.isDecoy
-        && (Math.round(squad.gridX) - area.x) ** 2 + (Math.round(squad.gridY) - area.y) ** 2 <= area.radius! ** 2)
+        && (Math.round(squad.gridX) - area.x) ** 2 + (Math.round(squad.gridY) - area.y) ** 2 <= radius ** 2)
         .map((squad) => squad.owner));
-      const hue = inside.size === 2 ? color.neutral : node?.owner === 'blue' ? color.blue : node?.owner === 'red' ? color.red : 0x8aa0b8;
+      const hue = inside.size === 2 ? color.neutral : node?.owner === 'blue' ? color.blue : node?.owner === 'red' ? color.red : IDLE_AREA;
       graphics.fillStyle(hue, node ? 0.1 : 0.05);
       graphics.fillEllipse(center.x, center.y, width, height);
       graphics.lineStyle(2, hue, node ? 0.7 : 0.35);
       graphics.strokeEllipse(center.x, center.y, width, height);
       if (!node?.capture) continue;
-      const steps = Math.max(2, Math.ceil(64 * node.capture.fraction));
-      const sweep = Math.PI * 2 * node.capture.fraction;
+      const fraction = Math.min(1, Math.max(0, node.capture.fraction));
       graphics.lineStyle(5, node.capture.by === 'blue' ? color.blue : color.red, 1);
-      graphics.strokePoints(Array.from({ length: steps + 1 }, (_, step) => {
-        const angle = -Math.PI / 2 + sweep * step / steps;
-        return new Phaser.Math.Vector2(center.x + Math.cos(angle) * width / 2, center.y + Math.sin(angle) * height / 2);
-      }));
+      graphics.strokePoints(ellipseSweep(center, width, height, fraction, Math.max(2, Math.ceil(64 * fraction)))
+        .map((point) => new Phaser.Math.Vector2(point.x, point.y)));
     }
   }
 
@@ -861,7 +952,7 @@ export class MainScene extends Phaser.Scene {
     hitFlash.fillStyle(0xffd4a1, 0.75);
     hitFlash.fillCircle(0, -8, 28);
     hitFlash.setAlpha(0);
-    const label = this.add.text(0, 32, squad.callSign.toUpperCase(), {
+    const label = this.add.text(0, 32, this.unitLabel(squad), {
       color: allied ? '#83d4ff' : neutral ? '#f7d774' : '#ff9ba7', fontFamily: 'Rajdhani, sans-serif', fontSize: '11px', fontStyle: '600', letterSpacing: 1,
     }).setOrigin(0.5, 0);
     const healthBack = this.add.rectangle(0, 23, 38, 3, color.grid).setOrigin(0.5);
