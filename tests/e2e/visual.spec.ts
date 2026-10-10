@@ -77,7 +77,26 @@ test.describe('visual interface foundation', () => {
     await page.keyboard.press('z');
     await expect(moveControls.locator('kbd')).toContainText('Z');
     await page.getByRole('button', { name: /Accesibilidad/ }).click();
+    const borders = () => page.evaluate(() => ['.vi-menu-card', '.vi-settings-panel']
+      .map((selector) => getComputedStyle(document.querySelector(selector)!).borderTopColor));
+    const normalBorders = await borders();
     await page.getByLabel(/Contraste reforzado/).check();
+    // The change shows before it is saved, on the menu cards and on the settings panel alike.
+    await expect(page.locator('.visual-app')).toHaveClass(/is-high-contrast/);
+    await expect.poll(borders).toEqual(['rgb(129, 149, 174)', 'rgb(129, 149, 174)']);
+    expect(normalBorders).not.toContain('rgb(129, 149, 174)');
+
+    const textSizes = () => page.evaluate(() => ['.vi-menu-card strong', '.vi-settings-panel h2']
+      .map((selector) => Number.parseFloat(getComputedStyle(document.querySelector(selector)!).fontSize)));
+    const normalText = await textSizes();
+    await page.getByLabel(/Texto de interfaz ampliado/).check();
+    await expect(page.locator('.visual-app')).toHaveClass(/is-large-text/);
+    const largeText = await textSizes();
+    expect(largeText[0]).toBeGreaterThanOrEqual(normalText[0]! * 1.1);
+    expect(largeText[1]).toBeGreaterThanOrEqual(normalText[1]! * 1.1);
+    const largePanel = await page.locator('.vi-settings-panel').boundingBox();
+    expect(largePanel!.x + largePanel!.width).toBeLessThanOrEqual(1366);
+    expect(largePanel!.y + largePanel!.height).toBeLessThanOrEqual(768);
     await page.getByRole('button', { name: 'Guardar ajustes' }).click();
 
     await expect(page.locator('.visual-app')).toHaveClass(/is-high-contrast/);
@@ -85,6 +104,23 @@ test.describe('visual interface foundation', () => {
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences') ?? '{}'));
     expect(stored.controls.move).toContain('KeyZ');
     expect(stored.accessibility.highContrast).toBe(true);
+    expect(stored.accessibility.largeText).toBe(true);
+  });
+
+  test('holds the command center backdrop still when reduced motion is saved', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.addInitScript(() => localStorage.setItem('impulso.visual-preferences', JSON.stringify({ accessibility: { reducedMotion: true } })));
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await expect(page.locator('.visual-app')).toHaveClass(/is-reduced-motion/);
+    const backdrop = page.locator('.vi-command-canvas');
+    await expect(backdrop).toBeVisible();
+    const frame = () => backdrop.evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL());
+    const first = await frame();
+    await page.waitForTimeout(500);
+    // Compare as a boolean: a failure should not print two full PNG data URLs.
+    expect(await frame() === first, 'the backdrop changed between frames').toBe(true);
   });
 
   test('asks before leaving settings with unsaved changes', async ({ page }) => {
