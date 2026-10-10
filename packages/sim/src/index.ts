@@ -1,4 +1,4 @@
-import { parseCommand } from '@impulso/input';
+import { MAX_PRODUCTION_QUEUE, parseCommand } from '@impulso/input';
 import { planFormation } from './mecanicas/formations.js';
 import { planEnemyTurn, type EnemyScene } from './inteligencia-enemiga/training.js';
 import type { AiMemory, AiOrder, AiUnit } from './inteligencia-enemiga/types.js';
@@ -16,7 +16,7 @@ import { findPath as findSurfacePath, firstPathStep, pathExists } from './maps/p
 import { SECTOR_01 } from './mapas/sector-01.js';
 import {
   BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, launchCell, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS,
-  type ProductionState,
+  type ProductionQueue, type ProductionState, type QueuedOrder,
   baseUpgradeCost, fleetCapacity, baseDamage, BASE_DEFENSE_RANGE, type BaseUpgrades,
 } from './economia.js';
 import { rivalGoals, rivalModule, rivalProduction, type RivalDifficulty } from './inteligencia-enemiga/estrategia.js';
@@ -34,7 +34,8 @@ export { FORMATIONS, MAX_FORMATION_SHIPS, formationCells, formationShape, isForm
 export type { FormationBoard, FormationCell, FormationKind, FormationUnit } from './mecanicas/formations.js';
 export type { RivalDifficulty } from './inteligencia-enemiga/estrategia.js';
 export { BASE_INCOME_TICKS, BUILD_TICKS, FLEET_CAP, REPAIR_RADIUS, STARTING_METAL, UNIT_COSTS } from './economia.js';
-export type { ProductionOrder, ProductionState } from './economia.js';
+export type { ProductionOrder, ProductionQueue, ProductionState, QueuedOrder } from './economia.js';
+export { MAX_PRODUCTION_QUEUE } from '@impulso/input';
 export { baseUpgradeCost, fleetCapacity, baseDamage, MAX_BASE_UPGRADE_LEVEL, BASE_DEFENSE_RANGE, CAPACITY_PER_LEVEL, BASE_DAMAGE_PER_LEVEL } from './economia.js';
 export type { BaseUpgrades, BaseUpgradeKind } from './economia.js';
 export { leerSuperficie } from './mapas/leer-tiled.js';
@@ -245,8 +246,10 @@ export interface World {
   nodes: ResourceNode[];
   core: Core;
   winner: PlayerId | null;
-  /** One ship in the hangar queue per player. */
+  /** The ship each player's hangar is building. */
   production: ProductionState;
+  /** Paid orders waiting behind it, first in first out. Absent means empty. */
+  productionQueue?: ProductionQueue;
   /** Ships launched from the base, used for deterministic ids and the rival build order. */
   built: Record<PlayerId, number>;
   /** Base income, hangar and repairs. Off in the legacy 20×20 drill. */
@@ -274,7 +277,7 @@ export type CommandRejection =
   | 'unknown_squad' | 'not_owner' | 'squad_destroyed'
   | 'out_of_bounds' | 'blocked_destination' | 'unreachable_destination' | 'route_full' | 'match_finished'
   | 'unknown_target' | 'friendly_target' | 'target_destroyed' | 'target_not_visible' | 'cannot_attack' | 'target_unavailable'
-  | 'insufficient_metal' | 'fleet_full' | 'production_busy' | 'upgrade_maxed' | 'production_forbidden' | 'opening_selection'
+  | 'insufficient_metal' | 'fleet_full' | 'production_busy' | 'production_queue_full' | 'upgrade_maxed' | 'production_forbidden' | 'opening_selection'
   | 'module_busy' | 'module_built' | 'module_locked' | 'module_slots_full' | 'surrender_locked';
 export type CommandResult =
   | { accepted: true; world: World }
@@ -303,6 +306,7 @@ export function createWorld(): World {
     core: { id: 'core', x: 10, y: 10, guardianId: 'core-guardian', open: false, progress: { p1: 0, p2: 0 } },
     winner: null,
     production: { p1: null, p2: null },
+    productionQueue: { p1: [], p2: [] },
     built: { p1: 0, p2: 0 },
     economy: false,
   };
@@ -381,6 +385,7 @@ export function createWorldOn(sector: SectorLeido): World {
       ...(sector.core.radius !== undefined ? { radius: sector.core.radius } : {}) },
     winner: null,
     production: { p1: null, p2: null },
+    productionQueue: { p1: [], p2: [] },
     built: { p1: 0, p2: 0 },
     economy: true,
     satellites: createSatellites(sector.dropZones, SECTOR_RULES.tickRate),
@@ -478,6 +483,10 @@ export function cloneWorld(world: World): World {
     },
     built: { ...world.built },
     satellites: cloneSatellites(world.satellites),
+    ...(world.productionQueue ? { productionQueue: {
+      p1: world.productionQueue.p1.map((order) => ({ ...order })),
+      p2: world.productionQueue.p2.map((order) => ({ ...order })),
+    } } : {}),
   };
 }
 function clonePlayer(player: Player): Player {
@@ -749,10 +758,21 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
     if (refused) return reject(refused);
     const next = cloneWorld(world);
     next.players[playerId].lastSequence = command.seq;
-    startProduction(next, playerId, command.kind);
+    placeOrder(next, playerId, command.kind);
     return { accepted: true, world: next };
   }
-  if (command.type === 'cancel_production') return reject('invalid_command');
+  if (command.type === 'cancel_production') {
+    if (!world.economy) return reject('invalid_command');
+    // Slot 0 is the ship being built, slot n the n-th order waiting behind it.
+    const order = command.slot === 0 ? world.production[playerId] : queueOf(world, playerId)[command.slot - 1];
+    if (!order || order.kind !== command.kind) return reject('invalid_command');
+    const next = cloneWorld(world);
+    next.players[playerId].lastSequence = command.seq;
+    next.players[playerId].metal += order.paid;
+    if (command.slot === 0) next.production[playerId] = null;
+    else next.productionQueue![playerId].splice(command.slot - 1, 1);
+    return { accepted: true, world: next };
+  }
   const squad = world.squads.find((unit) => unit.id === command.squadId);
   if (!squad) return reject('unknown_squad');
   if (squad.ownerId !== playerId) return reject('not_owner');
@@ -1021,10 +1041,19 @@ function moveSquads(world: World): void {
   }
   refreshArrivals(world.squads.filter((unit) => unit.hp > 0), boardOf(world),(from,to)=>routeExists(world,from,to));
 }
+/** Living ships that count against the fleet cap: decoys do not. */
+const liveFleet = (world: World, playerId: PlayerId): number =>
+  world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0 && !unit.isDecoy).length;
+const queueOf = (world: World, playerId: PlayerId): readonly QueuedOrder[] => world.productionQueue?.[playerId] ?? [];
+/** The ship being built plus the paid orders waiting behind it. */
+const pendingOrders = (world: World, playerId: PlayerId): number => (world.production[playerId] ? 1 : 0) + queueOf(world, playerId).length;
+const forbidden = (world: World, playerId: PlayerId, kind: UnitKind): boolean =>
+  effectsFor(world, playerId).some((e) => e.hook === 'no-production' && e.kind === kind);
 function productionRefusal(world: World, playerId: PlayerId, kind: UnitKind): CommandRejection | null {
-  if (world.production[playerId]) return 'production_busy';
-  if (effectsFor(world,playerId).some((e)=>e.hook==='no-production' && e.kind===kind)) return 'production_forbidden';
-  if (world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0 && !unit.isDecoy).length >= effectiveFleetCap(world, playerId)) return 'fleet_full';
+  if (pendingOrders(world, playerId) >= MAX_PRODUCTION_QUEUE) return 'production_queue_full';
+  if (forbidden(world, playerId, kind)) return 'production_forbidden';
+  // Every order already paid for will become a ship: it takes its berth now.
+  if (liveFleet(world, playerId) + pendingOrders(world, playerId) >= effectiveFleetCap(world, playerId)) return 'fleet_full';
   if (world.players[playerId].metal < statsFor(world, playerId, kind).cost) return 'insufficient_metal';
   return null;
 }
@@ -1039,8 +1068,8 @@ function stationRefusal(world: World, playerId: PlayerId, stationId: string, kin
   const station = world.nodes.find((node) => node.id === stationId);
   if (!station?.station) return 'unknown_target';
   if (station.ownerId !== playerId) return 'not_owner';
-  if (effectsFor(world, playerId).some((e) => e.hook === 'no-production' && e.kind === kind)) return 'production_forbidden';
-  if (world.squads.filter((unit) => unit.ownerId === playerId && unit.hp > 0 && !unit.isDecoy).length >= effectiveFleetCap(world, playerId)) return 'fleet_full';
+  if (forbidden(world, playerId, kind)) return 'production_forbidden';
+  if (liveFleet(world, playerId) + pendingOrders(world, playerId) >= effectiveFleetCap(world, playerId)) return 'fleet_full';
   if (world.players[playerId].metal < stationPrice(world, playerId, station, kind)) return 'insufficient_metal';
   if (!stationDock(world, station)) return 'production_busy';
   return null;
@@ -1052,12 +1081,45 @@ function runTerrain(world: World): void {
   if (world.barriers) surface = barrierSurface(world.barriers, surface, fallenBarriers(world));
   settleOn(world, surface);
 }
-function startProduction(world: World, playerId: PlayerId, kind: UnitKind): void {
-  world.players[playerId].metal -= statsFor(world, playerId, kind).cost;
-  const state=world.augmentMatch?.players[playerId];
-  const factor=(state && state.fastBuilds>0 ? state.fastFactor : 1)*(hasModule(world,playerId,'shipyard') ? SHIPYARD.buildFactor : 1);
-  if(state && state.fastBuilds>0) state.fastBuilds--;
-  world.production[playerId] = { kind, readyTick: world.tick + Math.max(1, Math.round(statsFor(world, playerId, kind).buildTicks * factor)) };
+/** Charges an order at today's price: what it paid is what a cancel gives back. */
+function chargeOrder(world: World, playerId: PlayerId, kind: UnitKind): QueuedOrder {
+  const paid = statsFor(world, playerId, kind).cost;
+  world.players[playerId].metal -= paid;
+  return { kind, paid };
+}
+/** Starts building an order now, with the Shipyard and the fast builds in force at this moment. */
+function beginOrder(world: World, playerId: PlayerId, order: QueuedOrder): void {
+  const state = world.augmentMatch?.players[playerId];
+  const fast = !!state && state.fastBuilds > 0;
+  const factor = (fast ? state!.fastFactor : 1) * (hasModule(world, playerId, 'shipyard') ? SHIPYARD.buildFactor : 1);
+  if (fast) state!.fastBuilds--;
+  const totalTicks = Math.max(1, Math.round(statsFor(world, playerId, order.kind).buildTicks * factor));
+  world.production[playerId] = { kind: order.kind, readyTick: world.tick + totalTicks, totalTicks, paid: order.paid };
+}
+/** A paid order starts at once on an idle hangar, or waits at the back of the queue. */
+function placeOrder(world: World, playerId: PlayerId, kind: UnitKind): void {
+  const order = chargeOrder(world, playerId, kind);
+  if (!world.production[playerId] && queueOf(world, playerId).length === 0) { beginOrder(world, playerId, order); return; }
+  world.productionQueue ??= { p1: [], p2: [] };
+  world.productionQueue[playerId].push(order);
+}
+/**
+ * Moves the next waiting order into an idle hangar. A kind an augment now forbids is dropped and refunded;
+ * with the fleet already at its cap the order keeps waiting, paid, until a berth frees up.
+ */
+function promoteOrder(world: World, playerId: PlayerId): void {
+  const queue = world.productionQueue?.[playerId];
+  while (queue?.length && !world.production[playerId]) {
+    const next = queue[0]!;
+    if (forbidden(world, playerId, next.kind)) {
+      queue.shift();
+      world.players[playerId].metal += next.paid;
+      continue;
+    }
+    if (liveFleet(world, playerId) >= effectiveFleetCap(world, playerId)) return;
+    queue.shift();
+    beginOrder(world, playerId, next);
+  }
 }
 /** Base income, hangar launches and repairs: the base guarantees a way back into the fight. */
 function runBases(world: World): void {
@@ -1077,6 +1139,8 @@ function runBases(world: World): void {
         world.production[playerId] = null;
       }
     }
+    // The next order starts on the tick the hangar frees up, so the queue never idles.
+    if (!world.production[playerId]) promoteOrder(world, playerId);
     if (world.tick % world.rules.tickRate !== 0) continue;
     const effects=effectsFor(world,playerId);
     if(effects.some((e)=>e.hook==='no-base-repair')) continue;
@@ -1308,7 +1372,7 @@ export function runTrainingRival(world: World, memories: ReadonlyMap<string, AiM
   const kind = next.economy ? rivalProduction(next, rival, difficulty) : null;
   if (kind) {
     next = cloneWorld(next);
-    startProduction(next, rival, kind);
+    beginOrder(next, rival, chargeOrder(next, rival, kind));
   }
   // A full fleet with spare Metal buys hangar capacity instead of hoarding.
   if (next.baseRules && !next.players[rival].modules?.building) {

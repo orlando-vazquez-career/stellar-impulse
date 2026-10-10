@@ -29,12 +29,23 @@ export function baseUpgradeCost(kind: BaseUpgradeKind, upgrades?: BaseUpgrades):
 export const fleetCapacity = (upgrades?: BaseUpgrades): number => FLEET_CAP + (upgrades?.capacity ?? 0) * CAPACITY_PER_LEVEL;
 export const baseDamage = (upgrades?: BaseUpgrades): number => (upgrades?.damage ?? 0) * BASE_DAMAGE_PER_LEVEL;
 
+/** The ship a hangar is building. */
 export interface ProductionOrder {
   kind: UnitKind;
   readyTick: number;
+  /** Ticks from start to launch, with the Shipyard and fast builds that were in force when it started. */
+  totalTicks: number;
+  /** Metal charged when the order was placed: cancelling it gives back exactly this. */
+  paid: number;
+}
+/** A paid order waiting for the hangar. It is built, and its build time fixed, only when its turn comes. */
+export interface QueuedOrder {
+  kind: UnitKind;
+  paid: number;
 }
 
 export type ProductionState = Record<PlayerId, ProductionOrder | null>;
+export type ProductionQueue = Record<PlayerId, QueuedOrder[]>;
 
 /**
  * Nearest free walkable cell to the base, scanning rings outward from `minRadius`; null when the hangar is blocked.
