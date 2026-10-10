@@ -59,6 +59,26 @@ Los gráficos de esta base son procedurales, sin recursos externos ni copias del
 de inspiración. Ismael reemplazará siluetas y efectos con assets de licencia documentada.
 Cosméticos deben preservar colores de equipo, siluetas, radios y avisos.
 
+### Regla de estilo de los sprites del mapa
+
+Cada sprite sigue uno de dos estilos, según lo que representa en la partida:
+
+| Qué es | Estilo | Cómo se hace |
+|---|---|---|
+| Entidad de partida con dueño, vida o rotación (base de mando, torreta jugable y su cabeza giratoria, naves) | Cenital tipo render | Fuente de 256–512 px que el juego reduce al dibujarla. Sin contorno; neón del color de la facción y violeta `#A978FF` para la variante neutral. Referencia: `apps/web/public/assets/game/structures/command-base-top-neutral.png` |
+| Decorado de Tiled (lo que se coloca en las capas de objetos de los kits: torre de vigilancia, antenas, satélites, restos) | Isométrico vectorial del kit | Contorno `#0C1018` (`OUTLINE` de `assets_bases.py`), supersample 3–4 y `apagar_bordes` (`assets_espacio.py`) para que el halo no se vea como una mancha al escalar. Lienzo y ancla de su tileset |
+
+**Excepción:** el nexo se muestra con el pilar y el escudo del kit, no con un disco cenital
+(`NEXUS_STYLE = 'pillar'` en `apps/web/src/visual/map/map-objects.ts`).
+
+**Origen de los sprites nuevos.** Se generan con IA de imágenes (Codex) anclados a referencias de
+estilo del kit (`tilesets/img/base_jugador.png` y la torre de vigilancia aprobada,
+`tilesets/img/torre_vigilancia.png`), y después se ajustan al lienzo y al ancla que declara su
+tileset; no se agregan scripts procedurales nuevos para dibujarlos. Cada archivo se anota en el
+`CREDITOS.md` del kit. `packages/sim/src/tiled-maps/estructuras-arte.test.ts` comprueba que la torre de
+vigilancia conserve su lienzo de 80×128 RGBA, el tamaño declarado en `estructuras.tsx` y el de cada
+objeto del mapa, y que sea el mismo archivo en los tres kits jugables.
+
 La escena del login (`apps/web/src/login/scene`) sigue la misma regla: cascos, asteroides,
 fuego, humo y grano son procedurales sobre Canvas 2D, sembrados con `createRng(20260930)`,
 y reutiliza los starfields del atlas como capa de cielo con opacidad baja. Cada sistema
