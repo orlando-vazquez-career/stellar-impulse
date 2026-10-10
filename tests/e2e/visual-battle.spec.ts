@@ -1,10 +1,45 @@
 import { expect, test } from '@playwright/test';
-import { gamePoint, gridDistanceFromMinimap, openApp, readBattlefieldCamera } from './helpers';
+import { chooseOpening, gamePoint, gridDistanceFromMinimap, openApp, readBattlefieldCamera } from './helpers';
 
 async function advanceMockCombat(page: import('@playwright/test').Page) {
   // Elapsed-time movement accepts steps up to 100 ms. Keep that bound while
   // skipping intermediate render frames; a slow renderer cannot lose game time.
   for (let step = 0; step < 200; step++) await page.clock.fastForward(100);
+}
+
+/** HUD panels of the offline sandbox, which always has a squad selected and no hangar. */
+const MOCK_HUD = ['.vi-resources', '.vi-sector-status', '.vi-top-controls', '.vi-minimap', '.vi-squad'];
+/** HUD panels of a match against the server, hangar included, with nothing selected. */
+const SERVER_HUD = ['.vi-resources', '.vi-sector-status', '.vi-top-controls', '.vi-minimap', '.vi-production'];
+
+/** Overlaps, off-screen panels, page overflow and the smallest text of the match HUD. */
+async function hudLayout(page: import('@playwright/test').Page, selectors = MOCK_HUD) {
+  return page.evaluate((selectors) => {
+    const boxes = selectors.map((selector) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`Missing ${selector}`);
+      return { selector, rect: element.getBoundingClientRect().toJSON() };
+    });
+    const overlaps: string[] = [];
+    for (let left = 0; left < boxes.length; left += 1) {
+      for (let right = left + 1; right < boxes.length; right += 1) {
+        const a = boxes[left].rect;
+        const b = boxes[right].rect;
+        if (a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y) {
+          overlaps.push(`${boxes[left].selector}:${boxes[right].selector}`);
+        }
+      }
+    }
+    const smallestText = Math.min(...Array.from(document.querySelectorAll('.vi-hud *'))
+      .filter((element) => element.children.length === 0 && element.textContent?.trim())
+      .map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
+    return {
+      overlaps,
+      outside: boxes.filter(({ rect }) => rect.x < 0 || rect.y < 0 || rect.right > innerWidth || rect.bottom > innerHeight).map(({ selector }) => selector),
+      overflow: [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight],
+      smallestText,
+    };
+  }, selectors);
 }
 
 test.describe('visual battle', () => {
@@ -27,9 +62,13 @@ test.describe('visual battle', () => {
     const expected = [
       ...['ax7', 'explorer', 'frigate', 'bomber'].flatMap((ship) => factions.map((faction) => `/assets/game/ships/${ship}-${faction}.png`)),
       ...['command-base', 'nexus-core'].flatMap((structure) => factions.map((faction) => `/assets/game/structures/${structure}-top-${faction}.png`)),
+      '/assets/game/structures/turret-base-neutral.png',
+      '/assets/game/structures/turret-head-neutral.png',
     ];
-    expect(assetStatuses.size).toBe(18);
+    expect(assetStatuses.size).toBe(20);
     expect(expected.map((path) => assetStatuses.get(path))).toEqual(expected.map(() => 200));
+    // Sector 01 has no pillar at the Core, so the top-down disc stands in for it rather than leaving it bare.
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-nexus', 'disc');
     await page.screenshot({ path: 'test-results/structures-top-down.png' });
   });
 
@@ -61,34 +100,7 @@ test.describe('visual battle', () => {
     await page.getByRole('button', { name: 'Iniciar operación' }).click();
     await expect(page.locator('.vi-resources')).toBeVisible();
 
-    const layout = await page.evaluate(() => {
-      const selectors = ['.vi-resources', '.vi-sector-status', '.vi-top-controls', '.vi-minimap', '.vi-squad'];
-      const boxes = selectors.map((selector) => {
-        const element = document.querySelector(selector);
-        if (!element) throw new Error(`Missing ${selector}`);
-        return { selector, rect: element.getBoundingClientRect().toJSON() };
-      });
-      const overlaps: string[] = [];
-      for (let left = 0; left < boxes.length; left += 1) {
-        for (let right = left + 1; right < boxes.length; right += 1) {
-          const a = boxes[left].rect;
-          const b = boxes[right].rect;
-          if (a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y) {
-            overlaps.push(`${boxes[left].selector}:${boxes[right].selector}`);
-          }
-        }
-      }
-      const smallestText = Math.min(...Array.from(document.querySelectorAll('.vi-hud *'))
-        .filter((element) => element.children.length === 0 && element.textContent?.trim())
-        .map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
-      return {
-        overlaps,
-        outside: boxes.filter(({ rect }) => rect.x < 0 || rect.y < 0 || rect.right > innerWidth || rect.bottom > innerHeight).map(({ selector }) => selector),
-        overflow: [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight],
-        smallestText,
-      };
-    });
-
+    const layout = await hudLayout(page);
     expect(layout.overlaps).toEqual([]);
     expect(layout.outside).toEqual([]);
     expect(layout.overflow).toEqual([0, 0]);
@@ -101,9 +113,206 @@ test.describe('visual battle', () => {
     await minimap.getByRole('button', { name: 'Expandir' }).click();
     await expect(minimap.getByRole('img', { name: 'Minimapa' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Preferencias' }).click();
-    await expect(page.getByRole('complementary', { name: 'Development Controls' })).toBeVisible();
+    // The development panel sits behind its own button; its simulated clock moves the match tick.
+    const gameplay = page.locator('.vi-gameplay');
+    const tick = async () => Number(await gameplay.getAttribute('data-tick'));
+    await page.getByRole('button', { name: 'Desarrollo' }).click();
+    const development = page.getByRole('complementary', { name: 'Development Controls' });
+    await expect(development).toBeVisible();
     await expect(page.getByLabel('Estado del Núcleo')).toHaveValue('locked');
+    await development.getByLabel('Reloj simulado').check();
+    const started = await tick();
+    await expect.poll(tick, { timeout: 15000 }).toBeGreaterThan(started);
+
+    // A contested Core says so in the sector panel, with its capture bar at the progress set here.
+    await page.getByLabel('Estado del Núcleo').selectOption('contested');
+    // The first slider of the panel is the Core's capture progress.
+    const progress = development.getByRole('slider').first();
+    await progress.focus();
+    await page.keyboard.press('Home');
+    for (let step = 0; step < 6; step++) await page.keyboard.press('PageUp');
+    await expect(development.locator('output').first()).toHaveText('60%');
+    const sector = page.locator('.vi-sector-status');
+    await expect(sector).toContainText('Núcleo disputado');
+    await expect(sector).toContainText('Ambos bandos dentro');
+    await expect(sector.getByRole('progressbar', { name: 'Progreso de captura' })).toHaveJSProperty('value', 60);
+    // The minimap Core takes the state's colour; the bases are coloured from the player's side.
+    await expect(page.locator('.vi-minimap .map-core')).toHaveClass(/\bmap-core--contested\b/);
+    await expect(page.locator('.vi-minimap .map-base[data-owner="own"]')).toHaveCount(1);
+    await expect(page.locator('.vi-minimap .map-base[data-owner="rival"]')).toHaveCount(1);
+    await development.getByRole('button', { name: 'Cerrar' }).click();
+    await expect(development).toHaveCount(0);
+
+    // The menu pauses the sandbox: the tick holds while it is open and moves again once Escape closes it.
+    await page.getByRole('button', { name: 'Menú' }).click();
+    const menu = page.getByRole('dialog', { name: 'Partida en pausa' });
+    await expect(menu).toBeVisible();
+    await expect(sector).toContainText('EN PAUSA');
+    const paused = await tick();
+    await page.waitForTimeout(2500);
+    expect(await tick()).toBe(paused);
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(sector).not.toContainText('EN PAUSA');
+    const resumed = await tick();
+    await expect.poll(tick, { timeout: 15000 }).toBeGreaterThan(resumed);
+  });
+
+  test('keeps Tab inside the menu, guards unsaved settings and leaves Space to the match once it closes', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await expect(page.locator('.vi-resources')).toBeVisible();
+
+    const menuButton = page.getByRole('button', { name: 'Menú' });
+    const menu = page.getByRole('dialog', { name: 'Partida en pausa' });
+    const sector = page.locator('.vi-sector-status');
+    await menuButton.click();
+    await expect(menu).toBeVisible();
+    await expect(sector).toContainText('EN PAUSA');
+    // Tab goes round Resume, Settings and Leave and never reaches the HUD behind the overlay.
+    await expect(menu.getByRole('button', { name: 'Reanudar', exact: true })).toBeFocused();
+    for (const name of ['Configuración', 'Salir', 'Reanudar']) {
+      await page.keyboard.press('Tab');
+      await expect(menu.getByRole('button', { name, exact: true })).toBeFocused();
+    }
+    await page.keyboard.press('Shift+Tab');
+    await expect(menu.getByRole('button', { name: 'Salir', exact: true })).toBeFocused();
+
+    // An unsaved setting: Escape asks first, and discarding it closes the menu and lifts the pause.
+    await menu.getByRole('button', { name: 'Configuración', exact: true }).click();
+    await page.getByRole('button', { name: /Accesibilidad/ }).click();
+    await page.getByLabel(/Contraste reforzado/).check();
+    await page.keyboard.press('Escape');
+    const unsaved = page.getByRole('alertdialog', { name: 'Tienes cambios sin guardar' });
+    await expect(unsaved).toBeVisible();
+    await expect(page.locator('.vi-game-menu')).toHaveCount(1);
+    await unsaved.getByRole('button', { name: 'Descartar cambios' }).click();
+    await expect(page.locator('.vi-game-menu')).toHaveCount(0);
+    await expect(sector).not.toContainText('EN PAUSA');
+
+    // Opened with a click and closed with Resume or Escape, focus is not left on the Menu button: Space is the
+    // camera shortcut and must not press that button and reopen the menu.
+    for (const close of ['resume', 'escape'] as const) {
+      await menuButton.click();
+      await expect(menu).toBeVisible();
+      if (close === 'resume') await menu.getByRole('button', { name: 'Reanudar', exact: true }).click();
+      else await page.keyboard.press('Escape');
+      await expect(page.locator('.vi-game-menu')).toHaveCount(0);
+      await expect(menuButton).not.toBeFocused();
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(800);
+      await expect(page.locator('.vi-game-menu')).toHaveCount(0);
+      await expect(sector).not.toContainText('EN PAUSA');
+    }
+  });
+
+  test('keeps the server HUD, hangar queue and focused Base tab included, inside 1366×768 with the larger text', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.addInitScript(() => localStorage.setItem('impulso.visual-preferences', JSON.stringify({ accessibility: { largeText: true } })));
+    await openApp(page, '/');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await chooseOpening(page);
+    await expect(page.locator('.visual-app')).toHaveClass(/is-large-text/);
+    const production = page.locator('.vi-production');
+    await expect(production).toContainText('Listo para construir', { timeout: 20000 });
+    // Espiral has its pillar at the Core; the player's base is the blue one.
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-nexus', 'pillar');
+    await expect(page.locator('.vi-minimap .map-base[data-owner="own"]')).toHaveCount(1);
+    await expect(page.locator('.vi-minimap .map-base[data-owner="rival"]')).toHaveCount(1);
+
+    // Three Explorers by their shortcut: one in production and two paid and waiting behind it.
+    const metal = async () => Number(await page.locator('.vi-resource--metal strong').innerText());
+    const explorerCost = Number(/(\d+) M/.exec(await production.locator('.vi-production__list').getByRole('button', { name: /Explorador/ }).innerText())?.[1]);
+    expect(explorerCost).toBeGreaterThan(0);
+    await expect.poll(metal, { timeout: 40000 }).toBeGreaterThanOrEqual(3 * explorerCost);
+    for (let order = 0; order < 3; order++) await page.keyboard.press('t');
+    const slots = production.locator('.vi-hangar-queue .vi-hangar-slot');
+    await expect(slots).toHaveCount(3, { timeout: 20000 });
+    const first = slots.first();
+    const label = /^Cancelar Explorador \(reembolso \+(\d+) Metal\)$/;
+    await expect(slots.nth(1)).toHaveAttribute('aria-label', label);
+    const refund = Number(label.exec(await slots.nth(1).getAttribute('aria-label') ?? '')?.[1]);
+    expect(refund).toBeGreaterThan(0);
+
+    // A double click on a waiting order cancels it alone, never also the order that moves up into its slot: two
+    // cancels would give back two refunds at once. Income is counted by server ticks (ten a second), so a slow
+    // click on a software-rendered page cannot pass for a second refund.
+    const economy = () => page.evaluate(() => ({
+      metal: Number(document.querySelector('.vi-resource--metal strong')?.textContent),
+      rate: Number(/\+([\d.]+)\/s/.exec(document.querySelector('.vi-resource--metal small')?.textContent ?? '')?.[1] ?? 0),
+      tick: Number(document.querySelector('.vi-gameplay')?.getAttribute('data-tick')),
+    }));
+    const before = await economy();
+    await slots.nth(1).dblclick();
+    await expect.poll(metal, { timeout: 20000 }).toBeGreaterThanOrEqual(before.metal + refund);
+    await page.waitForTimeout(1500);
+    const after = await economy();
+    const income = Math.ceil(before.rate * Math.max(0, after.tick - before.tick) / 10);
+    // One refund, the income since and the Metal the floor may have hidden; a second refund would go past it.
+    expect(after.metal).toBeLessThanOrEqual(before.metal + 1 + refund + income);
+
+    // The queue shows the ship in production with its countdown; the hangar's own lines stay as they were.
+    await expect(production).toContainText(/Listo para construir|Explorador · \d+ s/);
+    if (await slots.count()) {
+      await expect(first).toHaveClass(/is-active/);
+      await expect(first).toHaveAttribute('title', label);
+    }
+    // A build button the hangar would refuse says why.
+    const bomber = production.locator('.vi-production__list').getByRole('button', { name: /Bombardero/ });
+    if (await bomber.isDisabled()) await expect(bomber).toHaveAttribute('title', /Falta Metal|Cola del hangar llena|Flota completa/);
+
+    let layout = await hudLayout(page, SERVER_HUD);
+    expect(layout.overlaps).toEqual([]);
+    expect(layout.outside).toEqual([]);
+    expect(layout.overflow).toEqual([0, 0]);
+    expect(layout.smallestText).toBeGreaterThanOrEqual(12);
+    const queueInsidePanel = await page.evaluate(() => {
+      const queue = document.querySelector('.vi-hangar-queue')?.getBoundingClientRect();
+      const panel = document.querySelector('.vi-production')?.getBoundingClientRect();
+      return !!queue && !!panel && queue.left >= panel.left - 0.5 && queue.right <= panel.right + 0.5
+        && queue.top >= panel.top - 0.5 && queue.bottom <= panel.bottom + 0.5;
+    });
+    expect(queueInsidePanel).toBe(true);
+
+    // Selecting the own base brings its tab forward and highlights the panel: it still fits with the larger text.
+    await page.keyboard.press('b');
+    await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-selected-base', 'own');
+    await expect(production).toHaveClass(/is-focused/);
+    await expect(production.getByRole('tab', { name: 'Base', exact: true })).toHaveAttribute('aria-selected', 'true');
+    layout = await hudLayout(page, SERVER_HUD);
+    expect(layout.overlaps).toEqual([]);
+    expect(layout.outside).toEqual([]);
+    expect(layout.overflow).toEqual([0, 0]);
+    expect(layout.smallestText).toBeGreaterThanOrEqual(12);
+  });
+
+  test('keeps HUD modules inside 1366×768 with the larger interface text', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.addInitScript(() => localStorage.setItem('impulso.visual-preferences', JSON.stringify({ accessibility: { largeText: true } })));
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await expect(page.locator('.vi-resources')).toBeVisible();
+    await expect(page.locator('.visual-app')).toHaveClass(/is-large-text/);
+
+    const layout = await hudLayout(page);
+    expect(layout.overlaps).toEqual([]);
+    expect(layout.outside).toEqual([]);
+    expect(layout.overflow).toEqual([0, 0]);
+    expect(layout.smallestText).toBeGreaterThanOrEqual(12);
   });
 
   test('loads one Phaser canvas and pans at the edge without clicking', async ({ page }) => {
