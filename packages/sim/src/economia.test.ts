@@ -196,7 +196,8 @@ describe('rival difficulty', () => {
 
   it('lets harder rivals build more and expand faster', () => {
     expect(rivalShips(play('medium', 600))).toBeGreaterThan(rivalShips(play('easy', 600)));
-    // The sector now travels at 6 ticks/cell instead of 4: allow the same travel budget.
-    expect(rivalNodes(play('hard', 300))).toBeGreaterThan(rivalNodes(play('medium', 300)));
+    // The sector travels at 6 ticks/cell. Ships start on the base's first ring, a cell closer to the
+    // nodes, so medium takes its second node at ~28 s: compare at 25 s, when hard already holds two.
+    expect(rivalNodes(play('hard', 250))).toBeGreaterThan(rivalNodes(play('medium', 250)));
   });
 });

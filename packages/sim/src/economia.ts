@@ -36,12 +36,15 @@ export interface ProductionOrder {
 
 export type ProductionState = Record<PlayerId, ProductionOrder | null>;
 
-/** Nearest free walkable cell to the base, scanning rings outward; null when the hangar is blocked. */
+/**
+ * Nearest free walkable cell to the base, scanning rings outward from `minRadius`; null when the hangar is blocked.
+ * Hangars launch from ring 1 and station docks from ring 2, so no ship is born inside a hull.
+ */
 export function launchCell(
   base: Position, width: number, height: number,
-  open: (cell: Position) => boolean, taken: (cell: Position) => boolean,
+  open: (cell: Position) => boolean, taken: (cell: Position) => boolean, minRadius = 0,
 ): Position | null {
-  for (let radius = 0; radius <= 4; radius += 1) {
+  for (let radius = minRadius; radius <= 4; radius += 1) {
     for (let dy = -radius; dy <= radius; dy += 1) {
       for (let dx = -radius; dx <= radius; dx += 1) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;

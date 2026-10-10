@@ -306,10 +306,16 @@ export function createWorld(): World {
     economy: false,
   };
 }
-/** Starting fleet beside each base: a scout and one combat ship; the rest comes from the hangar. */
+/**
+ * Starting fleet beside each base: a scout and one combat ship; the rest comes from the hangar.
+ * Both sit on the base's first ring, clear of its hull; p2 mirrors the offsets.
+ */
 const STARTING_FLEET: readonly { kind: UnitKind; dx: number; dy: number }[] = [
-  { kind: 'interceptor', dx: 0, dy: 0 }, { kind: 'explorer', dx: 1, dy: 1 },
+  { kind: 'interceptor', dx: 1, dy: 0 }, { kind: 'explorer', dx: 1, dy: 1 },
 ];
+/** Hangar launches start at this ring of the base, station docks at this ring of the station. */
+const HANGAR_RING = 1;
+const DOCK_RING = 2;
 /** Guardians charge ships within this many cells of their post and stop chasing beyond it. */
 export const GUARDIAN_AGGRO_RADIUS = 3;
 /** Guardians move one cell every this many ticks (slower than an Interceptor). */
@@ -338,7 +344,7 @@ export function createWorldOn(sector: SectorLeido): World {
       const preferred = { x: base.x + sign * dx, y: base.y + sign * dy };
       const inside = preferred.x >= 0 && preferred.y >= 0 && preferred.x < sector.width && preferred.y < sector.height;
       const cell = inside && open(preferred) && !used.has(`${preferred.x},${preferred.y}`) ? preferred
-        : launchCell(base, sector.width, sector.height, open, (point) => used.has(`${point.x},${point.y}`)) ?? base;
+        : launchCell(base, sector.width, sector.height, open, (point) => used.has(`${point.x},${point.y}`), HANGAR_RING) ?? base;
       used.add(`${cell.x},${cell.y}`);
       return createSquad(`${player}-${kind}`, player, kind, cell);
     });
@@ -1025,7 +1031,7 @@ export function stationPrice(world: World, playerId: PlayerId, station: Resource
   return statsFor(world, playerId, kind).cost * (station.station?.priceFactor ?? 1);
 }
 function stationDock(world: World, station: ResourceNode): Position | null {
-  return launchCell(station, world.width, world.height, (point) => cellOnBoard(world, point), (point) => cellOccupied(world, point, ''));
+  return launchCell(station, world.width, world.height, (point) => cellOnBoard(world, point), (point) => cellOccupied(world, point, ''), DOCK_RING);
 }
 function stationRefusal(world: World, playerId: PlayerId, stationId: string, kind: UnitKind): CommandRejection | null {
   const station = world.nodes.find((node) => node.id === stationId);
@@ -1061,7 +1067,7 @@ function runBases(world: World): void {
     const order = world.production[playerId];
     if (order && world.tick >= order.readyTick) {
       const cell = launchCell(player.base, world.width, world.height,
-        (point) => cellOnBoard(world, point), (point) => cellOccupied(world, point, ''));
+        (point) => cellOnBoard(world, point), (point) => cellOccupied(world, point, ''), HANGAR_RING);
       // A blocked hangar holds the finished ship until a launch cell frees up.
       if (cell) {
         world.built[playerId] += 1;
