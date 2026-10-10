@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  commitSavedAccessibility,
   getEffectiveAccessibility,
   isReducedMotion,
   publishSavedAccessibility,
@@ -42,6 +43,21 @@ describe('accessibility store', () => {
     const first = getEffectiveAccessibility();
     publishSavedAccessibility({ ...saved });
     expect(getEffectiveAccessibility()).toBe(first);
+  });
+
+  it('makes a saved preview the accessibility in effect at once, without passing through the old one', () => {
+    publishSavedAccessibility(saved);
+    setAccessibilityPreview(preview);
+    const seen: Array<ReturnType<typeof getEffectiveAccessibility>> = [];
+    const stop = subscribeAccessibility(() => seen.push(getEffectiveAccessibility()));
+    // What the settings panel does on save, before the host re-renders with the new preferences.
+    commitSavedAccessibility(preview);
+    stop();
+    expect(getEffectiveAccessibility()).toEqual(preview);
+    expect(seen).not.toContainEqual(saved);
+    // A later publish of the same saved value by the host changes nothing.
+    publishSavedAccessibility({ ...preview });
+    expect(getEffectiveAccessibility()).toEqual(preview);
   });
 
   it('holds motion still for a system that asks for it, even over an older saved "off"', async () => {

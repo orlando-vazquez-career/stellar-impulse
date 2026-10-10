@@ -105,9 +105,20 @@ test.describe('visual interface foundation', () => {
     const largePanel = await page.locator('.vi-settings-panel').boundingBox();
     expect(largePanel!.x + largePanel!.width).toBeLessThanOrEqual(1366);
     expect(largePanel!.y + largePanel!.height).toBeLessThanOrEqual(768);
+    // Record every class the app goes through while saving: the saved contrast must take over from
+    // the preview without the previous saved value showing in between.
+    await page.locator('.visual-app').evaluate((app) => {
+      const seen: string[] = [];
+      (window as unknown as { contrastClasses: string[] }).contrastClasses = seen;
+      new MutationObserver((records) => {
+        for (const record of records) seen.push(record.oldValue ?? '', (record.target as Element).className);
+      }).observe(app, { attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+    });
     await page.getByRole('button', { name: 'Guardar ajustes' }).click();
 
     await expect(page.locator('.visual-app')).toHaveClass(/is-high-contrast/);
+    const classesWhileSaving = await page.evaluate(() => (window as unknown as { contrastClasses: string[] }).contrastClasses);
+    expect(classesWhileSaving.filter((value) => !value.includes('is-high-contrast'))).toEqual([]);
     await expect(page.getByText('Ajustes guardados localmente')).toBeVisible();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences') ?? '{}'));
     expect(stored.controls.move).toContain('KeyZ');

@@ -38,6 +38,17 @@ export function setAccessibilityPreview(accessibility: Accessibility | null): vo
   notify();
 }
 
+/**
+ * What the settings panel calls on save: what it just saved becomes the accessibility in effect and
+ * the preview goes, in one step, so nothing shows the previous saved value while the host catches up.
+ */
+export function commitSavedAccessibility(accessibility: Accessibility): void {
+  const changed = preview !== null || !saved || !same(saved, accessibility);
+  if (!saved || !same(saved, accessibility)) saved = { ...accessibility };
+  preview = null;
+  if (changed) notify();
+}
+
 export function getEffectiveAccessibility(): Accessibility {
   return preview ?? savedAccessibility();
 }
