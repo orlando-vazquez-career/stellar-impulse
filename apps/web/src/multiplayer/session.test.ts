@@ -242,6 +242,15 @@ describe('shared multiplayer session over real transport', () => {
     expect(host.getSnapshot().view!.augments!.own).toHaveLength(1);
   });
 
+  it('reports a refused order as a rejection for the match, not as a room failure', async () => {
+    const { host } = await pair();
+    // Nothing is queued, so the server refuses the cancellation with a match reason.
+    host.command({ type: 'cancel_production', slot: 0, kind: 'interceptor' } as Parameters<MultiplayerSession['command']>[0]);
+    const refused = await waitFor(host, (value) => value.rejection !== null && value.rejection !== undefined);
+    expect(refused.rejection).toMatchObject({ reason: 'invalid_command' });
+    expect(refused.error).toBeNull();
+  });
+
   it('settles an exit during reconnection and cancels retries without reconnecting a ghost player', async () => {
     const storage = new StorageMemory();
     const { host, guest } = await pair(storage);

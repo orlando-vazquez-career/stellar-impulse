@@ -28,6 +28,11 @@ export interface MultiplayerSnapshot {
    * connection_lost). Absent while there is no error. See multiplayer-copy.ts for every reason.
    */
   errorReason?: string;
+  /**
+   * The last order the match refused (insufficient_metal, fleet_full…), numbered so the same reason twice is two
+   * refusals. Match refusals are not room failures: the gameplay adapter explains them.
+   */
+  rejection?: { reason: string; id: number } | null;
   acknowledgedSequence: number;
 }
 export interface MultiplayerSession {
@@ -154,7 +159,10 @@ export function createMultiplayerSession(serverUrl: string, storage?: SessionSto
       update({ acknowledgedSequence: Math.max(snapshot.acknowledgedSequence, ack.seq), ...NO_ERROR });
     }));
     cleanups.push(active.onMessage('rejected', (message: { protocolVersion: number; reason: string }) => {
-      if (current() && message.protocolVersion === PROTOCOL_VERSION) update(roomFailure(new Error(message.reason)));
+      if (!current() || message.protocolVersion !== PROTOCOL_VERSION) return;
+      // Session reasons the lobby explains stay errors; anything else is an order the match refused.
+      if (isMultiplayerErrorReason(message.reason) && SERVER_REASONS.has(message.reason)) update(failure(message.reason));
+      else update({ rejection: { reason: message.reason, id: (snapshot.rejection?.id ?? 0) + 1 } });
     }));
     // Block orders as soon as the pause arrives; the following phase refresh remains authoritative.
     cleanups.push(active.onMessage('paused', (message: {

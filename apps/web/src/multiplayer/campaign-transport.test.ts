@@ -40,6 +40,16 @@ function recorder(): TransportEvents & { log: unknown[][] } {
 const view = (tick: number) => ({ tick }) as CampaignView;
 
 describe('campaign transport', () => {
+  it('hands each refused order to the adapter once, with its reason', () => {
+    const fake = fakeSession();
+    const events = recorder();
+    campaignTransport(fake.session).open(events);
+    fake.set({ rejection: { reason: 'insufficient_metal', id: 1 } });
+    fake.set({ acknowledgedSequence: 3 });
+    fake.set({ rejection: { reason: 'fleet_full', id: 2 } });
+    expect(events.log.filter(([kind]) => kind === 'rejected')).toEqual([['rejected', 'insufficient_metal'], ['rejected', 'fleet_full']]);
+  });
+
   it('forwards each new view once and the connection state', () => {
     const fake = fakeSession({ view: view(5) });
     const events = recorder();

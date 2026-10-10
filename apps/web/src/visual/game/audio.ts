@@ -405,6 +405,7 @@ const SPOKEN_REJECTION: Record<string, VoiceSlot> = {
   cannot_attack: 'order-denied',
   target_not_visible: 'order-denied',
   target_unavailable: 'order-denied',
+  production_queue_full: 'order-denied',
 };
 
 /**

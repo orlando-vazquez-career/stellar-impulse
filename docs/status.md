@@ -48,11 +48,9 @@ mensaje de mapa incompatible. El entrenamiento contra IA conserva su ruta indepe
 
 `/` y `/visual` abren la misma experiencia Visual. El antiguo Atlas de Mando y su
 cliente Canvas de entrenamiento se retiraron de la entrada web; las salas del servidor
-no se tocaron. Desde la preparación se puede probar el TMJ editable de Sector 01
-(29×29): su atlas, los datos de superficie y una nave local que usa el buscador de
-rutas de la simulación (incluidas las restricciones de altura/rampas).
-El TMJ referencia un segundo atlas ausente para una única casilla de espacio: el
-inspector la dibuja con un color de reserva, sin alterar el archivo de Tiled.
+no se tocaron. El inspector del TMJ de Sector 01 que se abría desde la preparación
+se retiró el 10-oct-2026: la preparación y la sala multijugador muestran ahora una
+vista previa esquemática del mapa elegido.
 El combate Phaser ahora dibuja las capas del mismo TMJ de 29×29 y sus naves se
 mueven en continuo cuando el terreno es llano; en las rampas siguen las rutas
 válidas de la simulación. Selección individual y múltiple, órdenes de movimiento y

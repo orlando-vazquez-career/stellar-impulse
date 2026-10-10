@@ -84,7 +84,7 @@ export let MAP_ORIGIN_X = sectorMap.height * TILE_WIDTH / 2;
 export let ISO_WORLD_WIDTH = sectorMap.width * TILE_WIDTH;
 export let ISO_WORLD_HEIGHT = (sectorMap.width + sectorMap.height) * TILE_HEIGHT / 2 + MAP_ORIGIN_Y + 48;
 
-/** Switch the map every client module draws and plans on. Call before mounting the scene or inspector. */
+/** Switch the map every client module draws and plans on. Call before mounting the scene. */
 export function selectMap(id: TrainingMapId): void {
   if (id === activeMapId) return;
   activeMapId = id;

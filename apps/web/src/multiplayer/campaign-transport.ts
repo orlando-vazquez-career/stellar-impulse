@@ -47,6 +47,8 @@ export function campaignTransport(session: MultiplayerSession): MatchTransport {
       let view: CampaignView | null = null;
       let notice: string | null | undefined;
       let connection: Connection | undefined;
+      // Refusals from before the adapter opened were already shown, or belong to an earlier screen.
+      let refused = session.getSnapshot().rejection?.id ?? 0;
       const sync = () => {
         const snapshot = session.getSnapshot();
         const state = connectionOf(snapshot);
@@ -55,6 +57,7 @@ export function campaignTransport(session: MultiplayerSession): MatchTransport {
         const text = phaseNotice(snapshot, getActiveLocale());
         if (text !== notice) { notice = text; events.notice(text); }
         if (snapshot.view && snapshot.view !== view) { view = snapshot.view; events.view(snapshot.view); }
+        if (snapshot.rejection && snapshot.rejection.id !== refused) { refused = snapshot.rejection.id; events.rejected(snapshot.rejection.reason); }
         events.refresh();
       };
       const stop = session.subscribe(sync);

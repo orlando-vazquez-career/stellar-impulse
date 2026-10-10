@@ -208,6 +208,7 @@ describe('match events to sound', () => {
     ['fleet_full', 'voice:fleet-full'],
     ['cannot_attack', 'voice:order-denied'],
     ['target_not_visible', 'voice:order-denied'],
+    ['production_queue_full', 'voice:order-denied'],
   ])('answers the %s rejection out loud', (reason, line) => {
     const { log, audio } = calls();
     playEvent(audio, { kind: 'order-rejected', reason }, 'es');
