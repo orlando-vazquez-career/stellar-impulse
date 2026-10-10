@@ -139,6 +139,19 @@ export const CAPTURE_PACE: readonly number[] = Object.freeze([0, 1, 1.5, 2]);
 export const CONTESTED_CAPTURE_FACTOR = 0.5;
 const capturePace = (ships: number): number => CAPTURE_PACE[Math.min(ships, CAPTURE_PACE.length - 1)]!;
 
+/** Capturing ships of each side inside the objective's disc. Scouts and decoys never count. */
+export function capturePresence(world: MechanicsWorld, objective: CaptureObjective,
+  context = captureContext(world)): Record<PlayerId, number> {
+  const radius = objective.radius ?? world.rules.captureRadius;
+  const ships: Record<PlayerId, number> = { p1: 0, p2: 0 };
+  // The area is a disc; the diamond query of twice the radius is only its cheap superset.
+  for (const point of context.index.queryManhattan(objective, radius * 2)) {
+    const owner = context.owners.get(point.id);
+    if (owner && (point.x - objective.x) ** 2 + (point.y - objective.y) ** 2 <= radius * radius) ships[owner] += 1;
+  }
+  return ships;
+}
+
 /**
  * Shared capture progress/decay. Pass a once-per-tick index in large battlefield worlds.
  * Nodes: more ships capture faster, and in a dispute the larger side still advances (slowly) while the
@@ -148,13 +161,7 @@ export function advanceCapture(world: MechanicsWorld, objective: CaptureObjectiv
   context = captureContext(world)): PlayerId | null {
   if (context.liveGuardians.has(objective.guardianId)) return null;
   const core = objective.id === world.core.id;
-  const radius = objective.radius ?? world.rules.captureRadius;
-  const ships: Record<PlayerId, number> = { p1: 0, p2: 0 };
-  // The area is a disc; the diamond query of twice the radius is only its cheap superset.
-  for (const point of context.index.queryManhattan(objective, radius * 2)) {
-    const owner = context.owners.get(point.id);
-    if (owner && (point.x - objective.x) ** 2 + (point.y - objective.y) ** 2 <= radius * radius) ships[owner] += 1;
-  }
+  const ships = capturePresence(world, objective, context);
   const disputed = ships.p1 > 0 && ships.p2 > 0;
   if (disputed && (core || ships.p1 === ships.p2)) return null;
   const leader: PlayerId = ships.p1 >= ships.p2 ? 'p1' : 'p2';

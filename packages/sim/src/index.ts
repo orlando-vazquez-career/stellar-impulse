@@ -3,6 +3,8 @@ import { planFormation } from './mecanicas/formations.js';
 import { planEnemyTurn, type EnemyScene } from './inteligencia-enemiga/training.js';
 import type { AiMemory, AiOrder, AiUnit } from './inteligencia-enemiga/types.js';
 import { advanceCapture, captureContext, guardianActive, resolveCombat, withinReach } from './maps/mechanics.js';
+export { capturePresence, captureContext } from './maps/mechanics.js';
+export type { CaptureContext } from './maps/mechanics.js';
 import { BATTLEFIELD_MAP } from './maps/battlefield.js';
 import { createBattlefieldWorldInternal } from './maps/world.js';
 import {
