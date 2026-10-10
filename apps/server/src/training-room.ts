@@ -5,7 +5,7 @@ import { savedReward } from './rewards';
 import { setAugmentPool, carryAugments, emptyProgress, profileFor, type MatchReward } from '@impulso/sim';
 import { parseCommand } from '@impulso/input';
 import { createSectorWorld, createMatchWorld, initializeAugments, applyCommand, runTrainingRival, stepWorld, effectiveFleetCap, pickAugment, rerollAugments, chooseAiAugment, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId, type World } from '@impulso/sim';
-import { viewFor, type MatchLobbyView } from '@impulso/state';
+import { viewFor, type MatchLobbyView, type PlayerView } from '@impulso/state';
 
 /** Diego's Espiral Estelar is the training map unless the creator asks for Sector 01. */
 const DEFAULT_MAP: TrainingMapId = 'espiral';
@@ -34,6 +34,8 @@ export class TrainingRoom extends Room {
   private chosenKeys = new Map<string, string>();
   /** Augments the creator won in earlier sectors of a run against the AI. */
   private carried: string[] = [];
+  /** Practice against the AI only: the lone human stopped the clock. Orders wait; the 45-minute close does not. */
+  private paused = false;
 
   private reject(client: Client, reason: string): void {
     const messages: Record<string, string> = {
@@ -44,8 +46,24 @@ export class TrainingRoom extends Room {
       friendly_target: 'No puedo hacer eso.',
       squad_destroyed: 'Esta nave ya no puede actuar.',
       rate_limit: 'No puedo hacer eso tan rápido.',
+      paused: 'Partida en pausa.',
+      pause_unavailable: 'La pausa no está disponible en esta partida.',
     };
     client.send('rejected', { reason, message: messages[reason] ?? 'No puedo hacer eso.' });
+  }
+
+  /** Only a lone human practising against the AI may stop the clock, and only while the match runs. */
+  private pauseAvailable(): boolean {
+    return this.aiRival && !this.lobby && this.usedSeats.size === 1 && this.world.winner === null;
+  }
+  /**
+   * Every training view says whether a pause may be asked for now, and whether the clock is stopped.
+   * The client sends `pause` only on `pausable`: a room without the handler (the campaign) would close its connection.
+   */
+  private sendView(client: Client, player: PlayerId): PlayerView {
+    const view = viewFor(this.world, player);
+    client.send('view', { ...view, reward: this.rewards.get(player), pausable: this.pauseAvailable(), paused: this.paused });
+    return view;
   }
 
   /** The room creator picks the map and the rival's difficulty; anything unexpected falls back to the defaults. */
@@ -71,10 +89,19 @@ export class TrainingRoom extends Room {
       this.deployed=this.usedSeats.size===2 && this.readyPlayers.size===2;
       this.sendLobby();
     });
+    this.onMessage('pause', (client, raw: unknown) => {
+      if (!this.seats.has(client.sessionId)) return;
+      const fields = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+      if (!fields || Object.keys(fields).length !== 1 || typeof fields.paused !== 'boolean') { this.reject(client, 'invalid_command'); return; }
+      if (!this.pauseAvailable()) { this.reject(client, 'pause_unavailable'); return; }
+      this.paused = fields.paused;
+    });
     this.onMessage('command', (client, command: unknown) => {
       const player = this.seats.get(client.sessionId);
       if (!player) return;
       if(this.lobby&&!this.deployed){this.reject(client,'waiting_for_players');return;}
+      // Refused before the rate limit: orders sent into a pause never count against the next ones.
+      if (this.paused) { this.reject(client, 'paused'); return; }
       const bucket = this.rates.get(client.sessionId) ?? { tick: this.world.tick, count: 0 };
       if (this.world.tick - bucket.tick >= 10) { bucket.tick = this.world.tick; bucket.count = 0; }
       bucket.count += 1;
@@ -90,6 +117,7 @@ export class TrainingRoom extends Room {
       const player=this.seats.get(client.sessionId);
       if(!player || !raw || typeof raw!=='object' || Array.isArray(raw)) return;
       if(this.lobby&&!this.deployed){this.reject(client,'waiting_for_players');return;}
+      if(this.paused){this.reject(client,'paused');return;}
       const fields=raw as {choice?:unknown;id?:unknown};
       if(Object.keys(fields).some((key)=>!['choice','id'].includes(key))) {this.reject(client,'invalid_augment_pick');return;}
       const result=message==='augmentPick'?pickAugment(this.world,player,fields.choice,fields.id):rerollAugments(this.world,player,fields.choice);
@@ -97,7 +125,8 @@ export class TrainingRoom extends Room {
     });
     this.setSimulationInterval(() => {
       if(this.lobby&&!this.deployed){this.sendLobby();return;}
-      for (let tick=0;tick<this.timeScale && this.world.winner===null;tick++) {
+      // A pause skips the rival and the simulation; views keep flowing so the client stays in step.
+      for (let tick=0;!this.paused && tick<this.timeScale && this.world.winner===null;tick++) {
       if (!this.usedSeats.has('p2') && this.aiRival) {
         this.world=chooseAiAugment(this.world,'p2',this.difficulty);
         if ((!this.world.augmentMatch || this.world.augmentMatch.started) && this.world.tick%this.world.rules.tickRate===0) {
@@ -118,8 +147,7 @@ export class TrainingRoom extends Room {
       for (const client of this.clients) {
         const player = this.seats.get(client.sessionId);
         if (player) {
-          const view=viewFor(this.world,player);
-          client.send('view', {...view,reward:this.rewards.get(player)});
+          const view=this.sendView(client,player);
           const offer=view.augments?.offer;
           const key=offer?`${offer.choice}:${offer.rerolls}`:'';
           if(key && this.offerKeys.get(client.sessionId)!==key) client.send('augmentOffer',offer);
@@ -149,10 +177,12 @@ export class TrainingRoom extends Room {
       setAugmentPool(this.world,player,this.auth.profile(user.id).unlocked);
     }
     if(player==='p1' && this.carried.length) carryAugments(this.world,'p1',this.carried);
+    // A second human ends the practice pause: nobody may stop the clock on a rival.
+    if(player==='p2') this.paused=false;
     this.usedSeats.add(player);
     this.seats.set(client.sessionId, player);
     this.names.set(player,typeof options?.name==='string'?options.name.trim().slice(0,24):'Comandante');
-    if(!this.lobby)client.send('view', viewFor(this.world, player));
+    if(!this.lobby)this.sendView(client,player);
     this.sendLobby();
     if (this.usedSeats.size === 2) void this.lock();
   }

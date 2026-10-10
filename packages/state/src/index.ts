@@ -95,6 +95,10 @@ export interface PlayerView {
   belts?: BeltGateState[];
   /** Destructible barriers already shot down: their cells are open ground for everyone. Public. */
   fallenBarriers?: string[];
+  /** Training rooms only: whether this player may ask for a pause now (practice against the AI, alone). */
+  pausable?: boolean;
+  /** Training rooms only: the clock is stopped and orders are refused until it runs again. */
+  paused?: boolean;
 }
 /** Row-major cells within reach of any vision source. Each source only scans its own bounding box. */
 function cellsInSight(world: World, sources: readonly { position: Position; radius: number }[]): Position[] {
