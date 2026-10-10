@@ -18,6 +18,15 @@ Los dibuja `herramientas/assets_espacio.py`: `hielo.png`, `estrellas.png`, `nube
 `logo_stellar*.png` sale del logo de Stellar (`herramientas/fuentes/logo_stellar.png`) con
 `herramientas/logo_stellar.py`. El logo es marca de la Stellar Development Foundation.
 
+## Generados con IA (Codex)
+
+`torre_vigilancia.png` (octubre de 2026) se generó con la herramienta de imágenes de Codex, anclada a dos
+referencias de estilo del kit: `base_jugador.png` y una torre de defensa aprobada por el equipo. Se
+recortó y se ajustó al lienzo de 80×128 con el pie en la fila 122 y el centro en la columna 40, y es
+idéntica en `espiral-estelar`, `espiral-estelar_2` y `trascendencia-estelar_2`. Las torretas jugables
+(`apps/web/public/assets/game/structures/turret-*-neutral.png`) salieron del mismo proceso, en vista
+cenital con `command-base-top-neutral.png` como referencia.
+
 ## Heredados del Espiral Estelar
 
 Todo lo demás de `tilesets/`, `assets-externos/` y `assets-juego/` viene del kit de `espiral-estelar_2`.
