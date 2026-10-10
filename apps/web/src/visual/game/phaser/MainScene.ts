@@ -10,13 +10,14 @@ import { SatelliteEffects } from './satellite-effects';
 import { NebulaEffects } from './nebula-effects';
 import { shatterBarrier } from './barrier-effects';
 import { BeltEffects } from './belt-effects';
-import { RobotEffects, ROBOT_LAYER } from './robot-effects';
-import { GAME_ASSET_MANIFEST, SHIP_DISPLAY_SIZE, STRUCTURE_DISPLAY_SIZE, coreFactionForState, shipTextureKey, structureTextureKey } from './game-assets';
+import { GAME_ASSET_MANIFEST, SCENE_DEPTH, SHIP_DISPLAY_SIZE, STRUCTURE_DISPLAY_SIZE, coreFactionForState, platformDepth, shipTextureKey, structureTextureKey } from './game-assets';
+import { drawableMapObjects, drawsNexusDisc, NEXUS_STYLE, objectCell } from '../../map/map-objects';
+import { baseFactions } from '../hud-logic';
 
 /** Tiled stores flip flags in the top bits of every gid. */
 const GID_MASK = 0x1fffffff;
 /** Draw order: terrain layers, then node rings, then ships and map structures sorted by screen y, then overlays. */
-const DEPTH = { sky: 1, layer: 10000, emblems: 89000, nodes: 90000, units: 100000, route: 200000, core: 200001, selection: 300000 } as const;
+const DEPTH = SCENE_DEPTH;
 /** Multiplicative tint for tiles outside vision: dark, but the terrain stays readable. */
 const FOG_TINT = 0x4a5566;
 /** Never seen: much darker, so scouting reveals the map. */
@@ -26,13 +27,15 @@ const UNSEEN = 0, EXPLORED = 1, IN_SIGHT = 2;
 const FOG_TINTS: Record<number, number | null> = { [UNSEEN]: UNEXPLORED_TINT, [EXPLORED]: FOG_TINT, [IN_SIGHT]: null };
 /** Enemy ships fade in and out at the edge of vision instead of popping. */
 const FADE_MS = 220;
-/** Layer written by scripts/obstaculos-tmx.ts so the editor shows the obstacles; never drawn in game. */
-const OBSTACLE_PREVIEW_LAYER = 'obstaculos-vista';
 /** Object layers that are not structures: the far background behind the terrain and the emblems painted on the floor. */
 const SKY_LAYER = 'fondo-espacio';
 const EMBLEM_LAYER = 'logos';
 /** Tile layer with the asteroid art. */
 const DECOR_LAYER = 'decoracion';
+/** The client no longer draws the roaming robots, not even a stray robot tile painted on a terrain layer. */
+const ROBOT_TILESET = 'robotsitoo';
+/** The nexus shield fades to this alpha once the Core opens. Never a tint: the fog tints the map art. */
+const OPEN_SHIELD_ALPHA = 0.35;
 /** Opening zoom over your own fleet. The wheel goes from ZOOM_MIN (wider view of the sector)
  * to ZOOM_MAX (close-up). The whole 96×96 map at once is unreadable and costly to draw. */
 export const ZOOM_DEFAULT = 1.5;
@@ -122,7 +125,9 @@ export class MainScene extends Phaser.Scene {
   private coreSprite?: Phaser.GameObjects.Image;
   private nodeMarks?: Phaser.GameObjects.Graphics;
   private baseMarks?: Phaser.GameObjects.Graphics;
-  private readonly baseSprites = new Map<'blue' | 'red', Phaser.GameObjects.Image>();
+  private readonly baseSprites = new Map<'p1' | 'p2', Phaser.GameObjects.Image>();
+  /** The map's nexus shield (pillar style): it fades once the Core opens. */
+  private shieldArt?: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
   /** Terrain images per cell, so fog can tint the real tile art instead of painting over it. */
   private tileImages: Phaser.GameObjects.Image[][] = [];
   private fogShown: number[] = [];
@@ -149,7 +154,6 @@ export class MainScene extends Phaser.Scene {
   private satellites?: SatelliteEffects;
   private nebulas?: NebulaEffects;
   private belt?: BeltEffects;
-  private robots?: RobotEffects;
   private serverTickAt = 0;
   private readonly unitVisuals = new Map<string, UnitVisual>();
 
@@ -189,7 +193,6 @@ export class MainScene extends Phaser.Scene {
       }
     }
     SatelliteEffects.preload(this);
-    RobotEffects.preload(this);
   }
 
   create() {
@@ -214,7 +217,6 @@ export class MainScene extends Phaser.Scene {
     this.satellites = new SatelliteEffects(this);
     this.nebulas = new NebulaEffects(this, this.snapshot.tickRate ?? 10);
     this.belt = new BeltEffects(this, this.snapshot.tickRate ?? 10);
-    this.robots = new RobotEffects(this);
     this.serverTickAt = this.time.now;
 
     this.drawTerrain();
@@ -240,7 +242,6 @@ export class MainScene extends Phaser.Scene {
       this.satellites?.destroy();
       this.nebulas?.destroy();
       this.belt?.destroy();
-      this.robots?.destroy();
     });
   }
 
@@ -270,7 +271,6 @@ export class MainScene extends Phaser.Scene {
     this.satellites?.update(this.snapshot.tick + ahead, tickRate);
     this.nebulas?.update(this.snapshot.tick + ahead, tickRate);
     this.belt?.update(this.snapshot.tick + ahead, tickRate, (index) => (this.fogShown[index] ?? IN_SIGHT) === IN_SIGHT);
-    this.robots?.update(Math.min(delta, 100));
     const camera = this.cameras.main;
     const pointer = this.input.activePointer;
     const edge = this.pointerOnCanvas && !this.dragOrigin && !this.selectionDrag && pointer.x >= 0 && pointer.y >= 0
@@ -463,6 +463,7 @@ export class MainScene extends Phaser.Scene {
         if (!gid || (layer.name === DECOR_LAYER && this.beltCells.has(y * columns + x))) continue;
         const point = cellToIso(x, y);
         const tileset = tilesetFor(gid);
+        if (tileset?.name === ROBOT_TILESET) continue;
         // Flat ground completely covered by a solid tile of a higher layer is never seen: do not create it.
         if (tileset && isFlat(tileset) && this.terrainLayers.slice(depth + 1)
           .some((above) => this.solidGround.has(above.data[y * columns + x]! & GID_MASK))) continue;
@@ -487,33 +488,26 @@ export class MainScene extends Phaser.Scene {
 
   /** Tile objects (bases, pillars, wrecks…) placed in Tiled object layers, bottom-anchored at their point. */
   private drawMapObjects() {
-    for (const layer of sectorMap.layers) {
-      // Robots are animated by RobotEffects, not drawn as static art.
-      // The obstacle preview is for Tiled: the game draws obstacles from the simulation, below.
-      if (!layer.visible || !layer.objects || layer.name === ROBOT_LAYER || layer.name === OBSTACLE_PREVIEW_LAYER) continue;
-      for (const [order, object] of layer.objects.entries()) {
-        if (!object.gid || object.visible === false) continue;
-        // Dynamic owner-colored bases below replace the oversized legacy Tiled placeholders.
-        if (object.name === 'base_jugador' || object.name === 'base_enemiga') continue;
-        const gid = object.gid & GID_MASK;
-        const tileset = tilesetFor(gid);
-        const key = tileset && textureKey(tileset, gid - tileset.firstgid);
-        if (!key || !this.textures.exists(key)) continue;
-        // Object positions are in tile-height pixels along both isometric axes.
-        const cellX = object.x / TILE_HALF_HEIGHT / 2;
-        const cellY = object.y / TILE_HALF_HEIGHT / 2;
-        const point = cellToIso(cellX, cellY);
-        const animation = tileAnimation(this, tileset, gid - tileset.firstgid);
-        const image = (animation ? this.add.sprite(point.x, point.y - TILE_HALF_HEIGHT, key).play(animation) : this.add.image(point.x, point.y - TILE_HALF_HEIGHT, key))
-          .setDisplaySize(object.width, object.height).setOrigin(0.5, tileset.objectalignment === 'center' ? 0.5 : 1)
-          .setDepth(layer.name === SKY_LAYER ? DEPTH.sky + order / 1000 : layer.name === EMBLEM_LAYER ? DEPTH.emblems + order : DEPTH.units + point.y - TILE_HALF_HEIGHT);
-        // The far background is never under fog: it is not part of the sector.
-        if (layer.name === SKY_LAYER) continue;
-        if (object.name?.startsWith('barrera_')) this.barrierArt.push({ image, x: cellX, y: cellY });
-        const col = Phaser.Math.Clamp(Math.floor(cellX), 0, sectorMap.width - 1);
-        const row = Phaser.Math.Clamp(Math.floor(cellY), 0, sectorMap.height - 1);
-        (this.tileImages[row * sectorMap.width + col] ??= []).push(image);
-      }
+    // Bases, robots, the obstacle preview made for Tiled and (for a disc nexus) the pillar and shield are left out.
+    for (const { layer, object, animate, order, tileset, tile } of drawableMapObjects(sectorMap, sectorSurface, { nexusStyle: NEXUS_STYLE })) {
+      const art = tileset.tiles?.find((candidate) => candidate.id === tile);
+      const frames = art?.animation;
+      const animation = animate ? tileAnimation(this, tileset, tile) : null;
+      // A still object that declares an animation shows its first frame.
+      const key = textureKey(tileset, !animation && frames?.length ? frames[0]!.tileid : tile);
+      if (!key || !this.textures.exists(key)) continue;
+      const cell = objectCell(object);
+      const point = cellToIso(cell.x, cell.y);
+      const image = (animation ? this.add.sprite(point.x, point.y - TILE_HALF_HEIGHT, key).play(animation) : this.add.image(point.x, point.y - TILE_HALF_HEIGHT, key))
+        .setDisplaySize(object.width, object.height).setOrigin(0.5, tileset.objectalignment === 'center' ? 0.5 : 1)
+        .setDepth(layer.name === SKY_LAYER ? DEPTH.sky + order / 1000 : layer.name === EMBLEM_LAYER ? DEPTH.emblems + order : DEPTH.units + point.y - TILE_HALF_HEIGHT);
+      // The far background is never under fog: it is not part of the sector.
+      if (layer.name === SKY_LAYER) continue;
+      if (object.name?.startsWith('barrera_')) this.barrierArt.push({ image, x: cell.x, y: cell.y });
+      if (object.name === 'escudo' || art?.image?.split('/').pop()?.replace(/\.png$/i, '') === 'escudo') this.shieldArt = image;
+      const col = Phaser.Math.Clamp(Math.floor(cell.x), 0, sectorMap.width - 1);
+      const row = Phaser.Math.Clamp(Math.floor(cell.y), 0, sectorMap.height - 1);
+      (this.tileImages[row * sectorMap.width + col] ??= []).push(image);
     }
     // Obstacles the map marks with OBSTACLE_RING points: the simulation already closed their cells.
     for (const obstacle of sectorSurface.obstaculos ?? []) {
@@ -531,15 +525,20 @@ export class MainScene extends Phaser.Scene {
     const center = cellToIso(sectorSurface.core.x, sectorSurface.core.y);
     const hue = coreColor(this.snapshot.core.state);
     const texture = structureTextureKey('nexus-core', coreFactionForState(this.snapshot.core.state));
-    const groundY = center.y + TILE_HALF_HEIGHT;
-    if (this.textures.exists(texture)) {
+    if (!drawsNexusDisc(NEXUS_STYLE)) {
+      // The map's pillar and shield are the nexus; an open Core lowers the shield.
+      this.coreSprite?.destroy();
+      this.coreSprite = undefined;
+      this.shieldArt?.setAlpha(this.snapshot.core.state === 'locked' ? 1 : OPEN_SHIELD_ALPHA);
+    } else if (this.textures.exists(texture)) {
+      // A flat disc: drawn as a platform, under every ship.
       if (!this.coreSprite) {
         this.coreSprite = this.add.image(center.x, center.y, texture)
           .setOrigin(0.5, 0.5)
           .setDisplaySize(STRUCTURE_DISPLAY_SIZE.nexusCore, STRUCTURE_DISPLAY_SIZE.nexusCore)
-          .setDepth(DEPTH.units + groundY);
+          .setDepth(platformDepth());
       } else {
-        this.coreSprite.setTexture(texture).setPosition(center.x, center.y).setDepth(DEPTH.units + groundY);
+        this.coreSprite.setTexture(texture).setPosition(center.x, center.y).setDepth(platformDepth());
       }
     }
     graphics.clear();
@@ -665,26 +664,25 @@ export class MainScene extends Phaser.Scene {
 
   /** Render the authoritative base positions and retain the map's fog-of-war treatment. */
   private syncBaseSprites() {
-    const entries = [
-      { faction: 'blue' as const, at: sectorSurface.bases.p1 },
-      { faction: 'red' as const, at: sectorSurface.bases.p2 },
-    ];
-    for (const { faction, at } of entries) {
-      let sprite = this.baseSprites.get(faction);
+    // The player's own base is blue wherever it sits (bases.p1 or bases.p2); the rival's is red.
+    const factions = baseFactions(this.snapshot.base?.position, sectorSurface.bases);
+    for (const slot of ['p1', 'p2'] as const) {
+      const at = sectorSurface.bases[slot];
+      let sprite = this.baseSprites.get(slot);
       if (!at) {
         sprite?.setVisible(false);
         continue;
       }
       const center = cellToIso(at.x, at.y);
-      const groundY = center.y + TILE_HALF_HEIGHT;
-      const texture = structureTextureKey('command-base', faction);
+      const texture = structureTextureKey('command-base', factions[slot]);
       if (!sprite) {
         sprite = this.add.image(center.x, center.y, texture)
           .setOrigin(0.5, 0.5)
           .setDisplaySize(STRUCTURE_DISPLAY_SIZE.commandBase, STRUCTURE_DISPLAY_SIZE.commandBase);
-        this.baseSprites.set(faction, sprite);
+        this.baseSprites.set(slot, sprite);
       }
-      sprite.setTexture(texture).setPosition(center.x, center.y).setDepth(DEPTH.units + groundY).setVisible(true);
+      // A flat platform: ships flying over it are never hidden by it.
+      sprite.setTexture(texture).setPosition(center.x, center.y).setDepth(platformDepth()).setVisible(true);
       const index = Math.floor(at.y) * sectorMap.width + Math.floor(at.x);
       const inSight = !this.snapshot.visibleCells || this.snapshot.visibleCells[index] === true;
       const explored = !this.snapshot.exploredCells || this.snapshot.exploredCells[index] === true;
@@ -768,7 +766,6 @@ export class MainScene extends Phaser.Scene {
     this.drawRoute();
     this.drawAttackRanges();
     this.satellites?.sync(this.snapshot.satellites ?? [], this.snapshot.tick);
-    this.robots?.sync(this.snapshot);
     const visible = new Set(this.snapshot.squads.filter((squad) => squad.visible).map((squad) => squad.id));
     for (const [id, visual] of this.unitVisuals) {
       if (visible.has(id)) continue;
