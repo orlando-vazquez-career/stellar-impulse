@@ -1,8 +1,6 @@
-<p align="center">
-  <img src="docs/media/stellar-impulse-banner.svg" alt="Stellar Impulse: estrategia en tiempo real, identidad propia y propiedad digital en Stellar" width="100%">
-</p>
+![Imagen](./docs/media/banner-test-readme-v1.png)
 
-# Stellar Impulse
+# Impulso Stellar
 
 **Un RTS roguelite espacial para navegador que convierte la diversión en una puerta de entrada a Stellar.**
 
@@ -488,7 +486,7 @@ En Windows, contratos usan **WSL2**; Linux/macOS usan toolchain nativo. Versione
 
 La blockchain verifica propiedad, permisos y operaciones económicas; **los resultados dependen del servidor autoritativo**. No declaramos combate completamente descentralizado ni prueba criptográfica de cada resultado.
 
-Controles presentes: hashes de contraseña con salt, límite de verificaciones de acceso, validación de origen/mensajes, secuencias, vistas privadas, expiración de desafíos, roles e idempotencia. Antes de producción: revisión independiente, abuso/carga, secretos, metadatos, TTL y recuperación. Reportes privados según [SECURITY.md](SECURITY.md); sus referencias al bootstrap son históricas.
+Controles presentes: hashes de contraseña con salt, límite de verificaciones de acceso, validación de origen/mensajes, secuencias, vistas privadas, expiración de desafíos, roles e idempotencia. Antes de producción: revisión independiente, abuso/carga, secretos, metadatos, TTL y recuperación. Reportes privados según [SECURITY.md](SECURITY.md); el [modelo de amenazas y políticas](docs/security/SECURITY.md) detalla controles y pendientes al 10 de octubre de 2026.
 
 ## 13. Equipo, documentación y contribuciones
 
@@ -505,6 +503,12 @@ Controles presentes: hashes de contraseña con salt, límite de verificaciones d
 | Recurso | Contenido |
 |---|---|
 | [Índice](docs/README.md) | Navegación de documentos |
+| [Informe ejecutivo](docs/INFORME_EJECUTIVO.md) | Síntesis de producto, negocio, evidencia y riesgos |
+| [Modelo de negocio](docs/business/BUSINESS_MODEL.md) / [plan de negocio](docs/business/BUSINESS_PLAN.md) | Valor, monetización, operación y presupuesto |
+| [Go-to-market](docs/business/GO_TO_MARKET.md) / [roadmap](docs/business/ROADMAP.md) | Adquisición, KPIs y hitos Q1–Q3 2027 |
+| [Finanzas](docs/business/TOKENOMICS_FINANCE.md) / [informe de activos](docs/business/ASSET_REPORT.md) | Escenarios económicos, catálogo, procedencia y derechos |
+| [Seguridad](docs/security/SECURITY.md) / [preparación de cumplimiento](docs/security/COMPLIANCE.md) | Amenazas, políticas, auditoría y requisitos de comercialización |
+| [Arquitectura actual](docs/architecture/ARCHITECTURE.md) / [contratos y flujos](docs/architecture/CONTRACTS_AND_DATA_FLOW.md) | Implementación y límites de la entrega |
 | [Arquitectura](docs/architecture.md) / [protocolo](docs/protocol.md) | Capas, mensajes y autoridad |
 | [Mercado](docs/blockchain-marketplace.md) | Integración y recorrido Freighter |
 | [Registro Testnet](contracts/deployments/testnet.json) | Direcciones, transacciones, hashes y smoke |
