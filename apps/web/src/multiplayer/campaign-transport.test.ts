@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CampaignPhaseView } from '@impulso/state';
 import type { TransportEvents } from '../visual/game/server-adapter';
 import { campaignTransport } from './campaign-transport';
@@ -61,6 +61,55 @@ describe('campaign transport', () => {
     fake.set({ phase: phase(), error: 'Demasiadas órdenes seguidas.' });
     const notices = events.log.filter(([kind]) => kind === 'notice').map(([, text]) => text);
     expect(notices).toEqual([null, 'Partida pausada: esperando la reconexión de Beto.', 'La partida continúa en 3 s…', 'Demasiadas órdenes seguidas.']);
+  });
+
+  describe('in English', () => {
+    beforeEach(() => {
+      const saved = new Map([['impulso.locale', 'en']]);
+      vi.stubGlobal('localStorage', { getItem: (key: string) => saved.get(key) ?? null, setItem: () => {}, removeItem: () => {} });
+    });
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it('explains pauses, the countdown to resume and errors from the room', () => {
+      const fake = fakeSession();
+      const events = recorder();
+      campaignTransport(fake.session).open(events);
+      fake.set({ phase: phase({ pause: { by: 'p2', remainingMs: 40_000 } }) });
+      fake.set({ phase: phase({ resumeInMs: 2_100 }) });
+      fake.set({ phase: phase(), error: 'Demasiadas órdenes seguidas.', errorReason: 'rate_limit' });
+      const notices = events.log.filter(([kind]) => kind === 'notice').map(([, text]) => text);
+      expect(notices).toEqual([null, 'Match paused: waiting for Beto to reconnect.', 'The match resumes in 3 s…', 'Too many orders in a row.']);
+    });
+
+    it('says the connection, the campaign phases and how the campaign ended', () => {
+      const fake = fakeSession({ connection: 'reconnecting' });
+      const events = recorder();
+      campaignTransport(fake.session).open(events);
+      fake.set({ connection: 'online', phase: phase({ phase: 'countdown', remainingMs: 4_200, pause: { by: 'p1', remainingMs: 1 } }) });
+      fake.set({ phase: phase({ phase: 'countdown', remainingMs: 4_200 }) });
+      fake.set({ phase: phase({ phase: 'transition', sector: 2 }) });
+      fake.set({ phase: phase({ phase: 'results', result: { winner: null, reason: 'draw' } }) });
+      fake.set({ connection: 'offline' });
+      const notices = events.log.filter(([kind]) => kind === 'notice').map(([, text]) => text);
+      expect(notices).toEqual(['Reconnecting to the room…', 'Match paused: waiting for Ana to reconnect.', 'The match starts in 5 s…',
+        'Sector 2 cleared. Preparing the next sector…', 'The campaign ended in a draw.', 'The connection to the room was lost.']);
+    });
+  });
+
+  it('translates a room error by its reason and keeps an unknown one as the room wrote it', () => {
+    const fake = fakeSession();
+    const events = recorder();
+    campaignTransport(fake.session).open(events);
+    fake.set({ error: 'La sala está completa.', errorReason: 'full' });
+    fake.set({ error: 'Texto que el cliente no conoce.', errorReason: 'something_new' });
+    fake.set({ error: 'Sin motivo.', errorReason: undefined });
+    vi.stubGlobal('localStorage', { getItem: () => 'en' });
+    try {
+      fake.set({ error: 'La sala está completa.', errorReason: 'full' });
+      fake.set({ error: 'Texto que el cliente no conoce.', errorReason: 'something_new' });
+    } finally { vi.unstubAllGlobals(); }
+    const notices = events.log.filter(([kind]) => kind === 'notice').map(([, text]) => text);
+    expect(notices).toEqual([null, 'La sala está completa.', 'Texto que el cliente no conoce.', 'Sin motivo.', 'The room is full.', 'Texto que el cliente no conoce.']);
   });
 
   it('reports the campaign outcome, not a sector winner, with the reward', () => {
