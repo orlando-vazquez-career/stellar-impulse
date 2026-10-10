@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useReducer, useState, type CSSProperties } from 'react';
 import { MAX_PRODUCTION_QUEUE, SHIP_COUNTERS, UNIT_COSTS, EXTRA_MODULES, FORMATIONS, formationShape, type FormationKind, type ModuleKind } from '@impulso/sim';
 import { useI18n } from '../i18n';
 import { LanguageToggle } from '../shared/LanguageToggle';
@@ -11,9 +11,9 @@ import { activeMapId, sectorMap, sectorSurface } from '../map/sector-map';
 import { cellToIso, isoToPoint, ISO_ORIGIN_X, ISO_ORIGIN_Y, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, projectedWorldBounds, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, VIEW_YAW_RADIANS } from './phaser/isometric';
 import { PRODUCTION_ORDER } from './control-shortcuts';
 import { formatKeyBinding } from '../settings/control-bindings';
-import { baseFactions, coreHud, hangarSlots, productionBlock, type ProductionBlock } from './hud-logic';
+import { baseFactions, coreHud, productionBlock, type ProductionBlock } from './hud-logic';
 import { coreHint, gameText, noticeText, type GameTextKey } from './game-copy';
-import { shipIconSrc } from './phaser/game-assets';
+import { CANCEL_HOLD_MS, createHangarCancel, hangarQueueView } from './hangar-queue';
 import './battle-hud.css';
 
 function formatTime(seconds: number) {
@@ -312,34 +312,34 @@ const BLOCK_TEXT: Record<ProductionBlock, GameTextKey> = {
   queue_full: 'blockQueueFull', fleet_full: 'blockFleetFull', metal: 'blockMetal', forbidden: 'blockForbidden', finished: 'blockFinished',
 };
 
-/** How far the ship in production has come, 0 to 1. */
-function buildProgress(production: GameplayViewModel['production']): number {
-  if (!production) return 0;
-  if (production.progress !== undefined) return Math.min(1, Math.max(0, production.progress));
-  return production.totalSeconds ? Math.min(1, Math.max(0, 1 - production.remainingSeconds / production.totalSeconds)) : 0;
-}
-
 /**
  * The hangar's orders, slot by slot: the ship in production first, with its progress and seconds left, then the paid
- * orders behind it. A click cancels an order and gives back what it paid. Never a `.vi-production__unit`: those are
- * the build buttons.
+ * orders behind it. A click cancels an order and gives back what it paid; until the server's view shows the queue
+ * changed (or refused it) the queue takes no other cancel, so a double click never cancels the order that moved up.
+ * Never a `.vi-production__unit`: those are the build buttons.
  */
 function HangarQueue({ view, adapter, unitNames }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; unitNames: Record<SquadType, string> }) {
   const { locale } = useI18n();
-  const slots = hangarSlots(view.production, view.productionQueue);
-  return <ol className="vi-hangar-queue" aria-label={gameText(locale, 'hangarQueue')}>
+  const [, refresh] = useReducer((count: number) => count + 1, 0);
+  const cancels = useMemo(() => createHangarCancel((intent) => adapter.dispatch(intent)), [adapter]);
+  const locked = cancels.locked(view.production, view.productionQueue);
+  // A cancel the server refused never changes the queue: take cancels again once the hold runs out.
+  useEffect(() => {
+    if (!locked) return;
+    const timer = setTimeout(refresh, CANCEL_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [locked]);
+  const slots = hangarQueueView(view.production, view.productionQueue, locale, unitNames);
+  return <ol className="vi-hangar-queue" aria-label={gameText(locale, 'hangarQueue')} aria-busy={locked || undefined}>
     {Array.from({ length: MAX_PRODUCTION_QUEUE }, (_, index) => {
       const slot = slots[index];
       if (!slot) return <li key={`empty-${index}`} className="vi-hangar-queue__empty" aria-hidden="true" />;
-      const label = gameText(locale, 'cancelOrder', { ship: unitNames[slot.kind], refund: slot.refund });
-      const active = slot.slot === 0;
-      const progress = active ? slot.progress ?? buildProgress(view.production) : 0;
-      return <li key={`${slot.slot}-${slot.kind}`}>
-        <button className={`vi-hangar-slot${active ? ' is-active' : ''}`} aria-label={label} title={label} disabled={!!view.result}
-          style={active ? { '--vi-slot-progress': `${Math.round(progress * 360)}deg` } as CSSProperties : undefined}
-          onClick={() => adapter.dispatch({ type: 'cancel-production', slot: slot.slot, kind: slot.kind })}>
-          <img src={shipIconSrc(slot.kind)} alt="" draggable={false} />
-          {active && slot.secondsLeft !== undefined && <span className="vi-hangar-slot__time">{Math.ceil(slot.secondsLeft)} s</span>}
+      return <li key={slot.key}>
+        <button className={`vi-hangar-slot${slot.active ? ' is-active' : ''}`} aria-label={slot.label} title={slot.label} disabled={!!view.result || locked}
+          style={slot.progressDegrees !== null ? { '--vi-slot-progress': `${slot.progressDegrees}deg` } as CSSProperties : undefined}
+          onClick={() => { if (cancels.cancel(view.production, view.productionQueue, slot.cancel)) refresh(); }}>
+          <img src={slot.icon} alt="" draggable={false} />
+          {slot.secondsLeft !== null && <span className="vi-hangar-slot__time">{slot.secondsLeft} s</span>}
         </button>
       </li>;
     })}
