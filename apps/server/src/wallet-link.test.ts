@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Keypair } from '@stellar/stellar-sdk';
 import { keypairSigner, signWalletChallenge, type WalletChallenge } from '@impulso/chain';
-import { connectChainRewards, createGameServer } from './app.js';
+import { createGameServer } from './app.js';
 import { AuthService } from './auth.js';
 import { ChainRewards, type RewardChain } from './chain-rewards.js';
 
@@ -177,16 +177,25 @@ describe('merit backfill', () => {
   it('runs when the server starts with a minter key, and not without one', async () => {
     const off = await earnedWhileOff();
     const skipped = vi.spyOn(off.auth, 'backfillMerits');
-    connectChainRewards(off.auth, new ChainRewards(null));
+    createGameServer({ auth: off.auth, chainRewards: new ChainRewards(null) });
     expect(skipped).not.toHaveBeenCalled();
 
+    // Built, never listening: the backfill starts with the server, not with its first request.
     const on = await earnedWhileOff();
     const { chain, grants } = fakeChain();
     const started = vi.spyOn(on.auth, 'backfillMerits');
-    connectChainRewards(on.auth, new ChainRewards(chain));
+    createGameServer({ auth: on.auth, chainRewards: new ChainRewards(chain) });
     expect(started).toHaveBeenCalledTimes(1);
     await started.mock.results[0]!.value;
-    expect(grants).toHaveLength(2);
+    expect(grants).toEqual([{ to: on.wallet.publicKey(), classId: 3 }, { to: on.wallet.publicKey(), classId: 4 }]);
+  });
+
+  it('hands the minter to the accounts when the server starts, even without a key', async () => {
+    const { auth } = await earnedWhileOff();
+    const handed = vi.spyOn(auth, 'useChainRewards');
+    const rewards = new ChainRewards(null);
+    createGameServer({ auth, chainRewards: rewards });
+    expect(handed).toHaveBeenCalledWith(rewards);
   });
 });
 
