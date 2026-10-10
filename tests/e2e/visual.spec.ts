@@ -150,6 +150,37 @@ test.describe('visual interface foundation', () => {
     expect(stored.accessibility.highContrast).toBe(true);
   });
 
+  test('mutes only the music from the command center and keeps it muted', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    const storedAudio = () => page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences') ?? '{}').audio);
+
+    await page.getByRole('button', { name: 'Silenciar música', exact: true }).click();
+    const unmute = page.getByRole('button', { name: 'Activar música', exact: true });
+    await expect(unmute).toBeVisible();
+    await expect(unmute).toContainText('MÚSICA');
+    const audio = await storedAudio();
+    expect(audio.musicMuted).toBe(true);
+    expect([audio.effects, audio.voice, audio.interface]).toEqual([85, 90, 60]);
+
+    // The settings panel shows the same saved mute, and closing it does not undo it.
+    await page.getByRole('button', { name: /Ajustes/ }).click();
+    await expect(page.locator('.vi-settings-panel').getByLabel('Silenciar música')).toBeChecked();
+    await expect(unmute).toBeDisabled();
+    await page.getByRole('button', { name: /Ajustes/ }).click();
+    await expect(page.locator('.vi-settings-panel')).toHaveCount(0);
+    await expect(unmute).toBeEnabled();
+    expect((await storedAudio()).musicMuted).toBe(true);
+
+    await page.reload();
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await expect(page.getByRole('button', { name: 'Activar música', exact: true })).toBeVisible();
+    expect((await storedAudio()).musicMuted).toBe(true);
+  });
+
   test('login music controls change and persist music only', async ({ page }) => {
     await openApp(page, '/visual?adapter=mock');
     await page.getByRole('button', { name: 'Opciones de música' }).click();

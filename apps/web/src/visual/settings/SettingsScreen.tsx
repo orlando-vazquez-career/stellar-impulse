@@ -53,6 +53,10 @@ export function SettingsPanel({
   const savedRef = useRef(preferences);
   useEffect(() => { savedRef.current = preferences; }, [preferences]);
   const dirty = hasUnsavedChanges(preferences, draft);
+  const previewAudio = useRef(onPreviewAudio);
+  previewAudio.current = onPreviewAudio;
+  // However the panel goes away, the live mix returns to what is saved.
+  useEffect(() => () => previewAudio.current?.(savedRef.current.audio), []);
   const [recording, setRecording] = useState<{ action: ControlAction; replacing: string | null } | null>(null);
   const [bindingError, setBindingError] = useState<{ action: ControlAction; message: string } | null>(null);
 

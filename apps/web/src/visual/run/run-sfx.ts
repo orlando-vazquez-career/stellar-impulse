@@ -1,19 +1,22 @@
+import { AudioChannelBus, channelVolume, getAudioMix } from '../audio-mix';
+
 export type RunSound = 'blip' | 'win' | 'defeat' | 'whoosh' | 'impact';
 
 interface Tone { from: number; to: number; duration: number; type?: OscillatorType; volume?: number; delay?: number }
 interface Sweep { from: number; to: number; duration: number; volume: number; delay?: number }
 
-/** Synthesized effects for the run's screens: nothing to load, and silent when the volume is zero. */
+/**
+ * Synthesized effects for the run's screens: nothing to load. They play on the effects channel, so
+ * they follow that slider and the mutes live, and nothing starts while that channel is silent.
+ */
 export class RunSfx {
   private context: AudioContext | null = null;
+  private bus: AudioChannelBus | null = null;
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
 
-  /** `volume` goes from 0 to 1. */
-  constructor(private readonly volume: number) {}
-
   play(name: RunSound): void {
-    if (this.volume <= 0 || !this.ready()) return;
+    if (channelVolume(getAudioMix(), 'effects') <= 0 || !this.ready()) return;
     switch (name) {
       case 'blip': this.tone({ from: 880, to: 660, duration: 0.07 }); break;
       case 'win':
@@ -33,6 +36,8 @@ export class RunSfx {
   }
 
   dispose(): void {
+    this.bus?.dispose();
+    this.bus = null;
     if (this.context) void this.context.close();
     this.context = null;
     this.master = null;
@@ -46,9 +51,10 @@ export class RunSfx {
         const AudioContextClass = window.AudioContext || legacy.webkitAudioContext;
         if (!AudioContextClass) return false;
         this.context = new AudioContextClass();
+        this.bus = new AudioChannelBus(this.context);
         this.master = this.context.createGain();
-        this.master.gain.value = 0.45 * this.volume;
-        this.master.connect(this.context.destination);
+        this.master.gain.value = 0.45;
+        this.master.connect(this.bus.channel('effects'));
         this.noise = this.context.createBuffer(1, this.context.sampleRate, this.context.sampleRate);
         const samples = this.noise.getChannelData(0);
         for (let index = 0; index < samples.length; index += 1) samples[index] = Math.random() * 2 - 1;

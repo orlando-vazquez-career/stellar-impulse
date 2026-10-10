@@ -1,3 +1,4 @@
+import { AudioChannelBus } from '../audio-mix';
 import { ANOMALY_WORDS } from './anomaly-words';
 
 export interface AnomalyScene {
@@ -122,6 +123,8 @@ export function createAnomalyScene(back: HTMLCanvasElement, front: HTMLCanvasEle
   const dustBuckets: Dust[][] = DUST_STYLES.map(() => []);
   const dustWaiting: Dust[] = [];
   let audio: AudioContext | null = null;
+  /** The static plays on the menu-sounds channel, so it follows that slider and the mutes. */
+  let bus: AudioChannelBus | null = null;
 
   function newStar(anywhere: boolean): Star {
     const r = anywhere ? 1.6 + random() * 13 : 11 + random() * 4;
@@ -673,8 +676,10 @@ export function createAnomalyScene(back: HTMLCanvasElement, front: HTMLCanvasEle
       const AudioContextClass = window.AudioContext || legacy.webkitAudioContext;
       if (!AudioContextClass) return;
       audio ??= new AudioContextClass();
+      bus ??= new AudioChannelBus(audio);
       if (audio.state === 'suspended') void audio.resume();
       if (audio.state !== 'running') return;
+      const output = bus.channel('interface');
       const now = audio.currentTime;
       const length = Math.min(0.6, seconds);
       const buffer = audio.createBuffer(1, Math.ceil(audio.sampleRate * length), audio.sampleRate);
@@ -693,7 +698,7 @@ export function createAnomalyScene(back: HTMLCanvasElement, front: HTMLCanvasEle
       // Stuttering envelope: the static cuts in and out like a bad link.
       for (let cut = 0; cut < length; cut += 0.045) gain.gain.setValueAtTime(Math.random() < 0.3 ? loud * 0.1 : loud * (0.5 + Math.random() * 0.5), now + cut);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + length);
-      noise.connect(filter).connect(gain).connect(audio.destination);
+      noise.connect(filter).connect(gain).connect(output);
       noise.start(now);
       noise.stop(now + length + 0.02);
       const thump = audio.createOscillator();
@@ -704,7 +709,7 @@ export function createAnomalyScene(back: HTMLCanvasElement, front: HTMLCanvasEle
       thumpGain.gain.setValueAtTime(0.0001, now);
       thumpGain.gain.exponentialRampToValueAtTime(0.11 * strength, now + 0.02);
       thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
-      thump.connect(thumpGain).connect(audio.destination);
+      thump.connect(thumpGain).connect(output);
       thump.start(now);
       thump.stop(now + 0.36);
     } catch {
@@ -789,6 +794,8 @@ export function createAnomalyScene(back: HTMLCanvasElement, front: HTMLCanvasEle
       frontClear = true;
       if (warping) options.onWarp?.(0, 0);
       warping = false;
+      bus?.dispose();
+      bus = null;
       if (audio) { void audio.close(); audio = null; }
     },
     resize() {

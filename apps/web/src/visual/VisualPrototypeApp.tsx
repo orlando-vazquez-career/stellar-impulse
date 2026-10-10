@@ -160,7 +160,7 @@ function VisualPrototypeContent() {
     preferences.accessibility.largeText && 'is-large-text',
   ].filter(Boolean).join(' ');
 
-  const updateLoginMusic = (change: Partial<Pick<typeof preferences.audio, 'music' | 'musicMuted'>>) => {
+  const updateMusic = (change: Partial<Pick<typeof preferences.audio, 'music' | 'musicMuted'>>) => {
     savePreferences({ ...preferences, audio: { ...preferences.audio, ...change } });
   };
 
@@ -170,8 +170,8 @@ function VisualPrototypeContent() {
       sessionNotice={sessionNotice ? t(sessionNotice) : ''}
       musicVolume={preferences.audio.music}
       musicMuted={preferences.audio.musicMuted}
-      onMusicVolumeChange={(music) => updateLoginMusic({ music })}
-      onMusicMuteChange={(musicMuted) => updateLoginMusic({ musicMuted })}
+      onMusicVolumeChange={(music) => updateMusic({ music })}
+      onMusicMuteChange={(musicMuted) => updateMusic({ musicMuted })}
       onSignedIn={(user, value) => { setAccount(user); setAlias(value); setSessionNotice(''); setScreen(pendingMultiplayer ? 'multiplayer' : 'command'); setPendingMultiplayer(null); }}
       onContinue={(value) => {
         setAlias(value);
@@ -199,7 +199,7 @@ function VisualPrototypeContent() {
     {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
     {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} account={account} onAccountChange={setAccount} />}
     {screen === 'settings' && <SettingsScreen preferences={preferences} onPreviewAudio={setAudioMix}
-      onBack={() => { setAudioMix(preferences.audio); setScreen('command'); }}
+      onBack={() => setScreen('command')}
       onSave={savePreferences} />}
     {screen === 'gameplay' && runMode && !multiplayerMatch && <RunScreen preferences={preferences} onAudioChange={changeAudio} difficulty={difficulty} duration={duration} onLeave={() => setScreen('command')} />}
     {screen === 'gameplay' && !(runMode && !multiplayerMatch) && <GameplayScreen preferences={preferences} onAudioChange={changeAudio} difficulty={difficulty} map={map} duration={duration} multiplayerSession={multiplayerMatch ? multiplayer ?? undefined : undefined} onLeave={() => multiplayerMatch ? void leaveMultiplayer() : setScreen('command')} />}

@@ -193,17 +193,17 @@
   user-select: none;
 }
 
-.vi-audio-toggle:hover {
+.vi-audio-toggle:hover:not(:disabled) {
   border-color: rgba(113, 229, 220, 0.9);
   background: rgba(16, 36, 56, 0.9);
   color: #ffffff;
   box-shadow: 0 0 14px rgba(113, 229, 220, 0.3);
 }
 
-.vi-audio-toggle.is-waiting {
-  border-color: rgba(255, 184, 77, 0.6);
-  color: #ffd080;
-  animation: vi-audio-pulse 2s infinite ease-in-out;
+.vi-audio-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .vi-audio-toggle.is-muted {
@@ -220,17 +220,6 @@
 
 .vi-audio-toggle__label {
   white-space: nowrap;
-}
-
-@keyframes vi-audio-pulse {
-  0%, 100% {
-    box-shadow: 0 0 4px rgba(255, 184, 77, 0.2);
-    border-color: rgba(255, 184, 77, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 14px rgba(255, 184, 77, 0.6);
-    border-color: rgba(255, 184, 77, 0.9);
-  }
 }
 
 /* ---------- Centro de Mando (Estilo Cyberpunk Espacial) ---------- */

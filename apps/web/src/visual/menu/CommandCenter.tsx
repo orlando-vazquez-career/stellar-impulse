@@ -155,21 +155,12 @@ export function CommandCenter({
   }
 
   function toggleSettings() {
-    guard(() => setUnfoldedPanel((current) => {
-      if (current === 'settings') {
-        setAudioMix(effectivePreferences.audio);
-        return null;
-      }
-      return 'settings';
-    }));
+    guard(() => setUnfoldedPanel((current) => (current === 'settings' ? null : 'settings')));
   }
 
   function handleBack() {
     sound.playSelect();
     if (unfoldedPanel) {
-      if (unfoldedPanel === 'settings') {
-        setAudioMix(effectivePreferences.audio);
-      }
       setUnfoldedPanel(null);
     } else if (onBack) {
       onBack();
@@ -196,7 +187,11 @@ export function CommandCenter({
         </div>
 
         <div className="vi-header-actions vi-command__header-actions">
-          <AudioToggle />
+          <AudioToggle
+            audio={effectivePreferences.audio}
+            onChange={(audio) => handleSavePreferences({ ...effectivePreferences, audio })}
+            disabled={unfoldedPanel === 'settings'}
+          />
           <LanguageToggle />
           {onProfile && <button className="vi-text-button" onClick={() => guard(onProfile)}>{t('profile')}</button>}
           <button className="vi-text-button" onClick={() => guard(onSignOut)}>{t(accountEmail ? 'accountLogout' : 'signOut')}</button>
@@ -254,10 +249,7 @@ export function CommandCenter({
                 preferences={effectivePreferences}
                 onSave={handleSavePreferences}
                 onPreviewAudio={setAudioMix}
-                onBack={() => guard(() => {
-                  setAudioMix(effectivePreferences.audio);
-                  setUnfoldedPanel(null);
-                })}
+                onBack={() => guard(() => setUnfoldedPanel(null))}
                 isEmbedded
               />
             )}
