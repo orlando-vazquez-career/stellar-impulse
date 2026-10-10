@@ -110,6 +110,65 @@ describe('OBSTACLE_RING art', () => {
     expect(Math.abs(drawn.y - (legacy.y - TILE_HALF_HEIGHT))).toBeLessThan(4);
   });
 
+  /** Every obstacle of the map with the cells the simulation closed for it, and where those cells centre. */
+  const obstaclesOf = (map: TrainingMapId) => {
+    selectMap(map);
+    return (sectorSurface.obstaculos ?? []).map((obstacle) => ({
+      obstacle,
+      centroid: {
+        x: obstacle.cells.reduce((sum, cell) => sum + cell.x, 0) / obstacle.cells.length,
+        y: obstacle.cells.reduce((sum, cell) => sum + cell.y, 0) / obstacle.cells.length,
+      },
+    }));
+  };
+  const OBSTACLE_MAPS = ['espiral', 'espiral-2', 'trascendencia'] as TrainingMapId[];
+  const onClosedCell = (point: { x: number; y: number }, cells: readonly { x: number; y: number }[]) =>
+    cells.some((cell) => cell.x === Math.round(point.x) && cell.y === Math.round(point.y));
+  const screenDistance = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+    const from = cellToIso(a.x, a.y), to = cellToIso(b.x, b.y);
+    return Math.hypot(from.x - to.x, from.y - to.y);
+  };
+
+  it('stands the art on a cell the obstacle closes, on every map', () => {
+    let legacyMisses = 0;
+    for (const map of OBSTACLE_MAPS) {
+      const obstacles = obstaclesOf(map);
+      expect(obstacles.length, map).toBeGreaterThan(0);
+      for (const { obstacle } of obstacles) {
+        expect(onClosedCell(obstacleAnchor(obstacle), obstacle.cells), `${map} #${obstacle.id}`).toBe(true);
+        if (!onClosedCell(obstacle, obstacle.cells)) legacyMisses += 1;
+      }
+    }
+    // Reading the Tiled point as a scene cell put the art on open floor next to the obstacle.
+    expect(legacyMisses).toBeGreaterThan(0);
+  });
+
+  it('draws the art within half a cell of the centre of the cells the obstacle closes', () => {
+    // Half a cell on both axes, projected: the farthest the art may sit from the closed cells' centre.
+    const halfCell = Math.max(screenDistance({ x: 0.5, y: 0.5 }, { x: 0, y: 0 }), screenDistance({ x: 0.5, y: -0.5 }, { x: 0, y: 0 }));
+    let anchorTotal = 0, legacyTotal = 0, count = 0;
+    for (const map of OBSTACLE_MAPS) {
+      for (const { obstacle, centroid } of obstaclesOf(map)) {
+        const anchor = obstacleAnchor(obstacle);
+        expect(Math.abs(anchor.x - centroid.x), `${map} #${obstacle.id}`).toBeLessThanOrEqual(0.5 + 1e-9);
+        expect(Math.abs(anchor.y - centroid.y), `${map} #${obstacle.id}`).toBeLessThanOrEqual(0.5 + 1e-9);
+        expect(screenDistance(anchor, centroid), `${map} #${obstacle.id}`).toBeLessThanOrEqual(halfCell + 1e-9);
+        anchorTotal += screenDistance(anchor, centroid);
+        legacyTotal += screenDistance(obstacle, centroid);
+        count += 1;
+      }
+    }
+    // On average the art now sits a third as far from its cells as the corner reading put it.
+    expect(anchorTotal / count).toBeLessThan(legacyTotal / count / 2);
+  });
+
+  it('centres the art exactly on a whole ring of cells: a point on a cell centre closes a symmetric ring', () => {
+    for (const { obstacle, centroid } of obstaclesOf('trascendencia')) {
+      expect(screenDistance(obstacleAnchor(obstacle), centroid), `#${obstacle.id}`).toBeLessThan(1e-6);
+      expect(screenDistance(obstacle, centroid), `#${obstacle.id}`).toBeGreaterThan(TILE_HALF_HEIGHT);
+    }
+  });
+
   it('keeps the art proportions and never draws it wider than the ground the obstacle closes', () => {
     for (const radius of Object.values(OBSTACLE_MODELS)) {
       const widest = captureEllipse(radius).width;
