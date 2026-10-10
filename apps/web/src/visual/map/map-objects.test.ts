@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { drawableMapObjects, NEXUS_STYLE, objectCell, type DrawableMapObject } from './map-objects';
+import { drawableMapObjects, drawsNexusDisc, NEXUS_STYLE, objectCell, type DrawableMapObject, type NexusStyle } from './map-objects';
 import { selectMap, sectorMap, sectorSurface, type TrainingMapId } from './sector-map';
 
 const imageStem = (entry: DrawableMapObject) =>
@@ -18,6 +18,13 @@ describe('drawableMapObjects', () => {
 
   it('draws the nexus as the map pillar and shield by default', () => {
     expect(NEXUS_STYLE).toBe('pillar');
+  });
+
+  it('leaves the top-down nexus disc to the disc style only', () => {
+    expect(drawsNexusDisc('pillar')).toBe(false);
+    expect(drawsNexusDisc('disc')).toBe(true);
+    // The default nexus is the pillar: the scene keeps only its ring and capture progress.
+    expect(drawsNexusDisc(NEXUS_STYLE)).toBe(false);
   });
 
   for (const { id, beaconsAndReactors } of MAPS) {
@@ -61,6 +68,13 @@ describe('drawableMapObjects', () => {
         const disc = read('disc');
         expect(named(disc, 'pilar', 'escudo')).toHaveLength(0);
         expect(disc.some((entry) => imageStem(entry) === 'pilar' || imageStem(entry) === 'escudo')).toBe(false);
+      });
+
+      it('shows the nexus once: either the map pillar or the scene disc, never both', () => {
+        for (const style of ['pillar', 'disc'] as NexusStyle[]) {
+          const pillarDrawn = named(read(style), 'pilar').length > 0;
+          expect(pillarDrawn).toBe(!drawsNexusDisc(style));
+        }
       });
 
       it('only draws tile objects that resolve to an image tile', () => {

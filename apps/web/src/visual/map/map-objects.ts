@@ -4,6 +4,15 @@ import { TILE_HEIGHT, type TiledObject, type TiledSector, type TileLayer, type T
 export type NexusStyle = 'pillar' | 'disc';
 export const NEXUS_STYLE: NexusStyle = 'pillar';
 
+/**
+ * Whether the scene draws the top-down nexus disc (the `nexus-core-top-*` sprite) over the core cell.
+ * With the pillar style the map's pillar and shield already show the nexus, so the scene must neither
+ * create nor show that sprite: it keeps only the ring around the core and its capture progress.
+ */
+export function drawsNexusDisc(style: NexusStyle = NEXUS_STYLE): boolean {
+  return style === 'disc';
+}
+
 export interface DrawableMapObject {
   layer: TileLayer;
   object: TiledObject;

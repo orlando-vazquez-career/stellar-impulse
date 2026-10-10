@@ -69,7 +69,9 @@ Cada sprite sigue uno de dos estilos, según lo que representa en la partida:
 | Decorado de Tiled (lo que se coloca en las capas de objetos de los kits: torre de vigilancia, antenas, satélites, restos) | Isométrico vectorial del kit | Contorno `#0C1018` (`OUTLINE` de `assets_bases.py`), supersample 3–4 y `apagar_bordes` (`assets_espacio.py`) para que el halo no se vea como una mancha al escalar. Lienzo y ancla de su tileset |
 
 **Excepción:** el nexo se muestra con el pilar y el escudo del kit, no con un disco cenital
-(`NEXUS_STYLE = 'pillar'` en `apps/web/src/visual/map/map-objects.ts`).
+(`NEXUS_STYLE = 'pillar'` en `apps/web/src/visual/map/map-objects.ts`). Con ese estilo
+`drawsNexusDisc` devuelve `false`: la escena no crea el sprite `nexus-core-top-*` y del núcleo
+dibuja solo el anillo y el progreso de captura.
 
 **Origen de los sprites nuevos.** Se generan con IA de imágenes (Codex) anclados a referencias de
 estilo del kit (`tilesets/img/base_jugador.png` y la torre de vigilancia aprobada,
