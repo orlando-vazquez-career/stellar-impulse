@@ -7,6 +7,7 @@ import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
 import { createAnomalyScene } from './anomaly-scene';
+import { MapPreview } from '../map/MapPreview';
 import type { TrainingMapId } from '../map/sector-map';
 import './lobby.css';
 
@@ -29,13 +30,16 @@ export function PreparationLobby({
   onExploreMap,
   onDeploy,
   initialJoinCode = '',
+  initialMap = DEFAULT_CAMPAIGN_MAP,
 }: {
   alias: string;
   mode: LobbyMode;
   onBack(): void;
-  onExploreMap(): void;
+  onExploreMap(map: TrainingMapId): void;
   onDeploy(difficulty: RivalDifficulty, map: TrainingMapId, duration: DurationMode): void;
   initialJoinCode?: string;
+  /** Map selected on arrival, so coming back from the map inspector keeps the choice. */
+  initialMap?: TrainingMapId;
 }) {
   const { locale, t } = useI18n();
   const sound = useSpaceSound();
@@ -43,7 +47,7 @@ export function PreparationLobby({
 
   const [duration, setDuration] = useState<DurationMode>('skirmish');
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
-  const [map, setMap] = useState<TrainingMapId>(DEFAULT_CAMPAIGN_MAP);
+  const [map, setMap] = useState<TrainingMapId>(initialMap);
   const selectedMap = PRACTICE_MAPS.find((option) => option.id === map) ?? PRACTICE_MAPS[0];
   const [side, setSide] = useState<FleetSide>('blue');
   const [ready, setReady] = useState(false);
@@ -161,11 +165,7 @@ export function PreparationLobby({
               <h2 id="operation-brief-title">{t('operationBrief')}</h2>
             </header>
             <div className="vi-map-preview" aria-hidden="true">
-              <div className="vi-map-preview__field">
-                <i className="vi-map-preview__core" />
-                <i className="vi-map-preview__blue" />
-                <i className="vi-map-preview__red" />
-              </div>
+              <MapPreview map={map} />
               <span>{selectedMap.name[locale]}</span>
             </div>
             <dl className="vi-briefing__data">
@@ -191,7 +191,7 @@ export function PreparationLobby({
               onMouseEnter={() => hover(520)}
               onClick={() => {
                 sound.playSelect();
-                onExploreMap();
+                onExploreMap(map);
               }}
             >
               Explorar mapa Tiled

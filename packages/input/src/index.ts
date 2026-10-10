@@ -151,3 +151,4 @@ export function parseCommand(value: unknown): ParseResult {
 export * from './protocol.js';
 export * from './playable-maps.js';
 export * from './battlefield.js';
+export * from './password.js';

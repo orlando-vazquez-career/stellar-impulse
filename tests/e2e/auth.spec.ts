@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 
 test('signs in, restores the account, trains and revokes the session', async ({ page, request }) => {
   const email = `browser-${randomUUID()}@example.com`;
-  const password = `Pilot-${randomUUID()}`;
+  const password = `Pilot-${randomUUID().slice(0, 8)}`;
   const registered = await request.post(`${TEST_SERVER_URL}/auth/register`, { data: { email, password } });
   expect(registered.status()).toBe(201);
   const initial = await registered.json() as { token: string };

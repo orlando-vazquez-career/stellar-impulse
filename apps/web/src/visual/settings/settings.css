@@ -403,6 +403,8 @@
   .vi-color-profile { grid-template-columns: 1fr; gap: 8px; }
 }
 
+.vi-settings-leave { position: fixed; z-index: 50; }
+
 @media (prefers-reduced-motion: reduce) {
   .vi-settings::before { animation: none; }
   .vi-settings *, .vi-settings *::before, .vi-settings *::after { transition: none !important; }

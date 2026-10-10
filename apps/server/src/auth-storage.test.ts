@@ -14,26 +14,26 @@ afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: tru
 it('recovers the accounts from the backup when the main file is unreadable', async () => {
   const file = join(tempDir(), 'users.json');
   const auth = new AuthService(file);
-  await auth.register('ana@example.com', 'secret-1234');
-  await auth.register('beto@example.com', 'secret-1234');
+  await auth.register('ana@example.com', 'Secret-1234');
+  await auth.register('beto@example.com', 'Secret-1234');
   writeFileSync(file, '[{"id":"tru'); // what a lost write leaves behind
   const restarted = new AuthService(file);
-  expect(restarted.login('ana@example.com', 'secret-1234').user.email).toBe('ana@example.com');
+  expect(restarted.login('ana@example.com', 'Secret-1234').user.email).toBe('ana@example.com');
 });
 
 it('keeps the commander alias in the account file across restarts', async () => {
   const file = join(tempDir(), 'users.json');
-  const { user } = await new AuthService(file).register('ana@example.com', 'secret-1234', 'Ana');
+  const { user } = await new AuthService(file).register('ana@example.com', 'Secret-1234', 'Ana');
   expect(user.displayName).toBe('Ana');
-  expect(new AuthService(file).login('ana@example.com', 'secret-1234').user).toEqual(user);
+  expect(new AuthService(file).login('ana@example.com', 'Secret-1234').user).toEqual(user);
   await new AuthService(file).updateDisplayName(user.id, 'Nova');
-  expect(new AuthService(file).login('ana@example.com', 'secret-1234').user).toEqual({ ...user, displayName: 'Nova' });
+  expect(new AuthService(file).login('ana@example.com', 'Secret-1234').user).toEqual({ ...user, displayName: 'Nova' });
 });
 
 it('keeps the previous alias when the account file cannot be written', async () => {
   const dir = tempDir();
   const auth = new AuthService(join(dir, 'data', 'users.json'));
-  const { token, user } = await auth.register('vega@example.com', 'secret-1234', 'Vega');
+  const { token, user } = await auth.register('vega@example.com', 'Secret-1234', 'Vega');
   rmSync(join(dir, 'data'), { recursive: true });
   writeFileSync(join(dir, 'data'), 'a file where the data folder should be');
   await expect(auth.updateDisplayName(user.id, 'Nova')).rejects.toThrow();
@@ -62,7 +62,7 @@ it('keeps the room alive and the profile unchanged when the account file cannot 
   const dir = tempDir();
   const file = join(dir, 'data', 'users.json');
   const auth = new AuthService(file);
-  const user = (await auth.register('rated@example.com', 'secret-1234')).user;
+  const user = (await auth.register('rated@example.com', 'Secret-1234')).user;
   rmSync(join(dir, 'data'), { recursive: true });
   writeFileSync(join(dir, 'data'), 'a file where the data folder should be');
   const world = createMatchWorld('sector-01', 'complete'); world.winner = 'p1';

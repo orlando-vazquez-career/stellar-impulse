@@ -1,4 +1,5 @@
 import { useState, type Dispatch, type FormEvent } from 'react';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordMeetsPolicy } from '@impulso/input';
 import { useSpaceSound } from './sound';
 import type { LoginUiEvent, LoginUiState } from './login-state';
 import { useI18n } from '../visual/i18n';
@@ -43,6 +44,7 @@ export function LoginForm(props: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [policyNotice, setPolicyNotice] = useState('');
   const registering = mode === 'register' && onRegister !== undefined;
   const locked = busy;
 
@@ -82,7 +84,7 @@ export function LoginForm(props: LoginFormProps) {
             aria-selected={!registering}
             aria-controls="account-panel"
             disabled={busy}
-            onClick={() => setMode('login')}
+            onClick={() => { setMode('login'); setPolicyNotice(''); }}
             onMouseEnter={hover}
           >
             {t('accountLogin')}
@@ -95,7 +97,7 @@ export function LoginForm(props: LoginFormProps) {
             aria-selected={registering}
             aria-controls="account-panel"
             disabled={busy}
-            onClick={() => setMode('register')}
+            onClick={() => { setMode('register'); setPolicyNotice(''); }}
             onMouseEnter={hover}
           >
             {t('accountCreate')}
@@ -112,6 +114,11 @@ export function LoginForm(props: LoginFormProps) {
           onSubmit={async (event) => {
             event.preventDefault();
             if (locked) return;
+            if (registering && !passwordMeetsPolicy(password)) {
+              setPolicyNotice(t('accountRegisterInvalid'));
+              return;
+            }
+            setPolicyNotice('');
             sound.playSelect();
             try {
               if (registering) await onRegister(email, password, alias);
@@ -142,8 +149,9 @@ export function LoginForm(props: LoginFormProps) {
             type="password"
             autoComplete={registering ? 'new-password' : 'current-password'}
             required
-            minLength={8}
-            maxLength={128}
+            minLength={PASSWORD_MIN_LENGTH}
+            maxLength={PASSWORD_MAX_LENGTH}
+            title={registering ? t('accountRegisterInvalid') : undefined}
             aria-describedby={registering ? 'account-create-hint' : undefined}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -199,7 +207,7 @@ export function LoginForm(props: LoginFormProps) {
         </div>
       </form>
 
-      <p className="li-notice" role="status">{notice}</p>
+      <p className="li-notice" role="status">{policyNotice || notice}</p>
       <p className="li-chain">{chainStatus}</p>
     </div>
   );

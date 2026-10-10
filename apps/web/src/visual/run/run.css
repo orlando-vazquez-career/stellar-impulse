@@ -322,6 +322,47 @@
   color: var(--vi-run-stellar);
 }
 
+/* The three sectors of the run in order, the one ahead lit. */
+.vi-run-route {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  gap: clamp(10px, 2.4vw, 28px);
+}
+
+.vi-run-route li {
+  width: clamp(92px, 15vw, 190px);
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  opacity: 0.6;
+}
+
+.vi-run-route canvas {
+  width: 100%;
+  height: auto;
+  border: 1px solid rgb(56 214 240 / 22%);
+  background: rgb(5 7 15 / 70%);
+}
+
+.vi-run-route span {
+  font: 600 11px/1.2 var(--vi-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vi-run-stellar);
+}
+
+.vi-run-route li.is-cleared { opacity: 0.8; }
+.vi-run-route li.is-current { opacity: 1; }
+.vi-run-route li.is-current canvas { border-color: var(--vi-run-stellar); box-shadow: 0 0 18px rgb(56 214 240 / 45%); }
+.vi-run-route li.is-current span { color: var(--vi-run-core); }
+
+@media (max-height: 560px) {
+  .vi-run-route { display: none; }
+}
+
 /* ------------------------------------------------------------------ run completa */
 
 .vi-run-complete {

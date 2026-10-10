@@ -4,6 +4,7 @@ import type { MultiplayerSession } from '../../multiplayer/session';
 import { sessionToken } from '../../auth/client';
 import { useSpaceSound } from '../../login/sound';
 import { useI18n } from '../i18n';
+import { MapPreview } from '../map/MapPreview';
 import { createCommandSpaceScene } from '../menu/command-space';
 import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
@@ -294,11 +295,7 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
           <section className="vi-lobby-card vi-briefing" aria-labelledby="multiplayer-brief-title">
             <header><h2 id="multiplayer-brief-title">{copy.operationBrief}</h2></header>
             <div className="vi-map-preview" aria-hidden="true">
-              <div className="vi-map-preview__field">
-                <i className="vi-map-preview__core" />
-                <i className="vi-map-preview__blue" />
-                <i className="vi-map-preview__red" />
-              </div>
+              <MapPreview map={selectedMap.id} />
               <span>{selectedMap.name[locale]}</span>
             </div>
             <p className="vi-multiplayer-map-hint">{selectedMap.description[locale]}</p>
