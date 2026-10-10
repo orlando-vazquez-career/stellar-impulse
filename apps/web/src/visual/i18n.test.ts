@@ -28,6 +28,11 @@ describe('translate', () => {
     expect(translate('en', 'musicToggleLabel')).toBe('MUSIC');
   });
 
+  it('names the base shortcut in the controls list', () => {
+    expect(translate('es', 'selectBase')).toBe('Seleccionar base');
+    expect(translate('en', 'selectBase')).toBe('Select base');
+  });
+
   it('fills the placeholders of a message', () => {
     expect(translate('es', 'welcome', { name: 'Vega' })).toBe('Comandante Vega, el sector espera.');
     expect(translate('en', 'welcome', { name: 'Vega' })).toBe('Commander Vega, the sector awaits.');

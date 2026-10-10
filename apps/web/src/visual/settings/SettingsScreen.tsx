@@ -127,7 +127,7 @@ export function SettingsPanel({
     const recall = /^groupRecall([1-9])$/.exec(action);
     if (recall) return `${t('recallGroup')} ${recall[1]}`;
     const labels: Partial<Record<ControlAction, string>> = {
-      move: t('move'), attack: t('attack'), hold: t('hold'), capture: t('capture'), cancel: t('cancel'),
+      move: t('move'), attack: t('attack'), hold: t('hold'), capture: t('capture'), cancel: t('cancel'), selectBase: t('selectBase'),
       cameraFocus: t('resetCamera'), panUp: t('panUp'), panDown: t('panDown'), panLeft: t('panLeft'), panRight: t('panRight'),
       produceInterceptor: t('produceInterceptor'), produceFrigate: t('produceFrigate'), produceBomber: t('produceBomber'), produceExplorer: t('produceExplorer'),
       cycleFormation: t('cycleFormation'), disband: t('disbandSelected'),
