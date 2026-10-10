@@ -1,8 +1,6 @@
-<p align="center">
-  <img src="docs/media/stellar-impulse-banner.svg" alt="Stellar Impulse: estrategia en tiempo real, identidad propia y propiedad digital en Stellar" width="100%">
-</p>
+![Imagen](./docs/media/banner-test-readme-v1.png)
 
-# Stellar Impulse
+# Impulso Stellar
 
 **Un RTS roguelite espacial para navegador que convierte la diversión en una puerta de entrada a Stellar.**
 
