@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MarketListing, OwnedCosmetic } from '@impulso/chain';
 import { linkWalletAccount, requestWalletChallenge, unlinkWalletAccount, type AccountUser } from '../../auth/client';
 import { translate, type Locale } from '../i18n';
-import { itemForClass, type CosmeticItem } from '../hangar/catalog';
-import { equipAfterPurchase, loadCosmeticLoadout, saveCosmeticLoadout } from '../hangar/loadout';
+import type { CosmeticItem } from '../hangar/catalog';
 import { readOwnedClasses, writeOwnedClasses } from '../hangar/ownership';
+import { buyCatalogPiece, buyListedPiece } from '../hangar/purchase';
 import { chainErrorHash, chainErrorText, short, WrongAccountError } from './chain-errors';
 
 /** The chain client (Stellar SDK + Freighter) loads only when a panel needs it. */
@@ -107,15 +107,6 @@ export function useCosmeticsChain(
     }
   }, [refresh]);
 
-  /** A bought piece is equipped at once, and counted as owned even if the next read fails. */
-  const equipBought = useCallback((item: CosmeticItem | undefined) => {
-    if (!item?.chain || !wallet) return;
-    const classes = new Set([...ownedRef.current, item.chain.classId]);
-    writeOwnedClasses(wallet, classes);
-    setOwnedClasses(classes);
-    saveCosmeticLoadout(equipAfterPurchase(loadCosmeticLoadout(classes), item));
-  }, [wallet]);
-
   const nameOf = (item: CosmeticItem | undefined, fallback: string) => item?.name[localeRef.current] ?? fallback;
 
   const link = useCallback(() => run('linking', async () => {
@@ -133,12 +124,12 @@ export function useCosmeticsChain(
     return { text: t('chainUnlinkedDone') };
   }), [run, onAccountChange]);
 
+  /** A bought piece is equipped at once, and counted as owned even if the next read fails. */
   const buy = useCallback((item: CosmeticItem) => run('buying', async () => {
-    if (!item.chain) throw new Error('not an NFT piece');
-    const receipt = await (await chain()).buyCosmetic(await signerAddress(), item.chain.classId);
-    equipBought(item);
+    const { receipt, owned: classes } = await buyCatalogPiece(await chain(), { signer: signerAddress, wallet, owned: ownedRef }, item);
+    setOwnedClasses(classes);
     return { text: t('chainBoughtDone', { name: nameOf(item, item.id), token: receipt.tokenId }), transactionHash: receipt.transactionHash };
-  }), [run, signerAddress, equipBought]);
+  }), [run, signerAddress, wallet]);
 
   const list = useCallback((tokenId: number, priceStroops: bigint) => run('listing', async () => {
     const receipt = await (await chain()).listCosmetic(await signerAddress(), tokenId, priceStroops);
@@ -151,11 +142,10 @@ export function useCosmeticsChain(
   }), [run, signerAddress]);
 
   const buyListing = useCallback((listing: MarketListing) => run('trading', async () => {
-    const receipt = await (await chain()).buyListing(await signerAddress(), listing.listingId, listing.priceStroops);
-    const item = itemForClass(listing.classId);
-    equipBought(item);
+    const { receipt, item, owned: classes } = await buyListedPiece(await chain(), { signer: signerAddress, wallet, owned: ownedRef }, listing);
+    setOwnedClasses(classes);
     return { text: t('chainTradedDone', { name: nameOf(item, `#${listing.tokenId}`) }), transactionHash: receipt.transactionHash };
-  }), [run, signerAddress, equipBought]);
+  }), [run, signerAddress, wallet]);
 
   return {
     wallet, owned, ownedClasses, listings, listingByToken, balance, busy, notice, loaded,
