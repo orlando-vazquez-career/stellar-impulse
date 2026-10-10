@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { MarketListing } from '@impulso/chain';
-import { listingsForItem, sellablePieces, shopItems } from './market-sections';
+import { marketFee, MARKETPLACE_TESTNET, type MarketListing } from '@impulso/chain';
+import { listingsForItem, MARKET_FEE_BPS, sellablePieces, sellerReceives, shopItems } from './market-sections';
 import { itemById } from '../hangar/catalog';
 
 const ME = 'GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA74P7UJVSGZ';
@@ -25,6 +25,11 @@ describe('market sections', () => {
       { tokenId: 9, item: itemById('voz-analista'), listing: listings[0] },
     ]);
     expect(sellablePieces(owned, listings, null)).toEqual([]);
+  });
+
+  it('tells the seller what is left after the fee, like the contract', () => {
+    expect(MARKET_FEE_BPS).toBe(BigInt(MARKETPLACE_TESTNET.feeBps));
+    for (const price of [20_000_000n, 999n, 25_000_001n]) expect(sellerReceives(price)).toBe(price - marketFee(price));
   });
 
   it('lists the open offers of one piece cheapest first, leaving out the player own when asked', () => {

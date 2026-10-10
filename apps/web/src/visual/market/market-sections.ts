@@ -1,6 +1,17 @@
 import type { MarketListing, OwnedCosmetic } from '@impulso/chain';
 import { cosmeticCatalog, itemForClass, type CosmeticItem } from '../hangar/catalog';
 
+/**
+ * The treasury's share of each sale (MARKETPLACE_TESTNET.feeBps), kept here so the panel never
+ * loads the chain client just to show what the seller receives.
+ */
+export const MARKET_FEE_BPS = 500n;
+
+/** What the seller receives from a sale at `priceStroops`, rounded like the contract. */
+export function sellerReceives(priceStroops: bigint): bigint {
+  return priceStroops - (priceStroops * MARKET_FEE_BPS) / 10_000n;
+}
+
 /** The shop mints these on purchase: collection pieces with a price. Merit emblems are earned, never sold. */
 export function shopItems(catalog: readonly CosmeticItem[] = cosmeticCatalog): CosmeticItem[] {
   return catalog.filter((item) => item.unlocked && item.chain?.family === 'collection' && item.chain.priceStroops > 0n);
