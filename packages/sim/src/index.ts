@@ -742,6 +742,7 @@ export function applyCommand(world: World, playerId: string, raw: unknown): Comm
     startProduction(next, playerId, command.kind);
     return { accepted: true, world: next };
   }
+  if (command.type === 'cancel_production') return reject('invalid_command');
   const squad = world.squads.find((unit) => unit.id === command.squadId);
   if (!squad) return reject('unknown_squad');
   if (squad.ownerId !== playerId) return reject('not_owner');
