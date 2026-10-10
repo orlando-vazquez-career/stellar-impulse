@@ -33,31 +33,31 @@ const failure = (request: Promise<unknown>) => request.then(
 
 describe('account client', () => {
   it('creates an account with its alias and gets the alias back on restore and login', async () => {
-    const created = await registerAccount('vega-client@example.com', 'secret-1234', '  Vega  ');
+    const created = await registerAccount('vega-client@example.com', 'Secret-1234', '  Vega  ');
     expect(created).toMatchObject({ email: 'vega-client@example.com', displayName: 'Vega' });
     expect(await restoreAccount()).toEqual(created);
     await logoutAccount();
     expect(await restoreAccount()).toBeNull();
-    expect(await loginAccount('vega-client@example.com', 'secret-1234')).toEqual(created);
+    expect(await loginAccount('vega-client@example.com', 'Secret-1234')).toEqual(created);
   });
 
   it('saves an alias for an account that had none', async () => {
-    const created = await registerAccount('nova-client@example.com', 'secret-1234');
+    const created = await registerAccount('nova-client@example.com', 'Secret-1234');
     expect(created.displayName).toBeNull();
     expect(await updateDisplayName('Nova')).toEqual({ ...created, displayName: 'Nova' });
     expect((await restoreAccount())?.displayName).toBe('Nova');
   });
 
   it('tells a taken email, an invalid alias and invalid credentials apart', async () => {
-    await registerAccount('taken-client@example.com', 'secret-1234', 'Taken');
-    const taken = await failure(registerAccount('taken-client@example.com', 'secret-1234', 'Otra'));
+    await registerAccount('taken-client@example.com', 'Secret-1234', 'Taken');
+    const taken = await failure(registerAccount('taken-client@example.com', 'Secret-1234', 'Otra'));
     expect(taken).toMatchObject({ status: 409, code: 'email_in_use' });
     expect(accountErrorKey(taken, 'register')).toBe('accountEmailInUse');
-    const alias = await failure(registerAccount('alias-client@example.com', 'secret-1234', '<Vega>'));
+    const alias = await failure(registerAccount('alias-client@example.com', 'Secret-1234', '<Vega>'));
     expect(alias).toMatchObject({ status: 400, code: 'invalid_display_name' });
     expect(accountErrorKey(alias, 'register')).toBe('accountAliasInvalid');
     // A blank alias is refused too, instead of creating the account without one.
-    expect(await failure(registerAccount('blank-client@example.com', 'secret-1234', '   ')))
+    expect(await failure(registerAccount('blank-client@example.com', 'Secret-1234', '   ')))
       .toMatchObject({ status: 400, code: 'invalid_display_name' });
     expect(accountErrorKey(await failure(updateDisplayName('<Vega>')), 'register')).toBe('accountAliasInvalid');
     const short = await failure(registerAccount('short-client@example.com', 'short', 'Vega'));
