@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import type { Room } from '@colyseus/sdk';
 import type { PlayerView } from '@impulso/state';
 import type { GameplayEvent } from './model';
-import { createServerGameplayAdapter, diffViews, nearestOpenCell, rememberView, type FogMemory, type MatchTransport, type TransportEvents } from './server-adapter';
+import { createServerGameplayAdapter, diffViews, nearestOpenCell, REJECTION_TEXT, rememberView, type FogMemory, type MatchTransport, type TransportEvents } from './server-adapter';
 import { selectMap } from '../map/sector-map';
 
 const ship = (id: string, ownerId: 'p1' | 'p2', x: number, y: number, hp = 100) =>
@@ -77,9 +77,28 @@ describe('match events from server views', () => {
     const before = view({ guardians: [guardian], core: open });
     const after = view({ guardians: [{ ...guardian, hp: 0 }], core: open });
     expect(diffViews(before, after).map((event) => event.kind)).toEqual(['core-guardian-down']);
-    const contested = view({ core: { ...open, progress: { p1: 5, p2: 5 } } });
-    expect(diffViews(view({ core: { ...open, progress: { p1: 5, p2: 0 } } }), contested).map((event) => event.kind))
-      .toEqual(['core-rival-capturing', 'core-contested']);
+    // The server says the Core is contested: the progress gap does not decide it.
+    const contested = view({ core: { ...open, progress: { p1: 5, p2: 3 }, status: 'contested', captor: null } });
+    expect(diffViews(view({ core: { ...open, progress: { p1: 5, p2: 3 }, status: 'capturing', captor: 'p1' } }), contested).map((event) => event.kind))
+      .toEqual(['core-contested']);
+  });
+
+  it('announces a contested Core once per dispute and every new captor', () => {
+    const open = { id: 'core', guardianId: 'core-guardian', x: 14, y: 14, open: true, progress: { p1: 0, p2: 0 } };
+    const at = (status: 'idle' | 'capturing' | 'contested', captor: 'p1' | 'p2' | null = null) =>
+      view({ core: { ...open, progress: { p1: 9, p2: 4 }, status, captor } });
+    const steps = [at('idle'), at('capturing', 'p1'), at('contested'), at('contested'), at('capturing', 'p2'), at('contested'), at('capturing', 'p2')];
+    expect(steps.slice(1).map((next, index) => diffViews(steps[index]!, next).map((event) => event.kind))).toEqual([
+      ['core-own-capturing'], ['core-contested'], [], ['core-rival-capturing'], ['core-contested'], ['core-rival-capturing'],
+    ]);
+  });
+
+  it('still reads the Core from an older server that sends no status', () => {
+    const open = { id: 'core', guardianId: 'core-guardian', x: 14, y: 14, open: true, progress: { p1: 0, p2: 0 } };
+    const idle = view({ core: open });
+    const taking = view({ core: { ...open, progress: { p1: 0, p2: 4 } } });
+    expect(diffViews(idle, taking).map((event) => event.kind)).toEqual(['core-rival-capturing']);
+    expect(diffViews(taking, view({ core: { ...open, progress: { p1: 4, p2: 4 } } })).map((event) => event.kind)).toEqual(['core-contested']);
   });
 
   it('warns when the rival starts taking one of our nodes', () => {
@@ -113,7 +132,7 @@ describe('match events from server views', () => {
     const after = view({
       tick: 1200, squads: [ship('p1-a', 'p1', 3, 3, 0)],
       nodes: [{ id: 'metal-1', kind: 'metal', guardianId: 'g', x: 5, y: 2, ownerId: 'p1', progress: { p1: 30, p2: 0 } }],
-      core: { id: 'core', guardianId: 'core-guardian', x: 14, y: 14, open: true, progress: { p1: 0, p2: 4 } },
+      core: { id: 'core', guardianId: 'core-guardian', x: 14, y: 14, open: true, progress: { p1: 0, p2: 4 }, status: 'capturing', captor: 'p2' },
       winner: 'p2',
     });
     expect(diffViews(before, after).map((event) => event.kind)).toEqual([
@@ -152,6 +171,24 @@ describe('fog memory', () => {
   });
 });
 
+
+it('asks its own training room for a pause, and keys a lost link', () => {
+  selectMap('sector-01');
+  const handlers = new Map<string, (message: unknown) => void>();
+  let left: (() => void) | null = null;
+  const room = {
+    onMessage(type: string, handler: (message: unknown) => void) { handlers.set(type, handler); },
+    onLeave: (handler: () => void) => { left = handler; }, leave: vi.fn(async () => {}), send: vi.fn(),
+  };
+  const adapter = createServerGameplayAdapter('http://localhost', 'easy', 'sector-01', 'skirmish', room as unknown as Room);
+  try {
+    handlers.get('view')!(view({ pausable: true, paused: false }));
+    adapter.dispatch({ type: 'set-paused', paused: true });
+    expect(room.send.mock.calls).toEqual([['pause', { paused: true }]]);
+    left!();
+    expect(adapter.getSnapshot()).toMatchObject({ connection: 'offline', noticeCode: 'connection_lost' });
+  } finally { adapter.destroy(); selectMap('espiral'); }
+});
 
 it('sends every selected ship in a 26-ship formation to the server', () => {
   selectMap('sector-01');
@@ -280,6 +317,142 @@ describe('campaign transport', () => {
     try {
       fake.events().refresh();
       expect(adapter.getSnapshot().result).toBe('victory');
+    } finally { adapter.destroy(); }
+  });
+
+  it('reads the Core from its status and captor, never from the progress gap', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    const open = { id: 'core', guardianId: 'core-guardian', x: 14, y: 14, open: true };
+    try {
+      fake.events().view(view({ core: { ...open, progress: { p1: 40, p2: 5 }, status: 'contested', captor: null, fraction: { p1: 0.4, p2: 0.05 }, remainingTicks: null } }));
+      expect(adapter.getSnapshot().core).toMatchObject({ state: 'contested', captor: null, secondsLeft: null });
+      fake.events().view(view({ tick: 101, coreFraction: 0.5, core: { ...open, radius: 2, progress: { p1: 150, p2: 60 }, status: 'capturing', captor: 'p2',
+        fraction: { p1: 0.5, p2: 0.2 }, remainingTicks: 240 } }));
+      expect(adapter.getSnapshot().core).toMatchObject({ state: 'red-capturing', captor: 'rival', radius: 2,
+        fractions: { own: 0.5, rival: 0.2 }, secondsLeft: 24, guarded: false, progress: 50 });
+    } finally { adapter.destroy(); }
+  });
+
+  it('keeps the Core progress within 100, from a capped or an older view', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    const open = { id: 'core', guardianId: 'core-guardian', x: 14, y: 14, open: true };
+    try {
+      fake.events().view(view({ coreFraction: 200, core: { ...open, progress: { p1: 200, p2: 0 } } }));
+      expect(adapter.getSnapshot().core.progress).toBe(100);
+      fake.events().view(view({ tick: 101, core: { ...open, progress: { p1: 600, p2: 0 } } }));
+      expect(adapter.getSnapshot().core).toMatchObject({ progress: 100, state: 'blue-capturing', radius: 1, fractions: { own: 1, rival: 0 } });
+    } finally { adapter.destroy(); }
+  });
+
+  it('marks the Core guarded while its guardian stands in sight', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    const guardian = { id: 'core-guardian', objectiveId: 'core', x: 14, y: 14, hp: 100, maxHp: 400, damage: 20 };
+    try {
+      fake.events().view(view({ guardians: [guardian] }));
+      expect(adapter.getSnapshot().core.guarded).toBe(true);
+      fake.events().view(view({ tick: 101, guardians: [] }));
+      expect(adapter.getSnapshot().core.guarded).toBe(false);
+    } finally { adapter.destroy(); }
+  });
+
+  it('names every neutral guardian by its post', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    const guardian = (id: string, objectiveId: string, role?: 'turret' | 'barrier') =>
+      ({ id, objectiveId, x: 5, y: 5, hp: 10, maxHp: 10, damage: 1, ...(role ? { role, range: 3 } : {}) });
+    try {
+      fake.events().view(view({ guardians: [guardian('core-guardian', 'core'), guardian('metal-1-guardian', 'metal-1'),
+        guardian('torreta-1', 'capture-1', 'turret'), guardian('barrera-1', 'barrera-1', 'barrier')] }));
+      expect(Object.fromEntries(adapter.getSnapshot().squads.map((squad) => [squad.id, squad.guardianKind]))).toEqual({
+        'core-guardian': 'core', 'metal-1-guardian': 'node', 'torreta-1': 'turret', 'barrera-1': 'barrier',
+      });
+    } finally { adapter.destroy(); }
+  });
+
+  it('shows the hangar queue with each refund and cancels an order by its slot', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    try {
+      fake.events().view(view({ players: { p1: { id: 'p1', base: { x: 3, y: 3 }, metal: 6,
+        production: { kind: 'frigate', remainingTicks: 20, totalTicks: 60, refund: 9 }, queue: [{ kind: 'explorer', refund: 4 }] },
+      p2: { id: 'p2', base: { x: 25, y: 25 } } } }));
+      expect(adapter.getSnapshot().production).toEqual({ kind: 'frigate', remainingSeconds: 2, totalSeconds: 6, progress: 2 / 3, refund: 9 });
+      expect(adapter.getSnapshot().productionQueue).toEqual([{ kind: 'explorer', refund: 4 }]);
+      adapter.dispatch({ type: 'cancel-production', slot: 1, kind: 'explorer' });
+      expect(fake.sent).toEqual([['command', { type: 'cancel_production', slot: 1, kind: 'explorer' }]]);
+    } finally { adapter.destroy(); }
+  });
+
+  it('keys every notice: connecting, a refused order, and none once online', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    try {
+      expect(adapter.getSnapshot()).toMatchObject({ noticeCode: 'connecting' });
+      fake.events().view(view());
+      expect(adapter.getSnapshot()).toMatchObject({ notice: null, noticeCode: null });
+      fake.events().rejected('production_queue_full');
+      expect(adapter.getSnapshot()).toMatchObject({ notice: 'Cola del hangar llena.', noticeCode: 'production_queue_full' });
+      fake.events().notice('Esperando al otro comandante…');
+      expect(adapter.getSnapshot()).toMatchObject({ notice: 'Esperando al otro comandante…', noticeCode: null });
+      expect(REJECTION_TEXT).toMatchObject({ paused: 'Partida en pausa.', pause_unavailable: 'La pausa no está disponible en esta partida.' });
+    } finally { adapter.destroy(); }
+  });
+
+  it('never asks a transport without a pause to stop the clock', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    try {
+      fake.events().view(view({ pausable: true, paused: false }));
+      expect(adapter.getSnapshot().canPause).toBe(false);
+      adapter.dispatch({ type: 'set-paused', paused: true });
+      expect(fake.sent).toEqual([]);
+    } finally { adapter.destroy(); }
+  });
+
+  it('asks for a pause only when the server offers one, and stops the clock while paused', () => {
+    const fake = fakeTransport();
+    const pauses: boolean[] = [];
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', { ...fake.transport, pause: (paused) => pauses.push(paused) });
+    try {
+      fake.events().view(view({ pausable: false, paused: false }));
+      expect(adapter.getSnapshot()).toMatchObject({ canPause: false, paused: false, clockRunning: true });
+      adapter.dispatch({ type: 'set-paused', paused: true });
+      expect(pauses).toEqual([]);
+      fake.events().view(view({ tick: 101, pausable: true, paused: false }));
+      expect(adapter.getSnapshot().canPause).toBe(true);
+      adapter.dispatch({ type: 'set-paused', paused: true });
+      expect(pauses).toEqual([true]);
+      fake.events().view(view({ tick: 101, pausable: true, paused: true }));
+      expect(adapter.getSnapshot()).toMatchObject({ paused: true, clockRunning: false });
+      adapter.dispatch({ type: 'set-paused', paused: false });
+      fake.events().view(view({ tick: 102, pausable: true, paused: false }));
+      expect(pauses).toEqual([true, false]);
+      expect(adapter.getSnapshot()).toMatchObject({ paused: false, clockRunning: true });
+    } finally { adapter.destroy(); }
+  });
+
+  it('selects one base at a time, apart from the ships, and lets go of the rival base out of sight', () => {
+    const fake = fakeTransport();
+    const adapter = createServerGameplayAdapter('http://localhost', 'medium', 'sector-01', 'skirmish', fake.transport);
+    const seen = (visible: boolean, tick = 100) => view({ tick, squads: [ship('p1-a', 'p1', 3, 3)], enemyBase: { x: 25, y: 25, visible } });
+    try {
+      fake.events().view(seen(false));
+      adapter.dispatch({ type: 'select-squads', squadIds: ['p1-a'] });
+      adapter.dispatch({ type: 'set-action', action: 'attack' });
+      adapter.dispatch({ type: 'select-base', base: 'enemy' });
+      expect(adapter.getSnapshot()).toMatchObject({ selectedBase: null, selectedSquadIds: ['p1-a'] });
+      adapter.dispatch({ type: 'select-base', base: 'own' });
+      expect(adapter.getSnapshot()).toMatchObject({ selectedBase: 'own', selectedSquadIds: [], selectedSquadId: null, activeAction: null });
+      adapter.dispatch({ type: 'select-squads', squadIds: ['p1-a'] });
+      expect(adapter.getSnapshot()).toMatchObject({ selectedBase: null, selectedSquadIds: ['p1-a'] });
+      fake.events().view(seen(true, 101));
+      adapter.dispatch({ type: 'select-base', base: 'enemy' });
+      expect(adapter.getSnapshot()).toMatchObject({ selectedBase: 'enemy', selectedSquadIds: [] });
+      fake.events().view(seen(false, 102));
+      expect(adapter.getSnapshot().selectedBase).toBeNull();
     } finally { adapter.destroy(); }
   });
 

@@ -26,6 +26,8 @@ export interface SquadViewModel {
   turret?: { range: number };
   /** A destructible barrier: it only stands in the way, and its art comes from the map. */
   barrier?: boolean;
+  /** Neutral guardians only: the post it holds. `callSign` stays as the Spanish fallback label. */
+  guardianKind?: 'turret' | 'barrier' | 'core' | 'node';
   selected: boolean;
   visible: boolean;
   composition: { interceptors: number; frigates: number; bombers?: number; explorers?: number };
@@ -43,8 +45,19 @@ export type CoreState =
 
 export interface CoreViewModel {
   state: CoreState;
+  /** Capture shown on the Core, 0 to 100. */
   progress: number;
   opensInSeconds: number;
+  /** Cells around the Core that count as its capture area. */
+  radius: number;
+  /** The side taking the Core right now, from the player's side of the table. */
+  captor: 'own' | 'rival' | null;
+  /** Each side's progress over its own capture time, 0 to 1. */
+  fractions: { own: number; rival: number };
+  /** Seconds the captor still needs, or null when nobody is taking the Core. */
+  secondsLeft: number | null;
+  /** The Core guardian is in sight and still standing, so nobody can take the Core yet. */
+  guarded: boolean;
 }
 
 export type GameplayAction = 'move' | 'attack' | 'hold' | 'capture' | null;
@@ -117,6 +130,17 @@ export interface SatelliteViewModel {
 export interface ProductionViewModel {
   kind: SquadType;
   remainingSeconds: number;
+  /** Whole build time of this ship, with the Shipyard and fast builds it started with. */
+  totalSeconds?: number;
+  /** How far the build has come, 0 to 1. */
+  progress?: number;
+  /** Metal a cancel gives back: exactly what the order paid. */
+  refund?: number;
+}
+/** A paid order waiting behind the ship in production. */
+export interface QueuedProductionViewModel {
+  kind: SquadType;
+  refund: number;
 }
 
 /** local: the in-browser mock; the rest describe the link to the authoritative server. */
@@ -148,6 +172,8 @@ export interface GameplayViewModel {
   clockRunning: boolean;
   nodes: NodeViewModel[];
   production: ProductionViewModel | null;
+  /** Paid orders waiting behind `production`, in order: a cancel names slot index + 1 (slot 0 is `production`). */
+  productionQueue: QueuedProductionViewModel[];
   satellites?: SatelliteViewModel[];
   /** Drifting purple clouds announced by the server; MainScene glides them from the map's own routes. */
   nebulas?: NebulaViewModel[];
@@ -174,7 +200,18 @@ export interface GameplayViewModel {
   reward?: import('@impulso/sim').MatchReward;
   /** Last server rejection or connection message, already localized by key. */
   notice: string | null;
+  /**
+   * Stable key of `notice`, for translating it: a server rejection reason, or `connecting`, `connection_lost`
+   * or `connect_failed`. Null when there is no notice or it has no key (free text from a campaign phase).
+   */
+  noticeCode: string | null;
   connection: ConnectionState;
+  /** The match clock is stopped by a practice pause: orders are refused until it runs again. */
+  paused: boolean;
+  /** This match takes a pause request (practice against the AI, alone, while it runs). */
+  canPause: boolean;
+  /** A base selected on the map: the player's own or the rival's (only while in sight). Ships and bases are never selected together. */
+  selectedBase: 'own' | 'enemy' | null;
   /** Row-major cells inside the player's vision; null when there is no fog (local mock). */
   visibleCells: boolean[] | null;
   /** Row-major cells seen at least once this match (always includes visibleCells); null without fog memory. */
@@ -214,7 +251,13 @@ export type PresentationIntent =
   | { type: 'build-module'; module: ModuleKind }
   | { type: 'surrender' }
   | {type:'augment-pick';choice:number;id:string}
-  | {type:'augment-reroll';choice:number};
+  | {type:'augment-reroll';choice:number}
+  /** Cancel a hangar order: slot 0 is the ship in production, slot n the n-th waiting order. `kind` must match it. */
+  | { type: 'cancel-production'; slot: number; kind: SquadType }
+  /** Ask to stop or restart the match clock. Ignored unless `canPause`. */
+  | { type: 'set-paused'; paused: boolean }
+  /** Select a base on the map (null clears it); it clears the ship selection and the pending action. */
+  | { type: 'select-base'; base: 'own' | 'enemy' | null };
 
 export interface GameplayPresentationAdapter {
   getSnapshot(): GameplayViewModel;
