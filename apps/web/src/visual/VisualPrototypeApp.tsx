@@ -15,7 +15,8 @@ import { MultiplayerLobby } from './lobby/MultiplayerLobby';
 import { SectorMapScreen } from './map/SectorMapScreen';
 import { DEFAULT_PLAYABLE_MAP, selectMap, type TrainingMapId } from './map/sector-map';
 import { CommandCenter } from './menu/CommandCenter';
-import { loadVisualPreferences, saveVisualPreferences } from './settings/preferences';
+import { loadVisualPreferences } from './settings/preferences';
+import { PreferencesProvider, usePreferences } from './settings/preferences-context';
 import { SettingsScreen } from './settings/SettingsScreen';
 import { Brand } from './shared/Brand';
 import { ProfileScreen } from './profile/ProfileScreen';
@@ -41,7 +42,7 @@ function VisualPrototypeContent() {
   const [pendingMultiplayer, setPendingMultiplayer] = useState<LobbyMode | null>(null);
   const [joinCode, setJoinCode] = useState('');
   const [lobbyMode, setLobbyMode] = useState<LobbyMode>('create');
-  const [preferences, setPreferences] = useState(loadVisualPreferences);
+  const { preferences, savePreferences } = usePreferences();
   const [duration, setDuration] = useState<DurationMode>('skirmish');
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
   const [map, setMap] = useState<TrainingMapId>(DEFAULT_PLAYABLE_MAP);
@@ -144,13 +145,7 @@ function VisualPrototypeContent() {
       window.removeEventListener('pointermove', wake);
     };
   }, []);
-  // Every sound source reads this live mix; the saved preferences are its resting value.
-  useEffect(() => { setAudioMix(preferences.audio); }, [preferences.audio]);
-  const changeAudio = (audio: typeof preferences.audio) => {
-    const next = { ...preferences, audio };
-    saveVisualPreferences(next);
-    setPreferences(next);
-  };
+  const changeAudio = (audio: typeof preferences.audio) => savePreferences({ ...preferences, audio });
   useEffect(() => { music.current?.play(screen === 'gameplay' ? 'match' : 'menu'); }, [screen]);
 
   useEffect(() => {
@@ -166,11 +161,7 @@ function VisualPrototypeContent() {
   ].filter(Boolean).join(' ');
 
   const updateLoginMusic = (change: Partial<Pick<typeof preferences.audio, 'music' | 'musicMuted'>>) => {
-    const audio = { ...preferences.audio, ...change };
-    const next = { ...preferences, audio };
-    saveVisualPreferences(next);
-    setPreferences(next);
-    setAudioMix(audio);
+    savePreferences({ ...preferences, audio: { ...preferences.audio, ...change } });
   };
 
   return <div className={`visual-app ${accessibilityClasses}`} data-color-profile={preferences.accessibility.colorProfile}>
@@ -201,7 +192,7 @@ function VisualPrototypeContent() {
       }}
       onJoinRoom={(code, value) => { setAlias(value); void openMultiplayer('join', code); }}
     />}
-    {screen === 'command' && <CommandCenter alias={alias} accountEmail={account?.email} account={account} onAccountChange={setAccount} preferences={preferences} onSavePreferences={(next) => { saveVisualPreferences(next); setPreferences(next); }} onProfile={()=>setScreen('profile')} onCreateRoom={() => { setMultiplayerMatch(false); setLobbyMode('create'); setScreen('lobby'); }} onCampaign={() => { setMultiplayerMatch(false); setRunMode(true); setScreen('gameplay'); }} onCreateMultiplayer={() => openMultiplayer('create')} onJoinRoom={() => openMultiplayer('join')} onSignOut={() => void signOut()} onBack={() => void signOut()} />}
+    {screen === 'command' && <CommandCenter alias={alias} accountEmail={account?.email} account={account} onAccountChange={setAccount} preferences={preferences} onSavePreferences={savePreferences} onProfile={()=>setScreen('profile')} onCreateRoom={() => { setMultiplayerMatch(false); setLobbyMode('create'); setScreen('lobby'); }} onCampaign={() => { setMultiplayerMatch(false); setRunMode(true); setScreen('gameplay'); }} onCreateMultiplayer={() => openMultiplayer('create')} onJoinRoom={() => openMultiplayer('join')} onSignOut={() => void signOut()} onBack={() => void signOut()} />}
     {screen==='profile'&&<ProfileScreen onBack={()=>setScreen('command')}/>}
     {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} onBack={() => setScreen('command')} onExploreMap={() => { selectMap('sector-01'); setScreen('map'); }} onDeploy={(chosen, chosenMap, chosenDuration) => { setDuration(chosenDuration); setDifficulty(chosen); setMap(chosenMap); setRunMode(false); setScreen('gameplay'); }} />}
     {screen === 'multiplayer' && multiplayer && <MultiplayerLobby alias={alias} token={sessionToken() || ''} mode={lobbyMode} session={multiplayer} initialJoinCode={joinCode} onBack={() => { setMultiplayerMatch(false); setJoinCode(''); setScreen('command'); }} />}
@@ -209,7 +200,7 @@ function VisualPrototypeContent() {
     {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} account={account} onAccountChange={setAccount} />}
     {screen === 'settings' && <SettingsScreen preferences={preferences} onPreviewAudio={setAudioMix}
       onBack={() => { setAudioMix(preferences.audio); setScreen('command'); }}
-      onSave={(nextPreferences) => { saveVisualPreferences(nextPreferences); setPreferences(nextPreferences); }} />}
+      onSave={savePreferences} />}
     {screen === 'gameplay' && runMode && !multiplayerMatch && <RunScreen preferences={preferences} onAudioChange={changeAudio} difficulty={difficulty} duration={duration} onLeave={() => setScreen('command')} />}
     {screen === 'gameplay' && !(runMode && !multiplayerMatch) && <GameplayScreen preferences={preferences} onAudioChange={changeAudio} difficulty={difficulty} map={map} duration={duration} multiplayerSession={multiplayerMatch ? multiplayer ?? undefined : undefined} onLeave={() => multiplayerMatch ? void leaveMultiplayer() : setScreen('command')} />}
     <div className="vi-resolution-warning" role="alert"><div><Brand /><h1>{t('resolutionWarningTitle')}</h1><p>{t('resolutionWarningBody')}</p></div></div>
@@ -217,5 +208,5 @@ function VisualPrototypeContent() {
 }
 
 export default function VisualPrototypeApp() {
-  return <LanguageProvider><VisualPrototypeContent /></LanguageProvider>;
+  return <LanguageProvider><PreferencesProvider><VisualPrototypeContent /></PreferencesProvider></LanguageProvider>;
 }

@@ -407,3 +407,4 @@
   .vi-settings::before { animation: none; }
   .vi-settings *, .vi-settings *::before, .vi-settings *::after { transition: none !important; }
 }
+.vi-language-settings__note { margin: -4px 0 13px; color: var(--settings-muted); font-size: 12px; }

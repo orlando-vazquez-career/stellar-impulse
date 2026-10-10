@@ -85,6 +85,71 @@ test.describe('visual interface foundation', () => {
     expect(stored.accessibility.highContrast).toBe(true);
   });
 
+  test('asks before leaving settings with unsaved changes', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    const storedBefore = await page.evaluate(() => localStorage.getItem('impulso.visual-preferences'));
+    const settings = page.locator('.vi-settings-panel');
+    const close = page.getByRole('button', { name: 'Volver al centro de mando' });
+    const dialog = page.getByRole('alertdialog');
+    const contrast = page.getByLabel(/Contraste reforzado/);
+    const openAccessibility = async () => {
+      await page.getByRole('button', { name: /Ajustes/ }).click();
+      await page.getByRole('button', { name: /Accesibilidad/ }).click();
+    };
+
+    // Nothing changed: the ✕ closes at once.
+    await page.getByRole('button', { name: /Ajustes/ }).click();
+    await expect(settings).toBeVisible();
+    await close.click();
+    await expect(settings).toHaveCount(0);
+    await expect(dialog).toHaveCount(0);
+
+    // Switching a setting on and off again leaves nothing to save.
+    await openAccessibility();
+    await contrast.check();
+    await contrast.uncheck();
+    await close.click();
+    await expect(settings).toHaveCount(0);
+    await expect(dialog).toHaveCount(0);
+
+    // A real change asks first; keeping on editing leaves the panel as it was.
+    await openAccessibility();
+    await contrast.check();
+    await close.click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute('aria-modal', 'true');
+    await expect(dialog.getByRole('button', { name: 'Seguir editando' })).toBeFocused();
+    await dialog.getByRole('button', { name: 'Seguir editando' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(settings).toBeVisible();
+    await expect(contrast).toBeChecked();
+    await close.click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(settings).toBeVisible();
+
+    // Discarding closes the panel and forgets the change.
+    await close.click();
+    await dialog.getByRole('button', { name: 'Descartar cambios' }).click();
+    await expect(settings).toHaveCount(0);
+    await expect(page.locator('.visual-app')).not.toHaveClass(/is-high-contrast/);
+    expect(await page.evaluate(() => localStorage.getItem('impulso.visual-preferences'))).toBe(storedBefore);
+
+    // Saving on the way out keeps the change and goes where the player was heading.
+    await openAccessibility();
+    await contrast.check();
+    await page.getByRole('button', { name: /Hangar/ }).click();
+    await dialog.getByRole('button', { name: 'Guardar y salir' }).click();
+    await expect(page.getByRole('heading', { name: 'Define tu firma visual.' })).toBeVisible();
+    await expect(settings).toHaveCount(0);
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences') ?? '{}'));
+    expect(stored.accessibility.highContrast).toBe(true);
+  });
+
   test('login music controls change and persist music only', async ({ page }) => {
     await openApp(page, '/visual?adapter=mock');
     await page.getByRole('button', { name: 'Opciones de música' }).click();

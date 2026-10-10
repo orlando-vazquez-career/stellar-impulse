@@ -7,6 +7,7 @@ import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from './command-space';
 import { HangarPanel } from '../hangar/HangarScreen';
 import { SettingsPanel } from '../settings/SettingsScreen';
+import { useSettingsLeaveGuard } from '../settings/useSettingsLeaveGuard';
 import { loadVisualPreferences, saveVisualPreferences, type VisualPreferences } from '../settings/preferences';
 import { setAudioMix } from '../audio-mix';
 import type { AccountUser } from '../../auth/client';
@@ -107,6 +108,8 @@ export function CommandCenter({
   const sound = useSpaceSound();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [unfoldedPanel, setUnfoldedPanel] = useState<'hangar' | 'settings' | null>(null);
+  // Every way out of an open settings panel asks first when there is something unsaved.
+  const { panelRef: settingsPanel, guard, dialog: leaveDialog } = useSettingsLeaveGuard();
   const [internalPreferences, setInternalPreferences] = useState<VisualPreferences>(
     () => preferences ?? loadVisualPreferences(),
   );
@@ -148,17 +151,17 @@ export function CommandCenter({
   }, []);
 
   function toggleHangar() {
-    setUnfoldedPanel((current) => (current === 'hangar' ? null : 'hangar'));
+    guard(() => setUnfoldedPanel((current) => (current === 'hangar' ? null : 'hangar')));
   }
 
   function toggleSettings() {
-    setUnfoldedPanel((current) => {
+    guard(() => setUnfoldedPanel((current) => {
       if (current === 'settings') {
         setAudioMix(effectivePreferences.audio);
         return null;
       }
       return 'settings';
-    });
+    }));
   }
 
   function handleBack() {
@@ -195,8 +198,8 @@ export function CommandCenter({
         <div className="vi-header-actions vi-command__header-actions">
           <AudioToggle />
           <LanguageToggle />
-          {onProfile && <button className="vi-text-button" onClick={onProfile}>{t('profile')}</button>}
-          <button className="vi-text-button" onClick={onSignOut}>{t(accountEmail ? 'accountLogout' : 'signOut')}</button>
+          {onProfile && <button className="vi-text-button" onClick={() => guard(onProfile)}>{t('profile')}</button>}
+          <button className="vi-text-button" onClick={() => guard(onSignOut)}>{t(accountEmail ? 'accountLogout' : 'signOut')}</button>
         </div>
       </header>
 
@@ -217,10 +220,10 @@ export function CommandCenter({
           </div>
 
           <div className="vi-menu-grid">
-            <MenuCard glyph="△" title={t('deploy')} detail={t('deployDetail')} enabled onClick={onCreateRoom} />
-            {onCampaign && <MenuCard glyph="✦" title={t('campaignMode')} detail={t('campaignModeDetail')} enabled onClick={onCampaign} />}
-            <MenuCard glyph="⇄" title={t('createMultiplayer')} detail={t('createMultiplayerDetail')} enabled onClick={onCreateMultiplayer} />
-            <MenuCard glyph="⌁" title={t('joinRoom')} detail={t('joinDetail')} enabled onClick={onJoinRoom} />
+            <MenuCard glyph="△" title={t('deploy')} detail={t('deployDetail')} enabled onClick={() => guard(onCreateRoom)} />
+            {onCampaign && <MenuCard glyph="✦" title={t('campaignMode')} detail={t('campaignModeDetail')} enabled onClick={() => guard(onCampaign)} />}
+            <MenuCard glyph="⇄" title={t('createMultiplayer')} detail={t('createMultiplayerDetail')} enabled onClick={() => guard(onCreateMultiplayer)} />
+            <MenuCard glyph="⌁" title={t('joinRoom')} detail={t('joinDetail')} enabled onClick={() => guard(onJoinRoom)} />
             <MenuCard
               glyph="◇"
               title={t('hangar')}
@@ -247,13 +250,14 @@ export function CommandCenter({
             )}
             {unfoldedPanel === 'settings' && (
               <SettingsPanel
+                ref={settingsPanel}
                 preferences={effectivePreferences}
                 onSave={handleSavePreferences}
                 onPreviewAudio={setAudioMix}
-                onBack={() => {
+                onBack={() => guard(() => {
                   setAudioMix(effectivePreferences.audio);
                   setUnfoldedPanel(null);
-                }}
+                })}
                 isEmbedded
               />
             )}
@@ -265,6 +269,7 @@ export function CommandCenter({
         <span>{t('commander')} // {alias.toUpperCase()}</span>
         <span>{accountEmail || t('localConnection')}</span>
       </footer>
+      {leaveDialog}
     </main>
   );
 }

@@ -1382,3 +1382,14 @@
 /* Captured stations: ships delivered at once, at three times their price. */
 .vi-production__station { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--vi-border); }
 .vi-production__station .vi-production__queue { color: #f2b84b; }
+
+/* Leaving settings with unsaved changes: save, discard or keep editing. */
+.vi-confirm-leave { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgb(3 7 12 / 72%); }
+.vi-confirm-leave__card { width: min(460px, 100%); padding: 24px; border: 1px solid var(--settings-accent, #71e5dc); border-top-width: 3px; background: linear-gradient(160deg, rgb(8 22 33 / 98%), rgb(4 15 23 / 98%)); box-shadow: 0 0 40px rgb(113 229 220 / 18%), 0 24px 70px rgb(0 0 0 / 55%); }
+.vi-confirm-leave__card h2 { margin: 0 0 8px; color: #edf4f8; font-family: var(--vi-display); font-size: 24px; font-weight: 700; letter-spacing: .04em; }
+.vi-confirm-leave__card p { margin: 0 0 20px; color: var(--vi-muted); font-size: 14px; line-height: 1.55; }
+.vi-confirm-leave__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.vi-confirm-leave__actions button { min-height: 40px; padding: 0 14px; border: 1px solid var(--vi-border); border-radius: 0; background: rgb(3 7 12 / 50%); color: var(--vi-text); font-family: var(--vi-display); font-size: 15px; font-weight: 700; letter-spacing: .04em; cursor: pointer; }
+.vi-confirm-leave__actions button:hover { border-color: #71e5dc; background: rgb(113 229 220 / 12%); }
+.vi-confirm-leave__actions .vi-confirm-leave__primary { border-color: #71e5dc; background: #71e5dc; color: #06111d; }
+.vi-confirm-leave__actions .vi-confirm-leave__primary:hover { background: #a3f6ee; }
