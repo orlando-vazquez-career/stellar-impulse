@@ -98,7 +98,8 @@ describe('pause in practice against the AI', () => {
     quiet(guest);
     try {
       const both = await next<TrainingView>(host!, 'view', (value) => value.paused === false);
-      expect(both.pausable).toBe(false);
+      // The handshake stays on: the room has the handler, and the refusal says the pause is not available now.
+      expect(both.pausable).toBe(true);
       const refused = next<{ reason: string; message: string }>(host!, 'rejected');
       host!.send('pause', { paused: true });
       expect(await refused).toEqual({ reason: 'pause_unavailable', message: 'La pausa no está disponible en esta partida.' });
@@ -107,16 +108,16 @@ describe('pause in practice against the AI', () => {
       guest.send('augmentPick', { choice: 0, id: guestOffer.augments!.offer!.cards[0]!.id });
       const running = await open(host!, hostOffer);
       const later = await next<TrainingView>(host!, 'view', (value) => value.tick > running.tick + 2);
-      expect(later).toMatchObject({ paused: false, pausable: false });
+      expect(later).toMatchObject({ paused: false, pausable: true });
     } finally { await guest.leave(); await host!.leave(); }
   }, 40_000);
 
-  it('offers no pause in a match between humans', async () => {
+  it('refuses a pause in a match between humans', async () => {
     const room = await new Client(url).create('training', { map: 'sector-01', opponent: 'human' });
     quiet(room);
     try {
       const view = await next<TrainingView>(room, 'view');
-      expect(view.pausable).toBe(false);
+      expect(view.pausable).toBe(true);
       const refused = next<{ reason: string }>(room, 'rejected');
       room.send('pause', { paused: true });
       expect((await refused).reason).toBe('pause_unavailable');
@@ -124,7 +125,7 @@ describe('pause in practice against the AI', () => {
     } finally { await room.leave(); }
   }, 30_000);
 
-  it('ignores a pause once the match is decided', async () => {
+  it('refuses a pause once the match is decided', async () => {
     const { room } = await practice({ testTimeScale: 30 });
     try {
       await next<TrainingView>(room, 'view', (value) => value.tick >= 1500, 25_000);
@@ -134,7 +135,7 @@ describe('pause in practice against the AI', () => {
       const refused = next<{ reason: string }>(room, 'rejected');
       room.send('pause', { paused: true });
       expect((await refused).reason).toBe('pause_unavailable');
-      for (const later of await views(room, 3)) expect(later).toMatchObject({ paused: false, pausable: false });
+      for (const later of await views(room, 3)) expect(later).toMatchObject({ paused: false, pausable: true });
     } finally { await room.leave(); }
   }, 60_000);
 });

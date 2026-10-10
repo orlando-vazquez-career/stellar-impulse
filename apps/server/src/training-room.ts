@@ -57,12 +57,13 @@ export class TrainingRoom extends Room {
     return this.aiRival && !this.lobby && this.usedSeats.size === 1 && this.world.winner === null;
   }
   /**
-   * Every training view says whether a pause may be asked for now, and whether the clock is stopped.
-   * The client sends `pause` only on `pausable`: a room without the handler (the campaign) would close its connection.
+   * Every training view carries `pausable: true` and whether the clock is stopped. `pausable` is the handshake that
+   * this room handles `pause`: the client sends it only then, since a room without the handler (the campaign) would
+   * close its connection. Whether a pause is available right now is answered by `pause_unavailable`.
    */
   private sendView(client: Client, player: PlayerId): PlayerView {
     const view = viewFor(this.world, player);
-    client.send('view', { ...view, reward: this.rewards.get(player), pausable: this.pauseAvailable(), paused: this.paused });
+    client.send('view', { ...view, reward: this.rewards.get(player), pausable: true, paused: this.paused });
     return view;
   }
 

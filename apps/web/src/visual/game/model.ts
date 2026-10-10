@@ -208,7 +208,11 @@ export interface GameplayViewModel {
   connection: ConnectionState;
   /** The match clock is stopped by a practice pause: orders are refused until it runs again. */
   paused: boolean;
-  /** This match takes a pause request (practice against the AI, alone, while it runs). */
+  /**
+   * The room takes pause requests (every training room, never the campaign). The server still grants one only in
+   * practice against the AI with a lone human while the match runs; otherwise the request comes back as the
+   * `pause_unavailable` notice.
+   */
   canPause: boolean;
   /** A base selected on the map: the player's own or the rival's (only while in sight). Ships and bases are never selected together. */
   selectedBase: 'own' | 'enemy' | null;
