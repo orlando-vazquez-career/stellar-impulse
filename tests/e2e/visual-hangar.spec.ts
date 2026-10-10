@@ -127,12 +127,13 @@ test.describe('visual hangar', () => {
     await expect(page.getByRole('heading', { name: 'Mercado de piezas' })).toBeVisible();
     await expect(page.locator('.vi-shop article', { hasText: 'Aurora andina' })).toContainText('5 XLM');
     await expect(page.locator('.vi-wallet-strip')).toContainText('Inicia sesión con tu cuenta');
-    await expect(page.locator('.vi-chain-notice')).toContainText('No se pudo leer Stellar testnet');
     await expect(page.locator('.vi-shop').getByRole('button', { name: 'Comprar' }).first()).toBeDisabled();
     await page.getByRole('tab', { name: 'Anuncios' }).click();
     await expect(page.locator('.vi-market__empty')).toContainText('No hay anuncios activos');
     await page.getByRole('tab', { name: 'Mis piezas' }).click();
     await expect(page.locator('.vi-market__empty')).toContainText('Vincula una wallet');
+    // The read starts after the chain client (Stellar SDK) loads lazily, which is slow on a busy runner.
+    await expect(page.locator('.vi-chain-notice')).toContainText('No se pudo leer Stellar testnet', { timeout: 30_000 });
     await expect(page.getByRole('button', { name: /Hangar/ })).toHaveCount(1);
 
     // "View in the Market" from the Hangar opens that piece in the shop.
