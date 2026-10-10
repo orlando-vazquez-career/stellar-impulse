@@ -19,6 +19,7 @@ import { drawableMapObjects, NEXUS_STYLE, objectCell } from '../../map/map-objec
 import { baseFactions, coreHud } from '../hud-logic';
 import { captureEllipse, ellipseSweep } from './capture-geometry';
 import { pickBase, type PickedBase } from './structure-pick';
+import { clickSelection } from './click-selection';
 import { coreTag, gameText, guardianLabel } from '../game-copy';
 import { isReducedMotion } from '../../settings/accessibility-store';
 import type { Locale } from '../../i18n';
@@ -1247,25 +1248,32 @@ export class MainScene extends Phaser.Scene {
       if (this.selectionDrag) {
         const { start, clickedId } = this.selectionDrag;
         const end = this.pointerPosition(pointer);
-        const dragged = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)) >= 6;
-        if (dragged) {
+        // A drag selects own ships in its box and never a base; a ship under the cursor wins over a base under it;
+        // otherwise a click on a base selects it, and anywhere else clears the selection.
+        const choice = clickSelection({
+          dragged: Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)) >= 6,
+          clickedId,
+          doubleClick: !!clickedId && this.lastClick?.id === clickedId && pointer.downTime - this.lastClick.at <= DOUBLE_CLICK_MS,
+          baseAt: () => this.baseAt(end),
+        });
+        if (choice.kind === 'box') {
           const a = this.cameras.main.getWorldPoint(Math.min(start.x, end.x), Math.min(start.y, end.y));
           const b = this.cameras.main.getWorldPoint(Math.max(start.x, end.x), Math.max(start.y, end.y));
           const ids = this.snapshot.squads.filter((squad) => squad.owner === 'blue' && squad.visible && squad.healthPercent > 0)
             .filter((squad) => { const point = cellToIso(squad.gridX, squad.gridY); return point.x >= a.x && point.x <= b.x && point.y >= a.y && point.y <= b.y; })
             .map((squad) => squad.id);
           this.onSelectSquads(ids);
-        } else if (clickedId && this.lastClick?.id === clickedId && pointer.downTime - this.lastClick.at <= DOUBLE_CLICK_MS) {
+        } else if (choice.kind === 'class') {
           // Double click selects the whole class on screen; further quick clicks keep that group.
-          if (!this.lastClick.group) this.onSelectSquads(this.sameTypeOnScreen(clickedId));
-          this.lastClick = { id: clickedId, at: pointer.downTime, group: true };
+          if (!this.lastClick?.group) this.onSelectSquads(this.sameTypeOnScreen(choice.shipId));
+          this.lastClick = { id: choice.shipId, at: pointer.downTime, group: true };
+        } else if (choice.kind === 'ship') {
+          this.onSelectSquads([choice.shipId]);
+          this.lastClick = { id: choice.shipId, at: pointer.downTime, group: false };
         } else {
-          // A ship under the cursor wins; otherwise a click on a base selects it, and anywhere else clears the selection.
-          // The drag box above never picks a base.
-          const base = clickedId ? null : this.baseAt(end);
-          if (base) this.onSelectBase(base);
-          else this.onSelectSquads(clickedId ? [clickedId] : []);
-          this.lastClick = clickedId ? { id: clickedId, at: pointer.downTime, group: false } : null;
+          if (choice.kind === 'base') this.onSelectBase(choice.base);
+          else this.onSelectSquads([]);
+          this.lastClick = null;
         }
         this.selectionDrag = undefined;
         this.drawSelectionBox();
