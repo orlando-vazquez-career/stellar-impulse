@@ -28,13 +28,19 @@ const initialSnapshot: GameplayViewModel = {
     fleet: 3,
     fleetCap: 12,
   },
-  core: { state: 'locked', progress: 34, opensInSeconds: 88 },
+  core: { state: 'locked', progress: 34, opensInSeconds: 88, radius: 2, captor: null, fractions: { own: 0, rival: 0 }, secondsLeft: null, guarded: false },
   enemiesVisible: true,
   clockRunning: false,
+  paused: false,
+  // The sandbox clock is local: it can always stop.
+  canPause: true,
+  selectedBase: null,
   nodes: [],
   production: null,
+  productionQueue: [],
   result: null,
   notice: null,
+  noticeCode: null,
   connection: 'local',
   visibleCells: null,
   squads: [
@@ -66,7 +72,8 @@ function cloneSnapshot(snapshot: GameplayViewModel): GameplayViewModel {
     ...snapshot,
     selectedSquadIds: [...snapshot.selectedSquadIds],
     resources: { ...snapshot.resources },
-    core: { ...snapshot.core },
+    core: { ...snapshot.core, fractions: { ...snapshot.core.fractions } },
+    productionQueue: snapshot.productionQueue.map((order) => ({ ...order })),
     moveOrder: snapshot.moveOrder && {
       ...snapshot.moveOrder,
       destination: { ...snapshot.moveOrder.destination },
@@ -84,6 +91,8 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
   selectMap('sector-01');
   let snapshot = cloneSnapshot(initialSnapshot);
   let clock: ReturnType<typeof setInterval> | null = null;
+  /** Whether the clock ran when the pause stopped it, so resuming gives that state back. */
+  let resumeRunning = false;
   const orders = new Map<string, MoveOrder>();
   const movements = new Map<string, ReturnType<typeof setInterval>>();
   const attacks = new Map<string, ReturnType<typeof setInterval>>();
@@ -263,6 +272,7 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
           ...snapshot,
           selectedSquadId: ids[0] ?? null,
           selectedSquadIds: ids,
+          selectedBase: null,
           activeAction: null,
           moveOrder: ids[0] ? orders.get(ids[0]) ?? null : null,
           squads: snapshot.squads.map((squad) => ({
@@ -371,8 +381,28 @@ export function createMockGameplayAdapter(): GameplayPresentationAdapter {
             : squad),
         };
       } else if (intent.type === 'set-clock-running') {
-        snapshot = { ...snapshot, clockRunning: intent.running };
-        if (intent.running) startClock(); else stopClock();
+        // A paused sandbox only remembers the request until it resumes.
+        if (snapshot.paused) resumeRunning = intent.running;
+        else {
+          snapshot = { ...snapshot, clockRunning: intent.running };
+          if (intent.running) startClock(); else stopClock();
+        }
+      } else if (intent.type === 'set-paused') {
+        if (intent.paused === snapshot.paused) return;
+        if (intent.paused) {
+          resumeRunning = snapshot.clockRunning;
+          stopClock();
+          snapshot = { ...snapshot, paused: true, clockRunning: false };
+        } else {
+          snapshot = { ...snapshot, paused: false, clockRunning: resumeRunning };
+          if (resumeRunning) startClock();
+        }
+      } else if (intent.type === 'select-base') {
+        snapshot = { ...snapshot, selectedBase: intent.base, selectedSquadIds: [], selectedSquadId: null, activeAction: null, moveOrder: null,
+          squads: snapshot.squads.map((squad) => squad.selected ? { ...squad, selected: false } : squad) };
+      } else if (intent.type === 'cancel-production') {
+        // The sandbox hangar never takes orders, so there is nothing to cancel.
+        return;
       }
       emit();
     },

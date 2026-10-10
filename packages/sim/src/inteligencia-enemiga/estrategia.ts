@@ -127,7 +127,8 @@ export function rivalModule(world: World, rival: PlayerId, difficulty: RivalDiff
 /** Next ship the rival orders, or null to keep saving. Cycles a fixed build order. */
 export function rivalProduction(world: World, rival: PlayerId, difficulty: RivalDifficulty = 'medium'): UnitKind | null {
   const profile = RIVAL_PROFILES[difficulty];
-  if (world.production[rival]) return null;
+  // The rival never queues: it orders only for an idle, empty hangar.
+  if (world.production[rival] || (world.productionQueue?.[rival]?.length ?? 0) > 0) return null;
   if (dueModule(world, rival, difficulty)) return null;
   const alive = world.squads.filter((unit) => unit.ownerId === rival && unit.hp > 0 && !unit.isDecoy).length;
   if (alive >= Math.min(effectiveFleetCap(world,rival), profile.fleetLimit)) return null;

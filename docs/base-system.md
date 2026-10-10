@@ -45,6 +45,35 @@ tienen en alcance y no hay otro objetivo. El Bombardero hace ×1,5 a estructuras
 Destruir la base rival gana la partida. Desde el fin del escudo también se puede
 **Rendirse** (botón arriba a la derecha, con confirmación).
 
+## Hangar
+
+El hangar construye una nave por vez y guarda hasta cuatro pedidos más en cola (cinco
+en total). Cada pedido se cobra al encolar y ocupa su plaza de flota desde ese
+momento: las naves vivas, la que se construye y las de la cola no pueden superar el
+tope. La siguiente empieza en el mismo tick en que sale la anterior, con el
+Astillero y los aumentos de construcción rápida vigentes al empezar. Si un aumento
+prohíbe un tipo que estaba en cola, ese pedido se descarta con reembolso al llegarle
+el turno. Si la flota ya está en el tope, el pedido espera pagado hasta que se libere
+una plaza. Cancelar un pedido devuelve exactamente lo que pagó; cancelar la nave en
+construcción deja empezar la siguiente en el tick siguiente. La IA rival nunca usa la
+cola: solo encarga con el hangar libre.
+
+Las naves nacen fuera del casco. La flota inicial y el hangar usan el primer anillo
+de casillas alrededor de la base (la de combate en +1,0 y el Explorador en +1,+1,
+espejadas para p2) y, si está ocupado, buscan hacia afuera hasta el anillo 4. Las
+estaciones despachan desde el segundo anillo. El hangar, los refuerzos de aumentos y
+las estaciones prueban primero las casillas del anillo más cercanas al Núcleo (con el
+orden de barrido como desempate), así que las dos bases lanzan a la misma distancia de
+él. Con todo ocupado el hangar retiene la nave terminada y la cola no avanza.
+
+## Captura de objetivos
+
+El Núcleo y cada nodo de Metal se capturan desde un disco de radio 2
+(`CORE_CAPTURE_RADIUS` y `METAL_CAPTURE_RADIUS`); los pronexos y estaciones usan el
+`radio` de su marcador. Un marcador `pilar` o `recurso` puede fijar su propio `radio`
+(de 1 a 8). Sector 01 conserva el radio de las reglas (1). Exploradores y señuelos no
+cuentan para capturar.
+
 ## Módulos
 
 Tres espacios. El primero solo admite la Refinería; los otros dos se eligen entre

@@ -67,7 +67,8 @@ describe('trascendencia estelar for two fleets', () => {
     expect(bought.world.players.p1.metal).toBe(3);
     const ship = bought.world.squads.at(-1)!;
     expect(ship).toMatchObject({ ownerId: 'p1', kind: 'frigate' });
-    expect(Math.max(Math.abs(ship.x - station.x), Math.abs(ship.y - station.y))).toBeLessThanOrEqual(2);
+    // Docked on the second ring: clear of the station hull and of the ships parked beside it.
+    expect(Math.max(Math.abs(ship.x - station.x), Math.abs(ship.y - station.y))).toBe(2);
     // The hangar queue is untouched: the base can still build.
     expect(bought.world.production.p1).toBeNull();
   });
