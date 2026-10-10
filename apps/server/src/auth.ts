@@ -4,7 +4,7 @@ import { emptyProgress, profileFor, rewardForCampaign, rewardForMatch, type Acco
 import { Keypair, Transaction } from '@stellar/stellar-sdk';
 import { createWalletChallenge, STELLAR_TESTNET, validatePublicAddress, verifyWalletChallenge, type WalletChallenge } from '@impulso/chain';
 import { FileAccountStore, type AccountStore, type StoredUser } from './account-store';
-import { ChainRewards } from './chain-rewards';
+import { ChainRewards, type GrantOutcome } from './chain-rewards';
 
 const SESSION_MS = 24 * 60 * 60_000;
 /** A wallet challenge must be signed within this window (it also expires inside the transaction). */
@@ -208,6 +208,20 @@ export class AuthService {
     const user = this.byId(userId);
     if (!user?.walletAddress) return Promise.resolve([]);
     return this.rewards.sync({ id: user.id, walletAddress: user.walletAddress, merits: user.progress?.merits ?? [] });
+  }
+
+  /**
+   * Mints, for every account with a linked wallet, the merits it earned while the server had no
+   * minter key. Safe to repeat: each emblem is checked on chain before it is granted.
+   */
+  async backfillMerits(): Promise<GrantOutcome[]> {
+    if (!this.rewards.enabled) return [];
+    const outcomes: GrantOutcome[] = [];
+    for (const user of [...this.users.values()]) {
+      if (!user.walletAddress || !user.progress?.merits?.length) continue;
+      outcomes.push(...await this.syncMerits(user.id));
+    }
+    return outcomes;
   }
 
   private setWallet(userId: string, address: string | undefined): Promise<PublicUser> {

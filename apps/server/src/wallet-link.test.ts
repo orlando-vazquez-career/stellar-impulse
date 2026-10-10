@@ -1,10 +1,10 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Keypair } from '@stellar/stellar-sdk';
 import { keypairSigner, signWalletChallenge, type WalletChallenge } from '@impulso/chain';
-import { createGameServer } from './app.js';
+import { connectChainRewards, createGameServer } from './app.js';
 import { AuthService } from './auth.js';
 import { ChainRewards, type RewardChain } from './chain-rewards.js';
 
@@ -136,6 +136,57 @@ describe('merit emblems on chain', () => {
 
   it('does nothing without a minter key', async () => {
     expect(ChainRewards.fromEnv({}).enabled).toBe(false);
+  });
+});
+
+describe('merit backfill', () => {
+  /** Accounts that earned emblems while the server had no minter key. */
+  async function earnedWhileOff() {
+    const auth = new AuthService();
+    const linked = (await auth.register('ana-backfill@example.com', 'Secret-1234')).user;
+    const unlinked = (await auth.register('beto-backfill@example.com', 'Secret-1234')).user;
+    const idle = (await auth.register('caro-backfill@example.com', 'Secret-1234')).user;
+    const wallet = Keypair.random();
+    const idleWallet = Keypair.random();
+    await auth.linkWallet(linked.id, await sign(auth.walletChallenge(linked.id, wallet.publicKey()), wallet));
+    await auth.linkWallet(idle.id, await sign(auth.walletChallenge(idle.id, idleWallet.publicKey()), idleWallet));
+    await auth.awardCampaign(linked.id, 'campaign:off', wonCampaign, 1, 'p1');
+    await auth.awardCampaign(unlinked.id, 'campaign:off', wonCampaign, 1, 'p1');
+    return { auth, wallet };
+  }
+
+  it('mints the merits of every linked account once, and only those', async () => {
+    const { auth, wallet } = await earnedWhileOff();
+    const { chain, grants } = fakeChain();
+    auth.useChainRewards(new ChainRewards(chain));
+
+    const first = await auth.backfillMerits();
+    expect(first.map((outcome) => outcome.status)).toEqual(['granted', 'granted']);
+    expect(grants).toEqual([{ to: wallet.publicKey(), classId: 3 }, { to: wallet.publicKey(), classId: 4 }]);
+
+    const again = await auth.backfillMerits();
+    expect(again.map((outcome) => outcome.status)).toEqual(['already_on_chain', 'already_on_chain']);
+    expect(grants).toHaveLength(2);
+  });
+
+  it('does nothing without a minter key', async () => {
+    const { auth } = await earnedWhileOff();
+    expect(await auth.backfillMerits()).toEqual([]);
+  });
+
+  it('runs when the server starts with a minter key, and not without one', async () => {
+    const off = await earnedWhileOff();
+    const skipped = vi.spyOn(off.auth, 'backfillMerits');
+    connectChainRewards(off.auth, new ChainRewards(null));
+    expect(skipped).not.toHaveBeenCalled();
+
+    const on = await earnedWhileOff();
+    const { chain, grants } = fakeChain();
+    const started = vi.spyOn(on.auth, 'backfillMerits');
+    connectChainRewards(on.auth, new ChainRewards(chain));
+    expect(started).toHaveBeenCalledTimes(1);
+    await started.mock.results[0]!.value;
+    expect(grants).toHaveLength(2);
   });
 });
 
