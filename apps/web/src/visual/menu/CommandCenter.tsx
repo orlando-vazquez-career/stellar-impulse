@@ -81,7 +81,6 @@ export interface CommandCenterProps {
   onSettings?(): void;
   onSignOut(): void;
   onProfile?(): void;
-  onBack?(): void;
   /** The signed-in account (null for guests): the embedded Hangar needs it for the linked wallet. */
   account?: AccountUser | null;
   onAccountChange?(user: AccountUser): void;
@@ -100,12 +99,10 @@ export function CommandCenter({
   onSettings,
   onSignOut,
   onProfile,
-  onBack,
   account = null,
   onAccountChange,
 }: CommandCenterProps) {
   const { t } = useI18n();
-  const sound = useSpaceSound();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [unfoldedPanel, setUnfoldedPanel] = useState<'hangar' | 'settings' | null>(null);
   // Every way out of an open settings panel asks first when there is something unsaved.
@@ -158,17 +155,6 @@ export function CommandCenter({
     guard(() => setUnfoldedPanel((current) => (current === 'settings' ? null : 'settings')));
   }
 
-  function handleBack() {
-    sound.playSelect();
-    if (unfoldedPanel) {
-      setUnfoldedPanel(null);
-    } else if (onBack) {
-      onBack();
-    } else {
-      onSignOut();
-    }
-  }
-
   return (
     <main className="vi-command vi-screen">
       <canvas ref={canvas} className="vi-command-canvas" aria-hidden="true" />
@@ -201,17 +187,7 @@ export function CommandCenter({
       <section className={`vi-command__content ${unfoldedPanel ? 'has-unfolded-panel' : ''}`}>
         <div className="vi-command__sidebar">
           <div className="vi-command__menu-label">
-            <button
-              type="button"
-              className="vi-command__back-btn"
-              onClick={handleBack}
-              onMouseEnter={() => sound.playHover({ pitch: 580 })}
-              title="Ir atrás"
-            >
-              <span className="vi-command__back-arrow" aria-hidden="true">◀</span>
-              <span>IR ATRÁS</span>
-            </button>
-            <span className="vi-command__menu-tag">OPERACIONES</span>
+            <span className="vi-command__menu-tag">{t('menuOperations')}</span>
           </div>
 
           <div className="vi-menu-grid">

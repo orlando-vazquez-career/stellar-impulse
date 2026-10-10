@@ -19,6 +19,8 @@ test.describe('visual interface foundation', () => {
     await page.getByLabel('Identificador de comandante').fill('Vega');
     await page.getByRole('button', { name: 'Continuar como invitado' }).click();
     await expect(page.getByRole('heading', { name: 'Comandante Vega, el sector espera.' })).toBeVisible();
+    // Signing out lives in the header; the sidebar has no back button that did the same.
+    await expect(page.getByRole('button', { name: /Ir atrás|IR ATRÁS/ })).toHaveCount(0);
     await page.getByRole('button', { name: /Preparar operación/ }).click();
     await expect(page.getByRole('heading', { name: 'Configura la operación.' })).toBeVisible();
     await expect(page.getByText('ST-0427', { exact: true })).toBeVisible();
