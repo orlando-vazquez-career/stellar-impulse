@@ -26,14 +26,12 @@ export function PreparationLobby({
   alias,
   mode,
   onBack,
-  onExploreMap,
   onDeploy,
   initialJoinCode = '',
 }: {
   alias: string;
   mode: LobbyMode;
   onBack(): void;
-  onExploreMap(): void;
   onDeploy(difficulty: RivalDifficulty, map: TrainingMapId, duration: DurationMode): void;
   initialJoinCode?: string;
 }) {
@@ -186,16 +184,6 @@ export function PreparationLobby({
                 <dd>{t('fleetFormatValue')}</dd>
               </div>
             </dl>
-            <button
-              className="vi-map-explore"
-              onMouseEnter={() => hover(520)}
-              onClick={() => {
-                sound.playSelect();
-                onExploreMap();
-              }}
-            >
-              Explorar mapa Tiled
-            </button>
             {mode === 'create' && (
               <fieldset className="vi-difficulty vi-map-select">
                 <legend>{t('map')}</legend>

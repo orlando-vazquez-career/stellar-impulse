@@ -454,32 +454,6 @@
   font-weight: 500;
 }
 
-/* Botón Explorar mapa Tiled */
-.vi-map-explore {
-  width: calc(100% - 36px);
-  margin: 12px 18px 16px;
-  padding: 11px 16px;
-  background: rgba(10, 26, 38, 0.85);
-  border: 1px solid rgba(113, 229, 220, 0.45);
-  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
-  color: #a3f6ee;
-  font-family: var(--vi-display);
-  font-size: 13.5px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.18s;
-}
-
-.vi-map-explore:hover {
-  background: rgba(16, 40, 56, 0.95);
-  border-color: #71e5dc;
-  box-shadow: 0 0 20px rgba(113, 229, 220, 0.4), inset 0 0 12px rgba(113, 229, 220, 0.15);
-  text-shadow: 0 0 10px rgba(113, 229, 220, 0.9);
-  transform: translateY(-1px);
-}
-
 /* Sala de Operaciones / Sala Simulada */
 .vi-room > header > div span {
   color: #7593a8;

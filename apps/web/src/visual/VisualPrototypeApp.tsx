@@ -10,8 +10,7 @@ import { RunScreen } from './run/RunScreen';
 import { LanguageProvider, useI18n } from './i18n';
 import { PreparationLobby, type LobbyMode, type RivalDifficulty } from './lobby/PreparationLobby';
 import { MultiplayerLobby } from './lobby/MultiplayerLobby';
-import { SectorMapScreen } from './map/SectorMapScreen';
-import { DEFAULT_PLAYABLE_MAP, selectMap, type TrainingMapId } from './map/sector-map';
+import { DEFAULT_PLAYABLE_MAP, type TrainingMapId } from './map/sector-map';
 import { CommandCenter } from './menu/CommandCenter';
 import { loadVisualPreferences } from './settings/preferences';
 import { PreferencesProvider, usePreferences } from './settings/preferences-context';
@@ -25,7 +24,7 @@ import '@fontsource/rajdhani/latin-600.css';
 import '@fontsource/rajdhani/latin-700.css';
 import './visual.css';
 
-type Screen = 'access' | 'command' | 'lobby' | 'multiplayer' | 'map' | 'gameplay' | 'profile';
+type Screen = 'access' | 'command' | 'lobby' | 'multiplayer' | 'gameplay' | 'profile';
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567';
 
 function VisualPrototypeContent() {
@@ -195,9 +194,8 @@ function VisualPrototypeContent() {
     />}
     {screen === 'command' && <CommandCenter alias={alias} accountEmail={account?.email} account={account} onAccountChange={setAccount} preferences={preferences} onSavePreferences={savePreferences} onProfile={()=>setScreen('profile')} onCreateRoom={() => { setMultiplayerMatch(false); setLobbyMode('create'); setScreen('lobby'); }} onCampaign={() => { setMultiplayerMatch(false); setRunMode(true); setScreen('gameplay'); }} onCreateMultiplayer={() => openMultiplayer('create')} onJoinRoom={() => openMultiplayer('join')} onSignOut={() => void signOut()} />}
     {screen==='profile'&&<ProfileScreen onBack={()=>setScreen('command')}/>}
-    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} onBack={() => setScreen('command')} onExploreMap={() => { selectMap('sector-01'); setScreen('map'); }} onDeploy={(chosen, chosenMap, chosenDuration) => { setDuration(chosenDuration); setDifficulty(chosen); setMap(chosenMap); setRunMode(false); setScreen('gameplay'); }} />}
+    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} onBack={() => setScreen('command')} onDeploy={(chosen, chosenMap, chosenDuration) => { setDuration(chosenDuration); setDifficulty(chosen); setMap(chosenMap); setRunMode(false); setScreen('gameplay'); }} />}
     {screen === 'multiplayer' && multiplayer && <MultiplayerLobby alias={alias} token={sessionToken() || ''} mode={lobbyMode} session={multiplayer} initialJoinCode={joinCode} onBack={() => { setMultiplayerMatch(false); setJoinCode(''); setScreen('command'); }} />}
-    {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
     {screen === 'gameplay' && runMode && !multiplayerMatch && <RunScreen preferences={preferences} onAudioChange={changeAudio} difficulty={difficulty} duration={duration} onLeave={() => setScreen('command')} />}
     {screen === 'gameplay' && !(runMode && !multiplayerMatch) && <GameplayScreen preferences={preferences} onAudioChange={changeAudio} difficulty={difficulty} map={map} duration={duration} multiplayerSession={multiplayerMatch ? multiplayer ?? undefined : undefined} onLeave={() => multiplayerMatch ? void leaveMultiplayer() : setScreen('command')} />}
     <div className="vi-resolution-warning" role="alert"><div><Brand /><h1>{t('resolutionWarningTitle')}</h1><p>{t('resolutionWarningBody')}</p></div></div>
