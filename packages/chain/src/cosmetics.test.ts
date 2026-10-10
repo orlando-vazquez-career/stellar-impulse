@@ -42,6 +42,22 @@ function fakeServer(overrides: Partial<CosmeticsRpc> = {}): CosmeticsRpc {
 
 const passthroughSigner: TransactionSigner = { signTransaction: async (x) => ({ signedTxXdr: x }) };
 
+/** The diagnostic event a contract leaves when it fails with `Error(Contract, #code)`. */
+function contractErrorEvent(code: number): xdr.DiagnosticEvent {
+  return new xdr.DiagnosticEvent({
+    inSuccessfulContractCall: false,
+    event: new xdr.ContractEvent({
+      ext: xdr.ExtensionPoint.v0(),
+      contractId: null,
+      type: xdr.ContractEventType.diagnostic,
+      body: xdr.ContractEventBody.v0(new xdr.ContractEventV0({
+        topics: [xdr.ScVal.scvSymbol("error"), xdr.ScVal.scvError(xdr.ScError.sceContract(code))],
+        data: xdr.ScVal.scvString("escalating error to VM trap"),
+      })),
+    }),
+  });
+}
+
 describe("cosmetics reads", () => {
   it("lists owned pieces sorted by token with their class", async () => {
     expect(await ownedCosmetics(PLAYER, { server: fakeServer() })).toEqual([
@@ -80,7 +96,25 @@ describe("cosmetics purchase", () => {
 
   it("reports a failed confirmation instead of a fake token", async () => {
     const server = fakeServer({ pollTransaction: async () => ({ status: rpc.Api.GetTransactionStatus.FAILED }) as rpc.Api.GetTransactionResponse });
-    await expect(buyCosmetic(PLAYER, 1, passthroughSigner, { server })).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    await expect(buyCosmetic(PLAYER, 1, passthroughSigner, { server }))
+      .rejects.toMatchObject({ code: "INVALID_RESPONSE", transactionHash: "ab".repeat(32) });
+  });
+
+  it("calls a transaction still unseen after polling pending, with its hash", async () => {
+    const server = fakeServer({ pollTransaction: async () => ({ status: rpc.Api.GetTransactionStatus.NOT_FOUND }) as rpc.Api.GetTransactionResponse });
+    await expect(buyCosmetic(PLAYER, 1, passthroughSigner, { server }))
+      .rejects.toMatchObject({ name: "ChainError", code: "PENDING", transactionHash: "ab".repeat(32) });
+  });
+
+  it("names the contract refusal of a failed transaction from its diagnostic events", async () => {
+    const server = fakeServer({
+      pollTransaction: async () => ({
+        status: rpc.Api.GetTransactionStatus.FAILED, diagnosticEventsXdr: [contractErrorEvent(8)],
+      }) as unknown as rpc.Api.GetTransactionResponse,
+    });
+    await expect(buyCosmetic(PLAYER, 1, passthroughSigner, { server })).rejects.toMatchObject({
+      code: "CONTRACT_REJECTED", contractCode: 8, message: "Esta pieza se agotó.", transactionHash: "ab".repeat(32),
+    });
   });
 });
 
