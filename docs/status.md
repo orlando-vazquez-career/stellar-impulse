@@ -10,7 +10,7 @@ El hangar acepta hasta cinco pedidos (uno en construcción y cuatro en cola), co
 encolar y permite cancelar cualquiera con reembolso exacto (`cancel_production`). Cada
 pedido pendiente ocupa su plaza de flota, también para las compras en estaciones. Las
 naves nacen en el primer anillo de la base y en el segundo de las estaciones, nunca
-dentro del casco. El Núcleo y los nodos de Metal se capturan desde un radio de 2 casillas
+dentro del casco, y primero del lado del Núcleo, así ningún bando lanza más lejos que el otro. El Núcleo y los nodos de Metal se capturan desde un radio de 2 casillas
 en los mapas de Tiled. La vista indica si el Núcleo está bloqueado, libre, capturándose
 o en disputa, quién lo captura y cuánto le falta. La práctica contra la IA admite una
 pausa ilimitada del único humano; en multijugador no hay pausa voluntaria. Consulta
