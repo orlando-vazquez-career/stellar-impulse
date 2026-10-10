@@ -8,6 +8,7 @@ import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from '../menu/command-space';
 import { createAnomalyScene } from './anomaly-scene';
 import { lobbyText, type LobbyKey } from './lobby-copy';
+import { MapPreview } from '../map/MapPreview';
 import type { TrainingMapId } from '../map/sector-map';
 import './lobby.css';
 
@@ -159,13 +160,9 @@ export function PreparationLobby({
               <span>01</span>
               <h2 id="operation-brief-title">{t('operationBrief')}</h2>
             </header>
-            <div className="vi-map-preview" aria-hidden="true">
-              <div className="vi-map-preview__field">
-                <i className="vi-map-preview__core" />
-                <i className="vi-map-preview__blue" />
-                <i className="vi-map-preview__red" />
-              </div>
-              <span>{selectedMap.name[locale]}</span>
+            <div className="vi-map-preview">
+              <MapPreview mapId={map} />
+              <span aria-hidden="true">{selectedMap.name[locale]}</span>
             </div>
             <dl className="vi-briefing__data">
               <div>
