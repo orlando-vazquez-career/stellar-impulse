@@ -6,6 +6,8 @@ import { AudioToggle } from '../shared/AudioToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from './command-space';
 import { HangarPanel } from '../hangar/HangarScreen';
+import { MarketPanel } from '../market/MarketPanel';
+import { marketText } from '../market/market-copy';
 import { SettingsPanel } from '../settings/SettingsScreen';
 import { useSettingsLeaveGuard } from '../settings/useSettingsLeaveGuard';
 import { isReducedMotion, subscribeAccessibility } from '../settings/accessibility-store';
@@ -99,9 +101,11 @@ export function CommandCenter({
   account = null,
   onAccountChange,
 }: CommandCenterProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [unfoldedPanel, setUnfoldedPanel] = useState<'hangar' | 'settings' | null>(null);
+  const [unfoldedPanel, setUnfoldedPanel] = useState<'hangar' | 'market' | 'settings' | null>(null);
+  /** The piece the Market opens on, when the Hangar sent the player there. */
+  const [marketFocus, setMarketFocus] = useState<string | null>(null);
   // Every way out of an open settings panel asks first when there is something unsaved.
   const { panelRef: settingsPanel, guard, dialog: leaveDialog } = useSettingsLeaveGuard();
   const [internalPreferences, setInternalPreferences] = useState<VisualPreferences>(
@@ -148,6 +152,20 @@ export function CommandCenter({
 
   function toggleHangar() {
     guard(() => setUnfoldedPanel((current) => (current === 'hangar' ? null : 'hangar')));
+  }
+
+  function toggleMarket() {
+    guard(() => {
+      setMarketFocus(null);
+      setUnfoldedPanel((current) => (current === 'market' ? null : 'market'));
+    });
+  }
+
+  function openMarket(itemId: string) {
+    guard(() => {
+      setMarketFocus(itemId);
+      setUnfoldedPanel('market');
+    });
   }
 
   function toggleSettings() {
@@ -203,6 +221,14 @@ export function CommandCenter({
               onClick={toggleHangar}
             />
             <MenuCard
+              glyph="◈"
+              title={marketText(locale, 'cardTitle')}
+              detail={marketText(locale, 'cardDetail')}
+              enabled
+              active={unfoldedPanel === 'market'}
+              onClick={toggleMarket}
+            />
+            <MenuCard
               glyph="＋"
               title={t('settings')}
               detail={t('settingsDetail')}
@@ -216,7 +242,16 @@ export function CommandCenter({
         {unfoldedPanel && (
           <div className="vi-command__workspace">
             {unfoldedPanel === 'hangar' && (
-              <HangarPanel onBack={() => setUnfoldedPanel(null)} isEmbedded account={account} onAccountChange={onAccountChange} />
+              <HangarPanel onBack={() => setUnfoldedPanel(null)} isEmbedded account={account} onAccountChange={onAccountChange} onOpenMarket={openMarket} />
+            )}
+            {unfoldedPanel === 'market' && (
+              <MarketPanel
+                isEmbedded
+                account={account}
+                onAccountChange={onAccountChange}
+                onBack={() => setUnfoldedPanel(null)}
+                focusItemId={marketFocus}
+              />
             )}
             {unfoldedPanel === 'settings' && (
               <SettingsPanel
