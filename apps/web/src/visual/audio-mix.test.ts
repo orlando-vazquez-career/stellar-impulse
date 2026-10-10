@@ -77,6 +77,9 @@ function stubMusicAudio() {
 describe('music player', () => {
   afterEach(() => { setAudioMix(mix()); vi.unstubAllGlobals(); });
 
+  // A characterization test: channelVolume already honoured musicMuted before the header switch
+  // existed, so this passed from the start. It pins the player's side of the contract the switch
+  // now depends on: a saved music mute reaches the music gain.
   it('drops the music to silence while musicMuted and brings it back after', () => {
     const { gains } = stubMusicAudio();
     setAudioMix(mix());
