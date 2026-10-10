@@ -1,4 +1,4 @@
-import { SECTOR_RULES, TRAINING_MAPS, type TrainingMapId } from '@impulso/sim';
+import { SECTOR_RULES, TRAINING_MAPS, type PlayerId, type TrainingMapId } from '@impulso/sim';
 import { projectCellOn, projectedBoundsOn } from '../game/phaser/isometric';
 
 /** A projected point of the preview, in world pixels measured from the top-left corner of the map's box. */
@@ -48,6 +48,14 @@ export function buildMapPreview(id: TrainingMapId): MapPreview {
   };
   previews.set(id, preview);
   return preview;
+}
+
+/**
+ * Fleet colour of each seat for the player sitting in `self`. As in the match, their own fleet is always blue and
+ * the rival's red, so a guest in p2 sees their base blue here too.
+ */
+export function seatFactions(self: PlayerId = 'p1'): Record<PlayerId, 'blue' | 'red'> {
+  return self === 'p2' ? { p1: 'red', p2: 'blue' } : { p1: 'blue', p2: 'red' };
 }
 
 /**

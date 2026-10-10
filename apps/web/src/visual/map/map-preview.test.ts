@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PRACTICE_MAPS } from '@impulso/input';
 import { SECTOR_RULES, TRAINING_MAPS } from '@impulso/sim';
-import { buildMapPreview, fitMapPreview, type PreviewPoint } from './map-preview';
+import { buildMapPreview, fitMapPreview, seatFactions, type PreviewPoint } from './map-preview';
 
 const inside = (point: PreviewPoint, size: { width: number; height: number }) =>
   point.x >= 0 && point.x <= size.width && point.y >= 0 && point.y <= size.height;
@@ -54,6 +54,12 @@ describe('map preview', () => {
       expect(sector.sectorSurface).toBe(before.surface);
       expect(build(id)).toBe(first);
     }
+  });
+
+  it("paints the viewer's own base blue and the rival's red, from either seat", () => {
+    expect(seatFactions()).toEqual({ p1: 'blue', p2: 'red' });
+    expect(seatFactions('p1')).toEqual({ p1: 'blue', p2: 'red' });
+    expect(seatFactions('p2')).toEqual({ p1: 'red', p2: 'blue' });
   });
 
   it('fits the whole map in a canvas, centred and with a margin', () => {

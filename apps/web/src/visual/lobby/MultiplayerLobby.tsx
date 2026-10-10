@@ -298,7 +298,7 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
           <section className="vi-lobby-card vi-briefing" aria-labelledby="multiplayer-brief-title">
             <header><h2 id="multiplayer-brief-title">{copy.operationBrief}</h2></header>
             <div className="vi-map-preview">
-              <MapPreview mapId={selectedMap.id} />
+              <MapPreview mapId={selectedMap.id} self={phase?.playerId ?? 'p1'} />
               <span aria-hidden="true">{selectedMap.name[locale]}</span>
             </div>
             <p className="vi-multiplayer-map-hint">{selectedMap.description[locale]}</p>

@@ -1,13 +1,13 @@
 import { useEffect, useRef } from 'react';
-import type { TrainingMapId } from '@impulso/sim';
+import type { PlayerId, TrainingMapId } from '@impulso/sim';
 import { captureEllipse } from '../game/phaser/capture-geometry';
 import { TILE_HALF_HEIGHT, TILE_HALF_WIDTH } from '../game/phaser/isometric';
 import { useI18n } from '../i18n';
 import { lobbyText } from '../lobby/lobby-copy';
 import { mapName } from './map-name';
-import { buildMapPreview, fitMapPreview, type PreviewPoint } from './map-preview';
+import { buildMapPreview, fitMapPreview, seatFactions, type PreviewPoint } from './map-preview';
 
-/** The minimap's palette: blue fleet, red fleet, golden Core, grey neutral objectives. */
+/** The minimap's palette: own fleet blue, rival fleet red, golden Core, grey neutral objectives. */
 const COLOR = {
   floor: '#34587a',
   area: 'rgba(181, 196, 209, 0.32)',
@@ -15,10 +15,10 @@ const COLOR = {
   neutral: '#8aa0b8',
   station: '#b5c4d1',
   core: '#f7e77c',
-  p1: '#36a9ff',
-  p1Edge: '#83d4ff',
-  p2: '#ff4f64',
-  p2Edge: '#ff9ba7',
+  blue: '#36a9ff',
+  blueEdge: '#83d4ff',
+  red: '#ff4f64',
+  redEdge: '#ff9ba7',
 } as const;
 /** Pixels kept clear around the map so the markers on its edge are not cut. */
 const MARGIN = 8;
@@ -33,7 +33,7 @@ function diamond(context: Context, at: PreviewPoint, halfWidth: number, halfHeig
   context.closePath();
 }
 
-function drawPreview(canvas: HTMLCanvasElement, mapId: TrainingMapId) {
+function drawPreview(canvas: HTMLCanvasElement, mapId: TrainingMapId, self: PlayerId) {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   const context = canvas.getContext('2d');
@@ -86,8 +86,11 @@ function drawPreview(canvas: HTMLCanvasElement, mapId: TrainingMapId) {
   context.beginPath();
   context.arc(core.x, core.y, unit * 1.5, 0, Math.PI * 2);
   context.fill();
-  for (const [base, fill, edge] of [[preview.bases.p1, COLOR.p1, COLOR.p1Edge], [preview.bases.p2, COLOR.p2, COLOR.p2Edge]] as const) {
-    const at = place(base);
+  const factions = seatFactions(self);
+  for (const seat of ['p1', 'p2'] as const) {
+    const at = place(preview.bases[seat]);
+    const fill = COLOR[factions[seat]];
+    const edge = COLOR[`${factions[seat]}Edge`];
     const box = [at.x - unit * 1.7, at.y - unit * 1.2, unit * 3.4, unit * 2.4] as const;
     context.shadowBlur = unit * 2;
     context.shadowColor = fill;
@@ -99,21 +102,24 @@ function drawPreview(canvas: HTMLCanvasElement, mapId: TrainingMapId) {
   }
 }
 
-/** A small drawing of a map for the lobbies: walkable ground, both bases, the Core and the objectives. */
-export function MapPreview({ mapId }: { mapId: TrainingMapId }) {
+/**
+ * A small drawing of a map for the lobbies: walkable ground, both bases, the Core and the objectives. `self` is the
+ * viewer's seat: their base is blue and the rival's red, as on the match minimap.
+ */
+export function MapPreview({ mapId, self = 'p1' }: { mapId: TrainingMapId; self?: PlayerId }) {
   const { locale } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const element = canvas.current;
     if (!element) return;
-    const draw = () => drawPreview(element, mapId);
+    const draw = () => drawPreview(element, mapId, self);
     draw();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(draw);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [mapId]);
+  }, [mapId, self]);
 
   return <canvas
     ref={canvas}
@@ -121,5 +127,6 @@ export function MapPreview({ mapId }: { mapId: TrainingMapId }) {
     role="img"
     aria-label={lobbyText(locale, 'mapPreview', { map: mapName(mapId, locale) })}
     data-map-id={mapId}
+    data-self={self}
   />;
 }
