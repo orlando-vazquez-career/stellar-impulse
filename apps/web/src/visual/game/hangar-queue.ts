@@ -49,6 +49,8 @@ export function hangarSignature(production: ProductionViewModel | null, queue: r
 
 /** How long a cancel the server never applies (it refused it) keeps the queue locked. */
 export const CANCEL_HOLD_MS = 2500;
+/** Every cancel holds the queue at least this long, the span of a double click, even if the view already moved. */
+export const DOUBLE_CLICK_MS = 500;
 
 /**
  * One cancel in flight at a time. A cancel names a slot, and once the server applies it the orders behind move up a
@@ -60,7 +62,10 @@ export function createHangarCancel(dispatch: (intent: CancelIntent) => void, now
   let pending: { signature: string; at: number } | null = null;
   const locked = (production: ProductionViewModel | null, queue: readonly QueuedProductionViewModel[]): boolean => {
     if (!pending) return false;
-    if (pending.signature !== hangarSignature(production, queue) || now() - pending.at >= holdMs) {
+    const age = now() - pending.at;
+    // A view that arrives between the two clicks of a double click must not hand the second one the next order.
+    if (age < DOUBLE_CLICK_MS) return true;
+    if (pending.signature !== hangarSignature(production, queue) || age >= holdMs) {
       pending = null;
       return false;
     }

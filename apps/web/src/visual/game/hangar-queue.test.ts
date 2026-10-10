@@ -58,13 +58,28 @@ describe('hangar cancels', () => {
     // The cancel landed: the next order is in production and one waits behind it.
     const promoted: ProductionViewModel = { kind: 'interceptor', remainingSeconds: 4, totalSeconds: 4, progress: 0, refund: 6 };
     const rest = [{ kind: 'interceptor' as const, refund: 6 }];
-    clock.now += 300;
+    clock.now += 600;
     expect(cancels.locked(promoted, rest)).toBe(false);
     expect(cancels.cancel(promoted, rest, { type: 'cancel-production', slot: 1, kind: 'interceptor' })).toBe(true);
     expect(sent).toHaveLength(2);
     // A new order that brings the queue back to the same look is a new queue, not the old cancel still pending.
+    clock.now += 600;
     expect(cancels.locked(promoted, [])).toBe(false);
     expect(cancels.locked(promoted, rest)).toBe(false);
+  });
+
+  it('ignores the second click of a double click even when the view moves the queue up between the clicks', () => {
+    const sent: PresentationIntent[] = [];
+    const clock = clockAt();
+    const cancels = createHangarCancel((intent) => sent.push(intent), () => clock.now);
+    cancels.cancel(building, waiting, { type: 'cancel-production', slot: 1, kind: 'interceptor' });
+    // The server applied it before the second click: the order behind moved up into slot 1.
+    const movedUp = waiting.slice(1);
+    clock.now += 80;
+    expect(cancels.cancel(building, movedUp, { type: 'cancel-production', slot: 1, kind: 'interceptor' })).toBe(false);
+    clock.now += 500;
+    expect(cancels.cancel(building, movedUp, { type: 'cancel-production', slot: 1, kind: 'interceptor' })).toBe(true);
+    expect(sent).toHaveLength(2);
   });
 
   it('frees the queue after a hold when the server refuses the cancel and the queue never changes', () => {

@@ -333,8 +333,9 @@ function HangarQueue({ view, adapter, unitNames }: { view: GameplayViewModel; ad
   return <ol className="vi-hangar-queue" aria-label={gameText(locale, 'hangarQueue')} aria-busy={locked || undefined}>
     {Array.from({ length: MAX_PRODUCTION_QUEUE }, (_, index) => {
       const slot = slots[index];
-      if (!slot) return <li key={`empty-${index}`} className="vi-hangar-queue__empty" aria-hidden="true" />;
-      return <li key={slot.key}>
+      // Slots are positions: keyed by index, a slot keeps its button while the orders move up through it.
+      if (!slot) return <li key={index} className="vi-hangar-queue__empty" aria-hidden="true" />;
+      return <li key={index}>
         <button className={`vi-hangar-slot${slot.active ? ' is-active' : ''}`} aria-label={slot.label} title={slot.label} disabled={!!view.result || locked}
           style={slot.progressDegrees !== null ? { '--vi-slot-progress': `${slot.progressDegrees}deg` } as CSSProperties : undefined}
           onClick={() => { if (cancels.cancel(view.production, view.productionQueue, slot.cancel)) refresh(); }}>
