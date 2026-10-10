@@ -8,6 +8,36 @@ test.describe('visual interface foundation', () => {
     await expect(page.locator('.panel--modes')).toHaveCount(0);
   });
 
+  test('inspects the Tiled map chosen in the lobby from Visual', async ({ page }) => {
+    await openApp(page, '/');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await expect(page.locator('.vi-map-preview canvas')).toHaveAttribute('data-map', 'espiral');
+    await page.getByRole('button', { name: /^Caos Estelar/ }).click();
+    await expect(page.locator('.vi-map-preview canvas')).toHaveAttribute('data-map', 'espiral-2');
+    await page.getByRole('button', { name: 'Explorar mapa Tiled' }).click();
+    await expect(page.getByRole('heading', { name: 'Caos Estelar' })).toBeVisible();
+    const canvas = page.getByRole('img', { name: 'Mapa Tiled Caos Estelar' });
+    await expect(canvas).toHaveAttribute('data-map-size', '96x96');
+    await expect(canvas).toHaveAttribute('data-atlas-ready', 'true');
+    const base = (await page.getByText(/Base A ·/).innerText()).match(/(\d+), (\d+)/)!;
+    const cell = { x: Number(base[1]) + 1, y: Number(base[2]) };
+    await expect(page.getByText(`Nave · ${base[1]}, ${base[2]}`)).toBeVisible();
+    const size = await canvas.evaluate((element) => ({
+      cssWidth: element.getBoundingClientRect().width,
+      nativeWidth: (element as HTMLCanvasElement).width,
+      scale: Number((element as HTMLElement).dataset.scale),
+    }));
+    // The inspector opens scrolled to Base A, so its neighbour cell is on screen.
+    const zoom = size.scale * size.cssWidth / size.nativeWidth;
+    await canvas.click({ position: { x: (96 * 32 + (cell.x - cell.y) * 32) * zoom, y: (64 + (cell.x + cell.y) * 16) * zoom } });
+    await expect(page.getByText(new RegExp(`Casilla ${cell.x}, ${cell.y} · (Transitable|Bloqueada)`))).toBeVisible();
+    await page.screenshot({ path: 'test-results/tiled-sector.png' });
+    await page.getByRole('button', { name: 'Volver a preparación' }).click();
+    await expect(page.getByRole('heading', { name: 'Configura la operación.' })).toBeVisible();
+  });
+
   test('supports the guest flow and bilingual copy', async ({ page }) => {
     await openApp(page, '/visual?adapter=mock');
 

@@ -6,3 +6,6 @@
 .vi-sector-map__stage canvas { width: min(100%, 1050px); height: auto; cursor: crosshair; }
 .vi-sector-map__details { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 14px 0; font-family: var(--vi-display); color: var(--vi-blue-light); }
 .vi-sector-map__note { font-size: 12px; }
+/* Maps too wide to read at a glance keep their tile size and scroll. */
+.vi-sector-map__stage.is-large { display: block; place-items: start; }
+.vi-sector-map__stage.is-large canvas { display: block; width: auto; max-width: none; }

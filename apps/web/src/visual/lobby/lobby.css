@@ -369,46 +369,14 @@
   pointer-events: none;
 }
 
-.vi-map-preview__field {
+.vi-map-preview__canvas {
   position: relative;
-  width: min(280px, 75%);
-  aspect-ratio: 1.8;
-  border: 1px solid rgba(113, 229, 220, 0.45);
-  background-image:
-    linear-gradient(30deg, transparent 49%, rgba(113, 229, 220, 0.2) 50%, transparent 51%),
-    linear-gradient(150deg, transparent 49%, rgba(113, 229, 220, 0.2) 50%, transparent 51%);
-  background-size: 42px 24px;
-  transform: rotate(-2deg) skewY(-3deg);
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  box-shadow: 0 0 20px rgba(113, 229, 220, 0.15);
-}
-
-.vi-map-preview__field i {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-}
-
-.vi-map-preview__core {
-  top: 47%;
-  left: 48%;
-  background: #f2cd79;
-  box-shadow: 0 0 14px rgba(242, 205, 121, 0.9), 0 0 0 4px rgba(242, 205, 121, 0.25);
-}
-
-.vi-map-preview__blue {
-  top: 64%;
-  left: 24%;
-  background: #71e5dc;
-  box-shadow: 0 0 14px rgba(113, 229, 220, 0.9), 0 0 0 4px rgba(113, 229, 220, 0.25);
-}
-
-.vi-map-preview__red {
-  top: 26%;
-  right: 22%;
-  background: #ff4f64;
-  box-shadow: 0 0 14px rgba(255, 79, 100, 0.9), 0 0 0 4px rgba(255, 79, 100, 0.25);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(113, 229, 220, 0.25));
 }
 
 .vi-map-preview > span {
@@ -965,9 +933,6 @@
   .vi-map-preview {
     height: 140px;
   }
-  .vi-map-preview__field {
-    width: min(240px, 70%);
-  }
   .vi-briefing__data > div {
     min-height: 58px;
     padding: 8px 10px;
@@ -1031,7 +996,8 @@
 .vi-duration legend { font: 600 14px Rajdhani; color: #a8c6df; }
 .vi-duration select { width: 100%; padding: 7px; background: #0a1d2e; color: #daeeff; border: 1px solid #315269; }
 @media(max-height:800px){
-  .vi-map-preview{height:100px;}
+  .vi-map-preview{height:100px;padding:6px 12px;gap:0;}
+  .vi-map-preview>span{position:absolute;left:12px;bottom:6px;}
   .vi-briefing__data>div{min-height:44px;padding:6px 10px;}
   .vi-lobby__content{padding-top:10px;}
   .vi-lobby__grid{margin-top:12px;}

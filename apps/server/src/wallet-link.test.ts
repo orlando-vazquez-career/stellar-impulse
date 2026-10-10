@@ -30,7 +30,7 @@ const wonCampaign = { winner: 'p1' as const, reason: 'core' as const };
 describe('wallet link', () => {
   it('links the address that signed the challenge, once', async () => {
     const auth = new AuthService();
-    const { user } = await auth.register('ana-wallet@example.com', 'secret-1234');
+    const { user } = await auth.register('ana-wallet@example.com', 'Secret-1234');
     const wallet = Keypair.random();
     const challenge = auth.walletChallenge(user.id, wallet.publicKey());
     const signed = await sign(challenge, wallet);
@@ -42,8 +42,8 @@ describe('wallet link', () => {
 
   it('refuses a signature from another key or a challenge another account asked for', async () => {
     const auth = new AuthService();
-    const ana = (await auth.register('ana-sig@example.com', 'secret-1234')).user;
-    const beto = (await auth.register('beto-sig@example.com', 'secret-1234')).user;
+    const ana = (await auth.register('ana-sig@example.com', 'Secret-1234')).user;
+    const beto = (await auth.register('beto-sig@example.com', 'Secret-1234')).user;
     const wallet = Keypair.random();
     const challenge = auth.walletChallenge(ana.id, wallet.publicKey());
     const forged = await keypairSigner(Keypair.random()).signTransaction(challenge.transaction, {
@@ -59,8 +59,8 @@ describe('wallet link', () => {
 
   it('keeps one wallet per account and lets the player unlink it', async () => {
     const auth = new AuthService();
-    const ana = (await auth.register('ana-one@example.com', 'secret-1234')).user;
-    const beto = (await auth.register('beto-one@example.com', 'secret-1234')).user;
+    const ana = (await auth.register('ana-one@example.com', 'Secret-1234')).user;
+    const beto = (await auth.register('beto-one@example.com', 'Secret-1234')).user;
     const wallet = Keypair.random();
     await auth.linkWallet(ana.id, await sign(auth.walletChallenge(ana.id, wallet.publicKey()), wallet));
     const again = await sign(auth.walletChallenge(beto.id, wallet.publicKey()), wallet);
@@ -73,7 +73,7 @@ describe('wallet link', () => {
 
   it('rejects an address that is not a Stellar account', async () => {
     const auth = new AuthService();
-    const { user } = await auth.register('ana-bad@example.com', 'secret-1234');
+    const { user } = await auth.register('ana-bad@example.com', 'Secret-1234');
     expect(() => auth.walletChallenge(user.id, 'G123')).toThrow(expect.objectContaining({ code: 'invalid_wallet' }));
   });
 });
@@ -87,10 +87,10 @@ describe('wallet in the account file', () => {
     dirs.push(dir);
     const file = join(dir, 'users.json');
     const auth = new AuthService(file);
-    const { user } = await auth.register('ana-file@example.com', 'secret-1234');
+    const { user } = await auth.register('ana-file@example.com', 'Secret-1234');
     const wallet = Keypair.random();
     await auth.linkWallet(user.id, await sign(auth.walletChallenge(user.id, wallet.publicKey()), wallet));
-    expect(new AuthService(file).login('ana-file@example.com', 'secret-1234').user.walletAddress).toBe(wallet.publicKey());
+    expect(new AuthService(file).login('ana-file@example.com', 'Secret-1234').user.walletAddress).toBe(wallet.publicKey());
   });
 });
 
@@ -99,7 +99,7 @@ describe('merit emblems on chain', () => {
     const { chain, grants } = fakeChain();
     const auth = new AuthService();
     auth.useChainRewards(new ChainRewards(chain));
-    const { user } = await auth.register('ana-merit@example.com', 'secret-1234');
+    const { user } = await auth.register('ana-merit@example.com', 'Secret-1234');
 
     // Won before linking: nothing can be minted yet.
     await auth.awardCampaign(user.id, 'campaign:one', wonCampaign, 1, 'p1');
@@ -125,7 +125,7 @@ describe('merit emblems on chain', () => {
     };
     const auth = new AuthService();
     auth.useChainRewards(new ChainRewards(chain));
-    const { user } = await auth.register('ana-down@example.com', 'secret-1234');
+    const { user } = await auth.register('ana-down@example.com', 'Secret-1234');
     const wallet = Keypair.random();
     await auth.linkWallet(user.id, await sign(auth.walletChallenge(user.id, wallet.publicKey()), wallet));
     const reward = await auth.awardCampaign(user.id, 'campaign:down', wonCampaign, 1, 'p1');
@@ -149,7 +149,7 @@ describe('wallet routes', () => {
   afterAll(async () => { await server.gracefullyShutdown(false); });
 
   it('runs the link from challenge to account over HTTP', async () => {
-    const { token } = await auth.register('ana-http@example.com', 'secret-1234');
+    const { token } = await auth.register('ana-http@example.com', 'Secret-1234');
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
     const wallet = Keypair.random();
     const challengeResponse = await fetch(`${URL}/wallet/challenge`, { method: 'POST', headers, body: JSON.stringify({ address: wallet.publicKey() }) });

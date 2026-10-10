@@ -9,9 +9,9 @@ const PORT = 29_000 + Math.floor(Math.random() * 900);
 const URL = `http://127.0.0.1:${PORT}`;
 const auth = new AuthService();
 const tokens = {
-  Ana: (await auth.register('ana-campaign@example.com', 'secret-1234')).token,
-  Beto: (await auth.register('beto-campaign@example.com', 'secret-1234')).token,
-  Caro: (await auth.register('caro-campaign@example.com', 'secret-1234')).token,
+  Ana: (await auth.register('ana-campaign@example.com', 'Secret-1234')).token,
+  Beto: (await auth.register('beto-campaign@example.com', 'Secret-1234')).token,
+  Caro: (await auth.register('caro-campaign@example.com', 'Secret-1234')).token,
 };
 /** A small server-owned fixture keeps socket tests fast; admission uses the playable map. */
 const joinOptions = (name: keyof typeof tokens) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: tokens[name], map: 'espiral' });

@@ -351,5 +351,13 @@
   .vi-control-settings__row { grid-template-columns: 1fr; gap: 7px; }
   .vi-control-settings__bindings { justify-content: flex-start; }
   .vi-control-settings__recording { justify-content: flex-start; }
+  .vi-color-profile { grid-template-columns: 1fr; gap: 8px; }
+}
+
+.vi-settings-leave { position: fixed; z-index: 50; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vi-settings::before { animation: none; }
+  .vi-settings *, .vi-settings *::before, .vi-settings *::after { transition: none !important; }
 }
 .vi-language-settings__note { margin: -4px 0 13px; color: var(--settings-muted); font-size: calc(12px * var(--vi-text-scale, 1)); }

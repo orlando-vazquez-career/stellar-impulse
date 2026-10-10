@@ -195,9 +195,13 @@ function VisualPrototypeContent() {
     />}
     {screen === 'command' && <CommandCenter alias={alias} accountEmail={account?.email} account={account} onAccountChange={setAccount} preferences={preferences} onSavePreferences={savePreferences} onProfile={()=>setScreen('profile')} onCreateRoom={() => { setMultiplayerMatch(false); setLobbyMode('create'); setScreen('lobby'); }} onCampaign={() => { setMultiplayerMatch(false); setRunMode(true); setScreen('gameplay'); }} onCreateMultiplayer={() => openMultiplayer('create')} onJoinRoom={() => openMultiplayer('join')} onSignOut={() => void signOut()} />}
     {screen==='profile'&&<ProfileScreen onBack={()=>setScreen('command')}/>}
-    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} onBack={() => setScreen('command')} onExploreMap={() => { selectMap('sector-01'); setScreen('map'); }} onDeploy={(chosen, chosenMap, chosenDuration) => { setDuration(chosenDuration); setDifficulty(chosen); setMap(chosenMap); setRunMode(false); setScreen('gameplay'); }} />}
+    {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} initialMap={map} onBack={() => setScreen('command')} onExploreMap={(chosen) => { setMap(chosen); selectMap(chosen); setScreen('map'); }} onDeploy={(chosen, chosenMap, chosenDuration) => { setDuration(chosenDuration); setDifficulty(chosen); setMap(chosenMap); setRunMode(false); setScreen('gameplay'); }} />}
     {screen === 'multiplayer' && multiplayer && <MultiplayerLobby alias={alias} token={sessionToken() || ''} mode={lobbyMode} session={multiplayer} initialJoinCode={joinCode} onBack={() => { setMultiplayerMatch(false); setJoinCode(''); setScreen('command'); }} />}
     {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
+    {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} account={account} onAccountChange={setAccount} />}
+    {screen === 'settings' && <SettingsScreen preferences={preferences} onPreviewAudio={setAudioMix}
+      onBack={() => setScreen('command')}
+      onSave={(nextPreferences) => { saveVisualPreferences(nextPreferences); setPreferences(nextPreferences); }} />}
     {screen === 'gameplay' && runMode && !multiplayerMatch && <RunScreen preferences={preferences} onAudioChange={changeAudio} difficulty={difficulty} duration={duration} onLeave={() => setScreen('command')} />}
     {screen === 'gameplay' && !(runMode && !multiplayerMatch) && <GameplayScreen preferences={preferences} onAudioChange={changeAudio} difficulty={difficulty} map={map} duration={duration} multiplayerSession={multiplayerMatch ? multiplayer ?? undefined : undefined} onLeave={() => multiplayerMatch ? void leaveMultiplayer() : setScreen('command')} />}
     <div className="vi-resolution-warning" role="alert"><div><Brand /><h1>{t('resolutionWarningTitle')}</h1><p>{t('resolutionWarningBody')}</p></div></div>

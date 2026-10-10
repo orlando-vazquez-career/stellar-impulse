@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
-import { parseDisplayName } from '@impulso/input';
+import { parseDisplayName, passwordMeetsPolicy, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@impulso/input';
 import { emptyProgress, profileFor, rewardForCampaign, rewardForMatch, type AccountProgress, type CampaignOutcome, type ChallengeId, type MatchReward, type PlayerId, type ProgressProfile, type RivalDifficulty, type World } from '@impulso/sim';
 import { Keypair, Transaction } from '@stellar/stellar-sdk';
 import { createWalletChallenge, STELLAR_TESTNET, validatePublicAddress, verifyWalletChallenge, type WalletChallenge } from '@impulso/chain';
@@ -69,6 +69,7 @@ export class AuthService {
   /** The alias is optional; when sent it must be a valid commander name. */
   async register(email: unknown, password: unknown, displayName?: unknown) {
     const normalized = this.validate(email, password);
+    if (!passwordMeetsPolicy(password as string)) throw new AuthError(400, 'invalid_credentials');
     const alias = displayName === undefined ? undefined : this.validateDisplayName(displayName);
     if (this.users.has(normalized)) throw new AuthError(409, 'email_in_use');
     const salt = randomBytes(16).toString('hex');
@@ -263,7 +264,7 @@ export class AuthService {
   private validate(email: unknown, password: unknown): string {
     if (typeof email !== 'string' || typeof password !== 'string') throw new AuthError(400, 'invalid_credentials');
     const normalized = email.trim().toLowerCase();
-    if (normalized.length > 254 || !EMAIL.test(normalized) || password.length < 8 || password.length > 128) {
+    if (normalized.length > 254 || !EMAIL.test(normalized) || password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
       throw new AuthError(400, 'invalid_credentials');
     }
     return normalized;

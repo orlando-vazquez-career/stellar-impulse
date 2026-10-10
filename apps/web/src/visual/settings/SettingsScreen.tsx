@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useI18n } from '../i18n';
 import { useSpaceSound } from '../../login/sound';
 import { chooseReducedMotion, freshDefaultVisualPreferences, hasUnsavedChanges, type ControlAction, type VisualPreferences } from './preferences';
@@ -27,21 +27,23 @@ function ToggleSetting({ title, detail, checked, onChange }: { title: string; de
   return <label className="vi-setting-toggle"><span><strong>{title}</strong><small>{detail}</small></span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /></label>;
 }
 
-export function SettingsPanel({
-  preferences,
-  onBack,
-  onSave,
-  onPreviewAudio,
-  isEmbedded = false,
-  ref,
-}: {
+export type SettingsPanelHandle = { requestLeave(): void };
+
+type SettingsPanelProps = {
   preferences: VisualPreferences;
   onBack(): void;
   onSave(preferences: VisualPreferences): void;
   onPreviewAudio?(audio: VisualPreferences['audio']): void;
   isEmbedded?: boolean;
-  ref?: Ref<SettingsPanelHandle>;
-}) {
+};
+
+export const SettingsPanel = forwardRef<SettingsPanelHandle, SettingsPanelProps>(function SettingsPanel({
+  preferences,
+  onBack,
+  onSave,
+  onPreviewAudio,
+  isEmbedded = false,
+}, ref) {
   const { locale, setLocale, t } = useI18n();
   const sound = useSpaceSound();
   const [category, setCategory] = useState<SettingsCategory>('audio');
@@ -73,6 +75,7 @@ export function SettingsPanel({
   };
   const [recording, setRecording] = useState<{ action: ControlAction; replacing: string | null } | null>(null);
   const [bindingError, setBindingError] = useState<{ action: ControlAction; message: string } | null>(null);
+  const [leaveOpen, setLeaveOpen] = useState(false);
 
   const soundEnabled = !draft.audio.muted && draft.audio.master > 0 && draft.audio.effects > 0;
   const hover = () => { if (soundEnabled) sound.playHover({ pitch: 560 }); };
@@ -184,6 +187,26 @@ export function SettingsPanel({
     setAccessibilityPreview(defaults.accessibility);
     clearSavedNotice();
   };
+  const leaveWithoutSaving = () => {
+    onPreviewAudio?.(preferences.audio);
+    setLeaveOpen(false);
+    onBack();
+  };
+  const saveAndLeave = () => {
+    save();
+    setLeaveOpen(false);
+    onPreviewAudio?.(draft.audio);
+    onBack();
+  };
+  const requestLeave = () => {
+    select();
+    if (!dirty) {
+      onBack();
+      return;
+    }
+    setLeaveOpen(true);
+  };
+  useImperativeHandle(ref, () => ({ requestLeave }), [dirty]);
 
   return (
     <section className={`vi-settings__content ${isEmbedded ? 'vi-settings__content--embedded' : ''}`}>
@@ -197,10 +220,7 @@ export function SettingsPanel({
           {isEmbedded && (
             <button
               className="vi-embedded-close"
-              onClick={() => {
-                select();
-                onBack();
-              }}
+              onClick={requestLeave}
               aria-label={t('backToCommand')}
               title={t('backToCommand')}
             >
@@ -280,6 +300,89 @@ export function SettingsPanel({
           <footer><button className="vi-settings__restore" onMouseEnter={hover} onClick={restore}>{t('restoreDefaults')}</button><div>{saved && <output>{t('settingsSaved')}</output>}<button className="vi-settings__save" onMouseEnter={hover} onClick={save}>{t('saveSettings')}<span>→</span></button></div></footer>
         </section>
       </div>
+
+      {leaveOpen && (
+        <div className="vi-result vi-settings-leave" role="dialog" aria-modal="true" aria-labelledby="settings-leave-title">
+          <div className="vi-result__card">
+            <h2 id="settings-leave-title">{t('settingsLeaveTitle')}</h2>
+            <p>{t('settingsLeaveBody')}</p>
+            <div>
+              <button type="button" onMouseEnter={hover} onClick={() => { select(); setLeaveOpen(false); }}>{t('settingsLeaveStay')}</button>
+              <button type="button" onMouseEnter={hover} onClick={() => { select(); leaveWithoutSaving(); }}>{t('settingsLeaveDiscard')}</button>
+              <button type="button" className="vi-primary" onMouseEnter={hover} onClick={saveAndLeave}>{t('settingsLeaveSave')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
+  );
+});
+
+export function SettingsScreen({
+  preferences,
+  onBack,
+  onSave,
+  onPreviewAudio,
+  embedded = false,
+}: {
+  preferences: VisualPreferences;
+  onBack(): void;
+  onSave(preferences: VisualPreferences): void;
+  onPreviewAudio?(audio: VisualPreferences['audio']): void;
+  embedded?: boolean;
+}) {
+  const { t } = useI18n();
+  const sound = useSpaceSound();
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const panelRef = useRef<SettingsPanelHandle>(null);
+
+  useEffect(() => {
+    if (embedded || !canvas.current) return;
+    const scene = createCommandSpaceScene(canvas.current);
+    scene.start();
+    if (preferences.accessibility.reducedMotion) scene.stop();
+
+    const onResize = () => scene.resize();
+    const onPointer = (event: PointerEvent) => {
+      scene.setPointer(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        (event.clientY / window.innerHeight) * 2 - 1,
+      );
+    };
+    window.addEventListener('resize', onResize);
+    if (!preferences.accessibility.reducedMotion) window.addEventListener('pointermove', onPointer);
+    return () => {
+      scene.stop();
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('pointermove', onPointer);
+    };
+  }, [embedded, preferences.accessibility.reducedMotion]);
+
+  if (embedded) {
+    return <SettingsPanel ref={panelRef} preferences={preferences} onBack={onBack} onSave={onSave} onPreviewAudio={onPreviewAudio} isEmbedded />;
+  }
+
+  const hover = () => sound.playHover({ pitch: 560 });
+
+  return (
+    <main className="vi-settings vi-screen">
+      <canvas ref={canvas} className="vi-settings-canvas" aria-hidden="true" />
+      <header className="vi-screen__header">
+        <Brand />
+        <div className="vi-header-actions">
+          <LanguageToggle />
+          <button className="vi-text-button" onMouseEnter={hover} onClick={() => panelRef.current?.requestLeave()}>
+            ← {t('backToCommand')}
+          </button>
+        </div>
+      </header>
+
+      <SettingsPanel ref={panelRef} preferences={preferences} onBack={onBack} onSave={onSave} onPreviewAudio={onPreviewAudio} />
+
+      <footer className="vi-screen__footer">
+        <span>IMPULSO // {t('settings').toUpperCase()}</span>
+        <span>LOCAL // v0.4</span>
+      </footer>
+    </main>
   );
 }

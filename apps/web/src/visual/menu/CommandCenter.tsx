@@ -6,9 +6,7 @@ import { AudioToggle } from '../shared/AudioToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from './command-space';
 import { HangarPanel } from '../hangar/HangarScreen';
-import { SettingsPanel } from '../settings/SettingsScreen';
-import { useSettingsLeaveGuard } from '../settings/useSettingsLeaveGuard';
-import { isReducedMotion, subscribeAccessibility } from '../settings/accessibility-store';
+import { SettingsPanel, type SettingsPanelHandle } from '../settings/SettingsScreen';
 import { loadVisualPreferences, saveVisualPreferences, type VisualPreferences } from '../settings/preferences';
 import { setAudioMix } from '../audio-mix';
 import type { AccountUser } from '../../auth/client';
@@ -101,6 +99,7 @@ export function CommandCenter({
 }: CommandCenterProps) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
+  const settingsRef = useRef<SettingsPanelHandle>(null);
   const [unfoldedPanel, setUnfoldedPanel] = useState<'hangar' | 'settings' | null>(null);
   // Every way out of an open settings panel asks first when there is something unsaved.
   const { panelRef: settingsPanel, guard, dialog: leaveDialog } = useSettingsLeaveGuard();
@@ -147,11 +146,34 @@ export function CommandCenter({
   }, [reducedMotion]);
 
   function toggleHangar() {
-    guard(() => setUnfoldedPanel((current) => (current === 'hangar' ? null : 'hangar')));
+    if (unfoldedPanel === 'settings') {
+      settingsRef.current?.requestLeave();
+      return;
+    }
+    setUnfoldedPanel((current) => (current === 'hangar' ? null : 'hangar'));
   }
 
   function toggleSettings() {
-    guard(() => setUnfoldedPanel((current) => (current === 'settings' ? null : 'settings')));
+    if (unfoldedPanel === 'settings') {
+      settingsRef.current?.requestLeave();
+      return;
+    }
+    setUnfoldedPanel('settings');
+  }
+
+  function handleBack() {
+    if (unfoldedPanel === 'settings') {
+      settingsRef.current?.requestLeave();
+      return;
+    }
+    sound.playSelect();
+    if (unfoldedPanel) {
+      setUnfoldedPanel(null);
+    } else if (onBack) {
+      onBack();
+    } else {
+      onSignOut();
+    }
   }
 
   return (
@@ -220,11 +242,11 @@ export function CommandCenter({
             )}
             {unfoldedPanel === 'settings' && (
               <SettingsPanel
-                ref={settingsPanel}
+                ref={settingsRef}
                 preferences={effectivePreferences}
                 onSave={handleSavePreferences}
                 onPreviewAudio={setAudioMix}
-                onBack={() => guard(() => setUnfoldedPanel(null))}
+                onBack={() => setUnfoldedPanel(null)}
                 isEmbedded
               />
             )}
