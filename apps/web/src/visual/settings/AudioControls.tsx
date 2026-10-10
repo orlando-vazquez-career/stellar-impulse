@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { SpaceSound } from '../../login/sound';
 import type { AudioMix } from '../audio-mix';
 import { MatchAudio } from '../game/audio';
@@ -25,7 +25,7 @@ export function AudioControls({ value, onChange }: { value: AudioMix; onChange(m
     interface: () => sample().menu.playSelect(),
   };
   return <div className="vi-audio-controls">
-    {LEVELS.map((level) => <div className="vi-setting-range" key={level}>
+    {LEVELS.map((level) => <Fragment key={level}><div className="vi-setting-range">
       <span>
         <strong id={`audio-${level}`}>{t(LABEL[level])}</strong>
         <span className="vi-setting-range__tail">
@@ -37,7 +37,12 @@ export function AudioControls({ value, onChange }: { value: AudioMix; onChange(m
       <input id={`audio-${level}-range`} type="range" min="0" max="100" step="1" value={value[level]} disabled={value.muted}
         aria-labelledby={`audio-${level}`}
         onChange={(event) => onChange({ ...value, [level]: Number(event.target.value) })} />
-    </div>)}
+    </div>
+    {level === 'music' && <label className="vi-setting-toggle vi-setting-toggle--compact">
+      <span><strong>{t('muteMusic')}</strong></span>
+      <input type="checkbox" checked={value.musicMuted} disabled={value.muted} onChange={(event) => onChange({ ...value, musicMuted: event.target.checked })} />
+    </label>}
+    </Fragment>)}
     <label className="vi-setting-toggle">
       <span><strong>{t('muteAll')}</strong><small>{t('audioPending')}</small></span>
       <input type="checkbox" checked={value.muted} onChange={(event) => onChange({ ...value, muted: event.target.checked })} />

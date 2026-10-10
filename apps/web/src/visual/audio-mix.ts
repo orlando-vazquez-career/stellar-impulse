@@ -10,6 +10,20 @@ export function channelVolume(mix: AudioMix, channel: AudioChannel): number {
   return (clampPercent(mix.master) / 100) * (clampPercent(mix[channel]) / 100);
 }
 
+/** False when anything silences the music: the global mute, the music mute or a level at zero. */
+export function musicAudible(mix: AudioMix): boolean {
+  return channelVolume(mix, 'music') > 0;
+}
+
+/** The music level a player gets back when switching music on from a level of zero. */
+const MUSIC_RESTORE_LEVEL = 60;
+
+/** Flips the music mute and nothing else; switching music on at level zero brings it back to an audible level. */
+export function toggleMusic(mix: AudioMix): AudioMix {
+  const musicMuted = !mix.musicMuted;
+  return { ...mix, musicMuted, music: !musicMuted && clampPercent(mix.music) === 0 ? MUSIC_RESTORE_LEVEL : mix.music };
+}
+
 export function clampPercent(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : 0;
 }
