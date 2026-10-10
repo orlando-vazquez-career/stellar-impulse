@@ -549,11 +549,14 @@ export class MainScene extends Phaser.Scene {
       // A still object that declares an animation shows its first frame.
       const key = textureKey(tileset, !animation && frames?.length ? frames[0]!.tileid : tile);
       if (!key || !this.textures.exists(key)) continue;
+      // The Tiled point sits on a cell corner: under the view yaw its art stands where Tiled shows it only half a
+      // cell back on both axes (the old "16 px up" offset drifted half a tile sideways once the view turned).
       const cell = objectCell(object);
-      const point = cellToIso(cell.x, cell.y);
-      const image = (animation ? this.add.sprite(point.x, point.y - TILE_HALF_HEIGHT, key).play(animation) : this.add.image(point.x, point.y - TILE_HALF_HEIGHT, key))
+      const anchor = obstacleAnchor(cell);
+      const ground = cellToIso(anchor.x, anchor.y);
+      const image = (animation ? this.add.sprite(ground.x, ground.y, key).play(animation) : this.add.image(ground.x, ground.y, key))
         .setDisplaySize(object.width, object.height).setOrigin(0.5, tileset.objectalignment === 'center' ? 0.5 : 1)
-        .setDepth(layer.name === SKY_LAYER ? DEPTH.sky + order / 1000 : layer.name === EMBLEM_LAYER ? DEPTH.emblems + order : DEPTH.units + point.y - TILE_HALF_HEIGHT);
+        .setDepth(layer.name === SKY_LAYER ? DEPTH.sky + order / 1000 : layer.name === EMBLEM_LAYER ? DEPTH.emblems + order : DEPTH.units + ground.y);
       // The far background is never under fog: it is not part of the sector.
       if (layer.name === SKY_LAYER) continue;
       if (object.name?.startsWith('barrera_')) this.barrierArt.push({ image, x: cell.x, y: cell.y });

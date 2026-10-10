@@ -108,8 +108,9 @@ export function factionForOwner(owner: SquadOwner): GameFaction {
 }
 
 /**
- * Cell, in scene coordinates, where the art of an `OBSTACLE_RING` point stands. Tiled points are measured from the
- * cell corners and the scene's cells from their centres, so the point is half a cell back on both axes.
+ * Cell, in scene coordinates, where the art of an `OBSTACLE_RING` point (or any Tiled tile object) stands. Tiled
+ * points are measured from the cell corners and the scene's cells from their centres, so the point is half a cell
+ * back on both axes.
  */
 export function obstacleAnchor(point: { x: number; y: number }): { x: number; y: number } {
   return { x: point.x - 0.5, y: point.y - 0.5 };
