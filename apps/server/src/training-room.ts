@@ -69,7 +69,7 @@ export class TrainingRoom extends Room {
 
   /** The room creator picks the map and the rival's difficulty; anything unexpected falls back to the defaults. */
   onCreate(options?: unknown) {
-    const fields = typeof options === 'object' && options !== null ? options as { difficulty?: unknown; map?: unknown; duration?: unknown; opponent?:unknown; lobby?:unknown; testTimeScale?: unknown; testSeed?: unknown } : {};
+    const fields = typeof options === 'object' && options !== null ? options as { difficulty?: unknown; map?: unknown; duration?: unknown; opponent?:unknown; lobby?:unknown; testTimeScale?: unknown; testSeed?: unknown; testPaused?: unknown } : {};
     this.lobby=fields.lobby===true;
     this.aiRival=!this.lobby && fields.opponent!=='human';
     this.map=fields.map==='sector-01'||fields.map==='espiral-2'||fields.map==='trascendencia'?fields.map:DEFAULT_MAP;
@@ -81,6 +81,8 @@ export class TrainingRoom extends Room {
     if (process.env.GAME_TEST_MODE === '1' && process.env.NODE_ENV !== 'production') {
       if (Number.isSafeInteger(fields.testTimeScale) && Number(fields.testTimeScale) >= 1 && Number(fields.testTimeScale) <= 30) this.timeScale = Number(fields.testTimeScale);
       if (Number.isSafeInteger(fields.testSeed)) this.world.seed = Number(fields.testSeed) >>> 0;
+      // Opens already paused, before the AI takes its opening card, so a test can seat a second human without racing the clock.
+      if (fields.testPaused === true && this.aiRival) this.paused = true;
       initializeAugments(this.world);
     }
     this.setPrivate(true);

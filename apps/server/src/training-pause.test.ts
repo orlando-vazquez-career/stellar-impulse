@@ -84,33 +84,38 @@ describe('pause in practice against the AI', () => {
   }, 30_000);
 
   it('refuses a pause once a second human joins, and the second human starts the clock again', async () => {
-    // Paused before the AI takes its opening card, the room still has a free seat for a human.
-    let host: Room | null = null;
-    for (let attempt = 0; attempt < 5 && !host; attempt += 1) {
-      const room = await new Client(url).create('training', { map: 'sector-01' });
-      quiet(room);
-      room.send('pause', { paused: true });
-      const frozen = await next<TrainingView>(room, 'view', (value) => value.paused === true);
-      if (frozen.augments!.rival.length === 0) host = room; else await room.leave();
-    }
-    expect(host).not.toBeNull();
-    const guest = await new Client(url).joinById(host!.roomId);
+    // The AI takes its opening card on the first tick, and then no human may join. A test room that opens paused
+    // keeps that seat free for the guest without racing the 100 ms simulation clock.
+    const host = await new Client(url).create('training', { map: 'sector-01', testPaused: true });
+    quiet(host);
+    const held = await next<TrainingView>(host, 'view', (value) => value.paused === true);
+    expect(held.augments!.rival).toEqual([]);
+    expect((await views(host, 2)).map((later) => later.tick)).toEqual([held.tick, held.tick]);
+    const guest = await new Client(url).joinById(host.roomId);
     quiet(guest);
     try {
-      const both = await next<TrainingView>(host!, 'view', (value) => value.paused === false);
+      const both = await next<TrainingView>(host, 'view', (value) => value.paused === false);
       // The handshake stays on: the room has the handler, and the refusal says the pause is not available now.
       expect(both.pausable).toBe(true);
-      const refused = next<{ reason: string; message: string }>(host!, 'rejected');
-      host!.send('pause', { paused: true });
+      const refused = next<{ reason: string; message: string }>(host, 'rejected');
+      host.send('pause', { paused: true });
       expect(await refused).toEqual({ reason: 'pause_unavailable', message: 'La pausa no está disponible en esta partida.' });
       const guestOffer = await next<TrainingView>(guest, 'view', (value) => !!value.augments?.offer);
-      const hostOffer = await next<TrainingView>(host!, 'view', (value) => !!value.augments?.offer);
+      const hostOffer = await next<TrainingView>(host, 'view', (value) => !!value.augments?.offer);
       guest.send('augmentPick', { choice: 0, id: guestOffer.augments!.offer!.cards[0]!.id });
-      const running = await open(host!, hostOffer);
-      const later = await next<TrainingView>(host!, 'view', (value) => value.tick > running.tick + 2);
+      const running = await open(host, hostOffer);
+      const later = await next<TrainingView>(host, 'view', (value) => value.tick > running.tick + 2);
       expect(later).toMatchObject({ paused: false, pausable: true });
-    } finally { await guest.leave(); await host!.leave(); }
+    } finally { await guest.leave(); await host.leave(); }
   }, 40_000);
+
+  it('opens a test room paused only against the AI', async () => {
+    const room = await new Client(url).create('training', { map: 'sector-01', opponent: 'human', testPaused: true });
+    quiet(room);
+    try {
+      expect((await views(room, 2)).every((later) => later.paused === false)).toBe(true);
+    } finally { await room.leave(); }
+  }, 30_000);
 
   it('refuses a pause in a match between humans', async () => {
     const room = await new Client(url).create('training', { map: 'sector-01', opponent: 'human' });
