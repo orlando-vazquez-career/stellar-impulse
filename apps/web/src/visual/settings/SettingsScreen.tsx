@@ -1,7 +1,7 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { useI18n } from '../i18n';
 import { useSpaceSound } from '../../login/sound';
-import { freshDefaultVisualPreferences, hasUnsavedChanges, type ControlAction, type VisualPreferences } from './preferences';
+import { chooseReducedMotion, freshDefaultVisualPreferences, hasUnsavedChanges, type ControlAction, type VisualPreferences } from './preferences';
 import { CONTROL_SECTIONS, findBindingConflict, formatKeyBinding, keyBindingFromEvent, type ControlBindings } from './control-bindings';
 import { AudioControls } from './AudioControls';
 import { publishSavedAccessibility, setAccessibilityPreview } from './accessibility-store';
@@ -60,7 +60,13 @@ export function SettingsPanel({
   }, []);
   /** Accessibility changes show at once across the app, before they are saved. */
   const changeAccessibility = (change: Partial<VisualPreferences['accessibility']>) => {
-    const accessibility = { ...draft.accessibility, ...change };
+    showAccessibility({ ...draft.accessibility, ...change });
+  };
+  /** The motion switch is the player's own choice; until they touch it, motion follows the system. */
+  const changeReducedMotion = (reducedMotion: boolean) => {
+    showAccessibility(chooseReducedMotion(savedRef.current.accessibility, draft.accessibility, reducedMotion));
+  };
+  const showAccessibility = (accessibility: VisualPreferences['accessibility']) => {
     setDraft({ ...draft, accessibility });
     setAccessibilityPreview(accessibility);
     clearSavedNotice();
@@ -266,7 +272,7 @@ export function SettingsPanel({
             <header><span>04</span><div><h2 id="settings-accessibility">{t('accessibility')}</h2><p>{t('accessibilityDescription')}</p></div></header>
             <div className="vi-settings-panel__body vi-accessibility-settings">
               <ToggleSetting title={t('highContrast')} detail={t('highContrastDetail')} checked={draft.accessibility.highContrast} onChange={(highContrast) => changeAccessibility({ highContrast })} />
-              <ToggleSetting title={t('reducedMotion')} detail={t('reducedMotionDetail')} checked={draft.accessibility.reducedMotion} onChange={(reducedMotion) => changeAccessibility({ reducedMotion })} />
+              <ToggleSetting title={t('reducedMotion')} detail={t('reducedMotionDetail')} checked={draft.accessibility.reducedMotion} onChange={changeReducedMotion} />
               <ToggleSetting title={t('largeInterfaceText')} detail={t('largeInterfaceTextDetail')} checked={draft.accessibility.largeText} onChange={(largeText) => changeAccessibility({ largeText })} />
               {/* The colour profile stays in the saved preferences, but no palette uses it yet, so it is not offered. */}
             </div>

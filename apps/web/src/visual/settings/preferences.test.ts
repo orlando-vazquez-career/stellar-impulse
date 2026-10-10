@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defaultVisualPreferences, freshDefaultVisualPreferences, hasUnsavedChanges, loadVisualPreferences, saveVisualPreferences, type VisualPreferences } from './preferences';
+import { chooseReducedMotion, defaultVisualPreferences, freshDefaultVisualPreferences, hasUnsavedChanges, loadVisualPreferences, saveVisualPreferences, type VisualPreferences } from './preferences';
 
 const clone = (preferences: VisualPreferences): VisualPreferences => JSON.parse(JSON.stringify(preferences)) as VisualPreferences;
 
@@ -47,6 +47,74 @@ describe('accessibility defaults', () => {
     vi.stubGlobal('window', {});
     vi.stubGlobal('localStorage', { getItem: () => null, setItem() {} });
     expect(loadVisualPreferences().accessibility.reducedMotion).toBe(false);
+  });
+});
+
+describe('reduced motion: the system setting until the player chooses', () => {
+  let systemReduces = true;
+  const values = new Map<string, string>();
+  const store = (accessibility: object) => values.set('impulso.visual-preferences', JSON.stringify({ accessibility }));
+
+  beforeEach(() => {
+    systemReduces = true;
+    values.clear();
+    vi.stubGlobal('window', { matchMedia: (query: string) => ({ matches: systemReduces && query === '(prefers-reduced-motion: reduce)' }) });
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads an older saved "off" as inherited, so the system request still holds', () => {
+    // Before the switch followed the system, every save wrote reducedMotion:false with the rest.
+    store({ highContrast: false, reducedMotion: false, largeText: false, colorProfile: 'default' });
+    expect(loadVisualPreferences().accessibility.reducedMotion).toBe(true);
+  });
+
+  it('keeps an older saved "on", which only the switch could have set', () => {
+    systemReduces = false;
+    store({ reducedMotion: true });
+    expect(loadVisualPreferences().accessibility.reducedMotion).toBe(true);
+  });
+
+  it('does not freeze the inherited value when something else is saved', () => {
+    const preferences = loadVisualPreferences();
+    expect(preferences.accessibility.reducedMotion).toBe(true);
+    saveVisualPreferences({ ...preferences, audio: { ...preferences.audio, music: 12 } });
+    systemReduces = false;
+    expect(loadVisualPreferences().accessibility.reducedMotion).toBe(false);
+    systemReduces = true;
+    expect(loadVisualPreferences().accessibility.reducedMotion).toBe(true);
+  });
+
+  it('keeps the player\'s own choice whatever the system says', () => {
+    const saved = loadVisualPreferences();
+    const chosen = chooseReducedMotion(saved.accessibility, saved.accessibility, false);
+    saveVisualPreferences({ ...saved, accessibility: chosen });
+    expect(loadVisualPreferences().accessibility.reducedMotion).toBe(false);
+    systemReduces = false;
+    const switchedOn = chooseReducedMotion(loadVisualPreferences().accessibility, loadVisualPreferences().accessibility, true);
+    saveVisualPreferences({ ...saved, accessibility: switchedOn });
+    expect(loadVisualPreferences().accessibility.reducedMotion).toBe(true);
+  });
+
+  it('leaves nothing to save after the switch goes on and off again', () => {
+    const saved = loadVisualPreferences();
+    const off = chooseReducedMotion(saved.accessibility, saved.accessibility, false);
+    const backOn = chooseReducedMotion(saved.accessibility, off, true);
+    expect(hasUnsavedChanges(saved, { ...saved, accessibility: off })).toBe(true);
+    expect(hasUnsavedChanges(saved, { ...saved, accessibility: backOn })).toBe(false);
+  });
+
+  it('goes back to following the system after restoring the defaults', () => {
+    const saved = loadVisualPreferences();
+    saveVisualPreferences({ ...saved, accessibility: chooseReducedMotion(saved.accessibility, saved.accessibility, false) });
+    saveVisualPreferences(freshDefaultVisualPreferences());
+    systemReduces = false;
+    expect(loadVisualPreferences().accessibility.reducedMotion).toBe(false);
+    systemReduces = true;
+    expect(loadVisualPreferences().accessibility.reducedMotion).toBe(true);
   });
 });
 

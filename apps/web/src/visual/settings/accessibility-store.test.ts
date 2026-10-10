@@ -44,6 +44,19 @@ describe('accessibility store', () => {
     expect(getEffectiveAccessibility()).toBe(first);
   });
 
+  it('holds motion still for a system that asks for it, even over an older saved "off"', async () => {
+    vi.resetModules();
+    vi.stubGlobal('window', { matchMedia: (query: string) => ({ matches: query === '(prefers-reduced-motion: reduce)' }) });
+    const stored = JSON.stringify({ accessibility: { reducedMotion: false } });
+    vi.stubGlobal('localStorage', { getItem: () => stored, setItem() {} });
+    try {
+      const fresh = await import('./accessibility-store');
+      expect(fresh.isReducedMotion()).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('notifies subscribers of every change until they unsubscribe', () => {
     const listener = vi.fn();
     const stop = subscribeAccessibility(listener);
