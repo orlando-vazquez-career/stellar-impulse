@@ -1,4 +1,5 @@
 import type { CoreState, SquadOwner, SquadType } from '../model';
+import { objectCell, type DrawableMapObject, type NexusStyle } from '../../map/map-objects';
 import { captureEllipse } from './capture-geometry';
 
 export const GAME_FACTIONS = ['blue', 'red', 'neutral'] as const;
@@ -121,4 +122,22 @@ export function obstacleDisplaySize(texture: { width: number; height: number }, 
   if (texture.width <= 0 || texture.height <= 0) return { width: 0, height: 0 };
   const scale = Math.min(1, captureEllipse(radius).width / texture.width);
   return { width: texture.width * scale, height: texture.height * scale };
+}
+
+/** How far from the Core cell (in cells) a map pillar still counts as the nexus. */
+const PILLAR_REACH = 3;
+
+/**
+ * Whether the scene draws the top-down nexus disc. The disc style always does. The pillar style leaves the nexus to
+ * the map's pillar and shield, but a map with no pillar at the Core (Sector 01, the offline sandbox, only marks the
+ * Core cell) gets the disc instead, so the Core never stands with no art at all.
+ */
+export function drawsCoreDisc(style: NexusStyle, drawn: readonly DrawableMapObject[], core: { x: number; y: number }): boolean {
+  if (style === 'disc') return true;
+  return !drawn.some((entry) => {
+    const image = entry.tileset.tiles?.find((tile) => tile.id === entry.tile)?.image?.split('/').pop()?.replace(/\.png$/i, '');
+    if (entry.object.name !== 'pilar' && image !== 'pilar') return false;
+    const cell = obstacleAnchor(objectCell(entry.object));
+    return Math.max(Math.abs(cell.x - core.x), Math.abs(cell.y - core.y)) <= PILLAR_REACH;
+  });
 }

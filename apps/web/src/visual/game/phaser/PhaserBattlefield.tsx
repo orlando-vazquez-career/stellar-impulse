@@ -75,6 +75,8 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
         setLoadError(null);
         host.parentElement?.setAttribute('data-ready', 'true');
         host.parentElement?.setAttribute('data-atlas-ready', 'true');
+        // Which art shows the nexus: the map's pillar, or the top-down disc where the map has none.
+        host.parentElement?.setAttribute('data-nexus', scene.nexusArt);
       },
       (message) => { if (!disposed) setLoadError(message); },
       (base) => { if (!disposed) baseCallbackRef.current?.(base); },
@@ -95,6 +97,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
       disposed = true;
       host.parentElement?.removeAttribute('data-ready');
       host.parentElement?.removeAttribute('data-atlas-ready');
+      host.parentElement?.removeAttribute('data-nexus');
       sceneRef.current = null;
       gameRef.current = null;
       game.destroy(true);

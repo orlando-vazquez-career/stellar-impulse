@@ -12,10 +12,10 @@ import { NebulaEffects } from './nebula-effects';
 import { shatterBarrier } from './barrier-effects';
 import { BeltEffects } from './belt-effects';
 import {
-  GAME_ASSET_MANIFEST, SCENE_DEPTH, SHIP_DISPLAY_SIZE, STRUCTURE_DISPLAY_SIZE, TURRET_DISPLAY_SIZE, coreFactionForState, obstacleAnchor,
+  GAME_ASSET_MANIFEST, SCENE_DEPTH, SHIP_DISPLAY_SIZE, STRUCTURE_DISPLAY_SIZE, TURRET_DISPLAY_SIZE, coreFactionForState, drawsCoreDisc, obstacleAnchor,
   obstacleDisplaySize, platformDepth, shipTextureKey, structureTextureKey,
 } from './game-assets';
-import { drawableMapObjects, drawsNexusDisc, NEXUS_STYLE, objectCell } from '../../map/map-objects';
+import { drawableMapObjects, NEXUS_STYLE, objectCell } from '../../map/map-objects';
 import { baseFactions, coreHud } from '../hud-logic';
 import { captureEllipse, ellipseSweep } from './capture-geometry';
 import { pickBase, type PickedBase } from './structure-pick';
@@ -151,6 +151,10 @@ export class MainScene extends Phaser.Scene {
   private readonly baseSprites = new Map<'p1' | 'p2', Phaser.GameObjects.Image>();
   /** The map's nexus shield (pillar style): it fades once the Core opens. */
   private shieldArt?: Phaser.GameObjects.Image | Phaser.GameObjects.Sprite;
+  /** The top-down nexus disc: the disc style, or the pillar style on a map with no pillar at the Core. */
+  private coreDisc = drawsCoreDisc(NEXUS_STYLE, [], sectorSurface.core);
+  /** Which art shows the nexus once the map is drawn. */
+  get nexusArt(): 'pillar' | 'disc' { return this.coreDisc ? 'disc' : 'pillar'; }
   /** Terrain images per cell, so fog can tint the real tile art instead of painting over it. */
   private tileImages: Phaser.GameObjects.Image[][] = [];
   private fogShown: number[] = [];
@@ -542,7 +546,9 @@ export class MainScene extends Phaser.Scene {
   /** Tile objects (bases, pillars, wrecks…) placed in Tiled object layers, bottom-anchored at their point. */
   private drawMapObjects() {
     // Bases, robots, the obstacle preview made for Tiled and (for a disc nexus) the pillar and shield are left out.
-    for (const { layer, object, animate, order, tileset, tile } of drawableMapObjects(sectorMap, sectorSurface, { nexusStyle: NEXUS_STYLE })) {
+    const drawn = drawableMapObjects(sectorMap, sectorSurface, { nexusStyle: NEXUS_STYLE });
+    this.coreDisc = drawsCoreDisc(NEXUS_STYLE, drawn, sectorSurface.core);
+    for (const { layer, object, animate, order, tileset, tile } of drawn) {
       const art = tileset.tiles?.find((candidate) => candidate.id === tile);
       const frames = art?.animation;
       const animation = animate ? tileAnimation(this, tileset, tile) : null;
@@ -582,7 +588,7 @@ export class MainScene extends Phaser.Scene {
   private drawCore() {
     const center = cellToIso(sectorSurface.core.x, sectorSurface.core.y);
     const texture = structureTextureKey('nexus-core', coreFactionForState(this.snapshot.core.state));
-    if (!drawsNexusDisc(NEXUS_STYLE)) {
+    if (!this.coreDisc) {
       // The map's pillar and shield are the nexus; an open Core lowers the shield.
       this.coreSprite?.destroy();
       this.coreSprite = undefined;

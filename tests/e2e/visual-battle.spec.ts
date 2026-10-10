@@ -63,6 +63,8 @@ test.describe('visual battle', () => {
     ];
     expect(assetStatuses.size).toBe(20);
     expect(expected.map((path) => assetStatuses.get(path))).toEqual(expected.map(() => 200));
+    // Sector 01 has no pillar at the Core, so the top-down disc stands in for it rather than leaving it bare.
+    await expect(page.locator('.vi-phaser')).toHaveAttribute('data-nexus', 'disc');
     await page.screenshot({ path: 'test-results/structures-top-down.png' });
   });
 

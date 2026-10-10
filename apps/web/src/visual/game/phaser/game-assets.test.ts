@@ -11,6 +11,7 @@ import {
   STRUCTURE_DISPLAY_SIZE,
   TURRET_DISPLAY_SIZE,
   coreFactionForState,
+  drawsCoreDisc,
   obstacleAnchor,
   obstacleDisplaySize,
   platformDepth,
@@ -20,7 +21,8 @@ import {
 } from './game-assets';
 import { captureEllipse } from './capture-geometry';
 import { cellToIso, projectedWorldBounds, TILE_HALF_HEIGHT } from './isometric';
-import { selectMap } from '../../map/sector-map';
+import { selectMap, sectorMap, sectorSurface } from '../../map/sector-map';
+import { drawableMapObjects } from '../../map/map-objects';
 
 describe('runtime game art manifest', () => {
   it('covers the four playable ship classes and only the approved structures', () => {
@@ -117,5 +119,34 @@ describe('OBSTACLE_RING art', () => {
     }
     expect(obstacleDisplaySize({ width: 60, height: 90 }, 2)).toEqual({ width: 60, height: 90 });
     expect(obstacleDisplaySize({ width: 0, height: 0 }, 1)).toEqual({ width: 0, height: 0 });
+  });
+});
+
+describe('nexus art', () => {
+  const drawnOn = (map: TrainingMapId, nexusStyle: 'pillar' | 'disc') => {
+    selectMap(map);
+    return drawableMapObjects(sectorMap, sectorSurface, { nexusStyle });
+  };
+
+  it('leaves the nexus to the map pillar where the map has one at the Core', () => {
+    for (const map of ['espiral', 'espiral-2', 'trascendencia'] as TrainingMapId[]) {
+      expect(drawsCoreDisc('pillar', drawnOn(map, 'pillar'), sectorSurface.core), map).toBe(false);
+    }
+  });
+
+  it('falls back to the disc on a map without a pillar, so the Core never stands without art', () => {
+    // Sector 01 (the offline sandbox and the visual tests) only marks the Core cell.
+    expect(drawsCoreDisc('pillar', drawnOn('sector-01', 'pillar'), sectorSurface.core)).toBe(true);
+  });
+
+  it('always draws the disc for the disc style', () => {
+    for (const map of ['sector-01', 'espiral', 'espiral-2', 'trascendencia'] as TrainingMapId[]) {
+      expect(drawsCoreDisc('disc', drawnOn(map, 'disc'), sectorSurface.core), map).toBe(true);
+    }
+  });
+
+  it('only counts a pillar that stands at the Core', () => {
+    const entries = drawnOn('espiral', 'pillar');
+    expect(drawsCoreDisc('pillar', entries, { x: sectorSurface.core.x + 30, y: sectorSurface.core.y })).toBe(true);
   });
 });
