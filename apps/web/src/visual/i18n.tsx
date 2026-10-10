@@ -28,10 +28,11 @@ const es = {
   accountCreate: 'Crear cuenta',
   accountModes: 'Acceso con cuenta',
   accountAlias: 'Alias de comandante',
-  accountCreateHint: 'La contraseña necesita al menos 8 caracteres. Tu alias queda guardado en la cuenta y te acompaña en cualquier dispositivo.',
+  accountCreateHint: 'Tu alias queda guardado en la cuenta y te acompaña en cualquier dispositivo.',
   accountConnecting: 'Conectando…',
   accountInvalid: 'Correo o contraseña incorrectos.',
-  accountRegisterInvalid: 'Revisa el correo y usa una contraseña de 8 a 128 caracteres.',
+  accountRegisterInvalid: 'Revisa el correo electrónico.',
+  accountPasswordWeak: 'La contraseña necesita de 8 a 128 caracteres, una minúscula, una mayúscula y un símbolo.',
   accountEmailInUse: 'Ese correo ya tiene una cuenta. Inicia sesión con él.',
   accountAliasInvalid: 'El alias admite de 1 a 24 letras, números, espacios, guion, punto o guion bajo.',
   accountUnavailable: 'No se pudo conectar con el servidor. Inténtalo de nuevo.',
@@ -47,6 +48,13 @@ const es = {
   english: 'EN',
   prototype: 'Prototipo visual',
   commandCenter: 'Centro de mando',
+  documentTitle: 'Stellar Impulse · Interfaz visual',
+  systemsOnline: '● SISTEMAS EN LÍNEA',
+  bridgeChannel: 'SECTOR 01 // PUENTE',
+  menuOperations: 'OPERACIONES',
+  musicToggleLabel: 'MÚSICA',
+  musicToggleMute: 'Silenciar música',
+  musicToggleUnmute: 'Activar música',
   welcome: 'Comandante {name}, el sector espera.',
   menuBody: 'Elige una operación. Las funciones en desarrollo están claramente señaladas.',
   deploy: 'Preparar operación',
@@ -79,7 +87,6 @@ const es = {
   joinInstructions: 'Introduce un código de al menos cuatro caracteres. Durante esta fase se validará localmente.',
   operationBrief: 'Resumen de operación',
   map: 'Mapa',
-  mapValue: 'Umbral Helios',
   objective: 'Objetivo',
   objectiveValue: 'Capturar y mantener el Núcleo',
   duration: 'Duración estimada',
@@ -235,7 +242,7 @@ const es = {
   chainCopies: 'Tienes {count}',
   chainDismiss: 'Cerrar',
   viewMarket: 'Mercado',
-  marketEmpty: 'No hay anuncios activos. Publica una pieza desde tu colección.',
+  marketEmpty: 'No hay anuncios activos. Publica una pieza desde «Mis piezas».',
   marketSeller: 'Vende {seller}',
   marketYours: 'Tu anuncio',
   marketBuy: 'Comprar',
@@ -347,7 +354,7 @@ const es = {
   resolutionWarningBody: 'Stellar Impulse está diseñado para pantallas de escritorio de al menos 1024 px.',
 } as const;
 
-type MessageKey = keyof typeof es;
+export type MessageKey = keyof typeof es;
 
 const en: Record<MessageKey, string> = {
   tutorialLabel: 'First practice',
@@ -375,10 +382,11 @@ const en: Record<MessageKey, string> = {
   accountCreate: 'Create account',
   accountModes: 'Account access',
   accountAlias: 'Commander alias',
-  accountCreateHint: 'The password needs at least 8 characters. Your alias is saved to the account and follows you on any device.',
+  accountCreateHint: 'Your alias is saved to the account and follows you on any device.',
   accountConnecting: 'Connecting…',
   accountInvalid: 'Incorrect email or password.',
-  accountRegisterInvalid: 'Check the email and use a password of 8 to 128 characters.',
+  accountRegisterInvalid: 'Check the email address.',
+  accountPasswordWeak: 'The password needs 8 to 128 characters, a lowercase letter, an uppercase letter and a symbol.',
   accountEmailInUse: 'That email already has an account. Sign in with it.',
   accountAliasInvalid: 'The alias takes 1 to 24 letters, numbers, spaces, hyphens, dots or underscores.',
   accountUnavailable: 'Could not connect to the server. Please try again.',
@@ -394,6 +402,13 @@ const en: Record<MessageKey, string> = {
   english: 'EN',
   prototype: 'Visual prototype',
   commandCenter: 'Command center',
+  documentTitle: 'Stellar Impulse · Visual interface',
+  systemsOnline: '● SYSTEMS ONLINE',
+  bridgeChannel: 'SECTOR 01 // BRIDGE',
+  menuOperations: 'OPERATIONS',
+  musicToggleLabel: 'MUSIC',
+  musicToggleMute: 'Mute music',
+  musicToggleUnmute: 'Unmute music',
   welcome: 'Commander {name}, the sector awaits.',
   menuBody: 'Choose an operation. Features still in development are clearly marked.',
   deploy: 'Prepare operation',
@@ -426,7 +441,6 @@ const en: Record<MessageKey, string> = {
   joinInstructions: 'Enter a code with at least four characters. During this phase it is validated locally.',
   operationBrief: 'Operation brief',
   map: 'Map',
-  mapValue: 'Helios Threshold',
   objective: 'Objective',
   objectiveValue: 'Capture and hold the Core',
   duration: 'Estimated duration',
@@ -582,7 +596,7 @@ const en: Record<MessageKey, string> = {
   chainCopies: 'You own {count}',
   chainDismiss: 'Dismiss',
   viewMarket: 'Market',
-  marketEmpty: 'No open listings. List a piece from your collection.',
+  marketEmpty: 'No open listings. List a piece from My pieces.',
   marketSeller: 'Sold by {seller}',
   marketYours: 'Your listing',
   marketBuy: 'Buy',
@@ -694,23 +708,48 @@ const en: Record<MessageKey, string> = {
   resolutionWarningBody: 'Stellar Impulse is designed for desktop displays at least 1024 px wide.',
 };
 
-type Translate = (key: MessageKey, values?: Record<string, string | number>) => string;
+export type MessageValues = Record<string, string | number>;
+type Translate = (key: MessageKey, values?: MessageValues) => string;
+
+/** Every message key, in declaration order. */
+export const MESSAGE_KEYS = Object.keys(es) as MessageKey[];
+
+/** Replaces every `{name}` in the template; placeholders without a value stay as they are. */
+export function formatMessage(template: string, values: MessageValues = {}): string {
+  return Object.entries(values).reduce(
+    (message, [name, replacement]) => message.replaceAll(`{${name}}`, String(replacement)),
+    template,
+  );
+}
+
+/** The message for `key` in `locale`, outside React (Phaser scenes, plain modules). */
+export function translate(locale: Locale, key: MessageKey, values?: MessageValues): string {
+  return formatMessage((locale === 'es' ? es : en)[key], values);
+}
+
+const LOCALE_KEY = 'impulso.locale';
+
+/** The language the player chose, read straight from storage: English when saved so, Spanish otherwise. */
+export function getActiveLocale(): Locale {
+  try {
+    return localStorage.getItem(LOCALE_KEY) === 'en' ? 'en' : 'es';
+  } catch {
+    return 'es';
+  }
+}
 
 const I18nContext = createContext<{ locale: Locale; setLocale(locale: Locale): void; t: Translate } | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale] = useState<Locale>(() => localStorage.getItem('impulso.locale') === 'en' ? 'en' : 'es');
+  const [locale, setLocale] = useState<Locale>(getActiveLocale);
   useEffect(() => {
-    localStorage.setItem('impulso.locale', locale);
+    try { localStorage.setItem(LOCALE_KEY, locale); } catch { /* Blocked storage: the choice lasts until the page reloads. */ }
     document.documentElement.lang = locale;
   }, [locale]);
   const value = useMemo(() => ({
     locale,
     setLocale,
-    t: ((key, values = {}) => Object.entries(values).reduce(
-      (message, [name, replacement]) => message.replace(`{${name}}`, String(replacement)),
-      (locale === 'es' ? es : en)[key],
-    )) as Translate,
+    t: ((key, values) => translate(locale, key, values)) as Translate,
   }), [locale]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
