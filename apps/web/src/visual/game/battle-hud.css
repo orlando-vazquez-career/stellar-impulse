@@ -42,6 +42,8 @@
 
 /* A selected own base brings the hangar panel forward. */
 .vi-hud .vi-production.is-focused { border-color: var(--vi-blue-light); box-shadow: 0 0 0 1px rgb(131 212 255 / 35%), 0 0 22px rgb(54 169 255 / 22%); }
+/* The shield line of the Base tab is a <small>: without a size of its own it shrank under 12 px. */
+.vi-hud .vi-base-hull small { font-size: calc(12px * var(--vi-text-scale, 1)); }
 
 /* Hangar queue: the ship in production with its progress, then the paid orders. A click cancels and refunds. */
 .vi-hud .vi-hangar-queue { margin: 0 0 8px; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; list-style: none; }
