@@ -6,6 +6,7 @@ import { useSpaceSound } from '../../login/sound';
 import { useI18n } from '../i18n';
 import { MapPreview } from '../map/MapPreview';
 import { createCommandSpaceScene } from '../menu/command-space';
+import { isReducedMotion, subscribeAccessibility } from '../settings/accessibility-store';
 import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import './lobby.css';
@@ -191,9 +192,11 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
   const canReady = snapshot.connection === 'online' && phase?.phase === 'lobby' && Boolean(ownSeat?.connected) && !ownSeat?.ready && !leaving;
   const connectionMessage = leaving ? copy.leaving : copy[snapshot.connection];
 
+  // The saved accessibility (which follows the system until the player chooses) decides, not the media query alone.
+  const reducedMotion = useSyncExternalStore(subscribeAccessibility, isReducedMotion);
   useEffect(() => {
     const element = canvas.current;
-    if (!element || element.closest('.is-reduced-motion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!element || reducedMotion) return;
     const scene = createCommandSpaceScene(element);
     scene.start();
     const onResize = () => scene.resize();
@@ -208,7 +211,7 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
       window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onPointer);
     };
-  }, []);
+  }, [reducedMotion]);
 
   useEffect(() => setCopyState('idle'), [snapshot.roomId]);
 
