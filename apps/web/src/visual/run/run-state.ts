@@ -1,4 +1,6 @@
 import type { AugmentCardView } from '@impulso/state';
+import type { Locale } from '../i18n';
+import { mapName } from '../map/map-name';
 import type { TrainingMapId } from '../map/sector-map';
 
 export interface RunSector {
@@ -50,6 +52,12 @@ export function afterVictory(run: RunState, summary: SectorSummary): RunState {
 }
 
 export const totalSeconds = (run: RunState): number => run.history.reduce((sum, entry) => sum + entry.seconds, 0);
+
+/** The name of a cleared sector in the language on screen, read from its map when it is drawn. */
+export function clearedSectorName(entry: SectorSummary, locale: Locale): string {
+  const sector = RUN_SECTORS[entry.sector - 1];
+  return sector ? mapName(sector.map, locale) : entry.name;
+}
 
 export function formatTime(seconds: number): string {
   const whole = Math.max(0, Math.floor(seconds));
