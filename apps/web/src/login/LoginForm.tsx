@@ -1,8 +1,9 @@
 import { useState, type Dispatch, type FormEvent } from 'react';
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordMeetsPolicy } from '@impulso/input';
+import { PASSWORD_RULES, passwordIssues } from '@impulso/input';
 import { useSpaceSound } from './sound';
 import type { LoginUiEvent, LoginUiState } from './login-state';
 import { useI18n } from '../visual/i18n';
+import { loginText, passwordRuleText } from './login-copy';
 
 export interface LoginFormProps {
   alias: string;
@@ -18,7 +19,6 @@ export interface LoginFormProps {
   dispatch?: Dispatch<LoginUiEvent>;
   onCreateTraining?: (alias: string) => void;
   onJoinRoom?: (code: string, alias: string) => void;
-  onConnectWallet?: () => void;
   chainStatus?: string;
   chainBusy?: boolean;
   onOpenAtlas?: () => void;
@@ -39,14 +39,16 @@ export function LoginForm(props: LoginFormProps) {
     chainStatus = 'Stellar Testnet',
     onOpenAtlas,
   } = props;
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const sound = useSpaceSound();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [policyNotice, setPolicyNotice] = useState('');
   const registering = mode === 'register' && onRegister !== undefined;
   const locked = busy;
+  // The rule only applies to new accounts: older ones keep signing in with their password.
+  const passwordMisses = registering ? passwordIssues(password) : [];
+  const brand = loginText(locale, 'brand');
 
   function hover() {
     sound.playHover(HOVER_PITCH);
@@ -66,11 +68,11 @@ export function LoginForm(props: LoginFormProps) {
   return (
     <div className="li-form">
       <div className="li-header-row">
-        <p className="li-eyebrow li-eyebrow--login">LOGIN</p>
-        <span className="li-channel">PROTOCOLO DE ACCESO // CH-01</span>
+        <p className="li-eyebrow li-eyebrow--login">{loginText(locale, 'eyebrow')}</p>
+        <span className="li-channel">{t('accessEyebrow')} // CH-01</span>
       </div>
 
-      <h1 className="li-title" data-text="IMPULSO STELLAR">IMPULSO STELLAR</h1>
+      <h1 className="li-title" data-text={brand}>{brand}</h1>
       <h2 className="li-heading-call">{t('accessTitle')}</h2>
       <p className="li-subtitle">{t('accessBody')}</p>
 
@@ -84,7 +86,7 @@ export function LoginForm(props: LoginFormProps) {
             aria-selected={!registering}
             aria-controls="account-panel"
             disabled={busy}
-            onClick={() => { setMode('login'); setPolicyNotice(''); }}
+            onClick={() => setMode('login')}
             onMouseEnter={hover}
           >
             {t('accountLogin')}
@@ -97,7 +99,7 @@ export function LoginForm(props: LoginFormProps) {
             aria-selected={registering}
             aria-controls="account-panel"
             disabled={busy}
-            onClick={() => { setMode('register'); setPolicyNotice(''); }}
+            onClick={() => setMode('register')}
             onMouseEnter={hover}
           >
             {t('accountCreate')}
@@ -114,19 +116,16 @@ export function LoginForm(props: LoginFormProps) {
           onSubmit={async (event) => {
             event.preventDefault();
             if (locked) return;
-            if (registering && !passwordMeetsPolicy(password)) {
-              setPolicyNotice(t('accountRegisterInvalid'));
-              return;
-            }
-            setPolicyNotice('');
             sound.playSelect();
+            // A weak password stays in the field, so the player can fix it against the list.
+            const keepPassword = registering && passwordIssues(password).length > 0;
             try {
               if (registering) await onRegister(email, password, alias);
               else await onLogin(email, password);
             } catch {
               onLoginError?.();
             } finally {
-              setPassword('');
+              if (!keepPassword) setPassword('');
             }
           }}
         >
@@ -149,14 +148,27 @@ export function LoginForm(props: LoginFormProps) {
             type="password"
             autoComplete={registering ? 'new-password' : 'current-password'}
             required
-            minLength={PASSWORD_MIN_LENGTH}
-            maxLength={PASSWORD_MAX_LENGTH}
-            title={registering ? t('accountRegisterInvalid') : undefined}
-            aria-describedby={registering ? 'account-create-hint' : undefined}
+            minLength={8}
+            maxLength={128}
+            aria-describedby={registering ? 'account-password-rules account-create-hint' : undefined}
+            aria-invalid={registering && password !== '' && passwordMisses.length > 0}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             disabled={busy}
           />
+          {registering && (
+            <ul id="account-password-rules" className="li-rules">
+              {PASSWORD_RULES.map((rule) => {
+                const met = !passwordMisses.includes(rule);
+                return (
+                  <li key={rule} data-met={met}>
+                    <span className="li-rules__mark">{met ? '✓' : '·'}</span>
+                    {passwordRuleText(locale, rule)}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
           {registering && (
             <>
               <label className="li-alias-label" htmlFor="account-alias">{t('accountAlias')}</label>
@@ -207,7 +219,7 @@ export function LoginForm(props: LoginFormProps) {
         </div>
       </form>
 
-      <p className="li-notice" role="status">{policyNotice || notice}</p>
+      <p className="li-notice" role="status">{notice}</p>
       <p className="li-chain">{chainStatus}</p>
     </div>
   );

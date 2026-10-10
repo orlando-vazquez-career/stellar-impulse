@@ -3,10 +3,13 @@ import type { PlayerView } from '@impulso/state';
 import { createServerGameplayAdapter } from './server-adapter';
 import { selectMap } from '../map/sector-map';
 
-const { handlers, leave } = vi.hoisted(() => ({ handlers: new Map<string, (view: PlayerView) => void>(), leave: vi.fn() }));
+const { handlers, leave, refuse } = vi.hoisted(() => ({ handlers: new Map<string, (view: PlayerView) => void>(), leave: vi.fn(), refuse: { next: false } }));
 vi.mock('@colyseus/sdk', () => ({ Client: class {
-  async create() { return { onMessage: (name: string, handler: (view: PlayerView) => void) => handlers.set(name, handler),
-    onLeave: vi.fn(), leave, send: vi.fn() }; }
+  async create() {
+    if (refuse.next) { refuse.next = false; throw new Error('connection refused'); }
+    return { onMessage: (name: string, handler: (view: PlayerView) => void) => handlers.set(name, handler),
+      onLeave: vi.fn(), leave, send: vi.fn() };
+  }
 } }));
 
 function view(x: number, y: number, tick: number): PlayerView {
@@ -131,6 +134,33 @@ describe('server movement presentation', () => {
       // On average the ship is drawn within half a cell of where the server has it, and never parks.
       expect(lagSum / frames).toBeLessThan(0.5);
       expect(stalls).toBe(0);
+    } finally { adapter.destroy(); }
+  });
+  it('holds every ship where it is drawn while the match is paused, prediction included', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
+    const adapter = createServerGameplayAdapter('http://localhost');
+    await Promise.resolve();
+    try {
+      handlers.get('view')!(view(3, 3, 0));
+      const moving = view(4, 4, 6);
+      moving.squads[0]!.target = { x: 3, y: 11 };
+      handlers.get('view')!(moving);
+      vi.advanceTimersByTime(150);
+      const paused = { ...view(4, 4, 6), paused: true, pausable: true };
+      paused.squads[0]!.target = { x: 3, y: 11 };
+      handlers.get('view')!(paused);
+      const held = adapter.getSnapshot().squads[0]!;
+      expect(adapter.getSnapshot()).toMatchObject({ paused: true, clockRunning: false });
+      vi.advanceTimersByTime(2000);
+      expect(adapter.getSnapshot().squads[0]).toMatchObject({ gridX: held.gridX, gridY: held.gridY });
+    } finally { adapter.destroy(); }
+  });
+  it('keys a failed connection to the server', async () => {
+    refuse.next = true;
+    const adapter = createServerGameplayAdapter('http://localhost');
+    try {
+      await vi.waitFor(() => expect(adapter.getSnapshot().connection).toBe('offline'));
+      expect(adapter.getSnapshot()).toMatchObject({ noticeCode: 'connect_failed', notice: 'No se pudo conectar con el servidor.' });
     } finally { adapter.destroy(); }
   });
 });

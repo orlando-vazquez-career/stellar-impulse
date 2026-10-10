@@ -39,6 +39,7 @@ test('two accounts play the campaign on Espiral and recover the same match after
     await host.getByRole('button', { name: /Crear sala multijugador/ }).click();
     await expect(host.getByRole('button', { name: /Espiral Estelar.*96×96/ })).toBeVisible();
     await expect(host.locator('.vi-briefing')).not.toContainText('Sector 01');
+    await expect(host.locator('.vi-briefing').getByRole('img', { name: /Vista previa/ })).toHaveAttribute('data-map-id', 'espiral');
     await host.getByRole('button', { name: 'Crear sala', exact: true }).click();
     const code = host.getByTestId('multiplayer-room-code');
     await expect(code).toHaveText(/^[A-F0-9]{12}$/);
@@ -53,6 +54,12 @@ test('two accounts play the campaign on Espiral and recover the same match after
     await expect(guest.getByTestId('multiplayer-room-code')).toHaveText(roomId);
     await expect(guest.locator('.vi-briefing')).toContainText('Espiral Estelar');
     await expect(guest.locator('.vi-briefing')).not.toContainText('Sector 01');
+    await expect(guest.locator('.vi-briefing').getByRole('img', { name: /Vista previa/ })).toHaveAttribute('data-map-id', 'espiral');
+    // Each commander sees their own base blue in the preview, as in the match: the guest sits in p2.
+    await expect(host.locator('.vi-briefing').getByRole('img', { name: /Vista previa/ })).toHaveAttribute('data-self', 'p1');
+    await expect(guest.locator('.vi-briefing').getByRole('img', { name: /Vista previa/ })).toHaveAttribute('data-self', 'p2');
+    await expect(guest.getByTestId('multiplayer-seat-p2')).toContainText('Tú · Flota azul');
+    await expect(guest.getByTestId('multiplayer-seat-p1')).toContainText('Flota roja');
     await expect(host.locator('.vi-commanders')).toContainText('Nova');
     await expect(guest.locator('.vi-commanders')).toContainText('Vega');
     await expect(guest.locator('.vi-gameplay')).toHaveCount(0);

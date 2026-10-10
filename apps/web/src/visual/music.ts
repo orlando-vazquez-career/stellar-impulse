@@ -1,4 +1,4 @@
-import { channelVolume, getAudioMix, setAudioMix, subscribeAudioMix, type AudioMix } from './audio-mix';
+import { channelVolume, getAudioMix, subscribeAudioMix, type AudioMix } from './audio-mix';
 import { equippedCosmetic } from './hangar/loadout';
 
 export type MusicTrack = 'menu' | 'match';
@@ -16,6 +16,8 @@ const PROGRESSIONS: Record<MusicTrack, number[][]> = {
 const TEMPO: Record<MusicTrack, number> = { menu: 64, match: 104 };
 /** A natural minor, two octaves, for the bell melody. */
 const SCALE = [0, 2, 3, 5, 7, 8, 10, 12, 14, 15, 17, 19];
+/** Share of the music level left while a voice talks over it. */
+const DUCK_LEVEL = 0.3;
 
 /**
  * Generative background music in Web Audio: no files, nothing to license.
@@ -43,6 +45,8 @@ export class MusicPlayer {
   /** Set once disposed: late async work (decoding the recorded tracks) must never start sound again. */
   private _disposed = false;
   private audio: AudioMix;
+  /** Lowered under a voice line; see duck(). */
+  private ducked = false;
   private readonly unsubscribe: () => void;
 
   constructor(audio: AudioMix = getAudioMix(), manifestUrl = '/audio/manifest.json') {
@@ -59,23 +63,24 @@ export class MusicPlayer {
     return Boolean(this.activeSource || this.timer);
   }
 
-  get isMuted(): boolean {
-    return Boolean(this.audio.muted);
-  }
-
-  toggleMute(): boolean {
-    const nextMuted = !this.audio.muted;
-    setAudioMix({ ...this.audio, muted: nextMuted });
-    return nextMuted;
-  }
-
   private get volume(): number {
-    return channelVolume(this.audio, 'music');
+    return channelVolume(this.audio, 'music') * (this.ducked ? DUCK_LEVEL : 1);
   }
 
   setPreferences(audio: AudioMix) {
     this.audio = audio;
-    if (this.master && this.context) this.master.gain.setTargetAtTime(this.volume, this.context.currentTime, 0.05);
+    this.applyVolume(0.05);
+  }
+
+  /** Lowers the music while a voice plays over it (true) and brings it back (false); the track keeps playing. */
+  duck(active: boolean) {
+    if (this.ducked === active) return;
+    this.ducked = active;
+    this.applyVolume(active ? 0.08 : 0.25);
+  }
+
+  private applyVolume(smoothing: number) {
+    if (this.master && this.context) this.master.gain.setTargetAtTime(this.volume, this.context.currentTime, smoothing);
   }
 
   private ensureContext(): AudioContext | null {
@@ -367,3 +372,6 @@ export function disposeSharedMusicPlayer() {
     sharedPlayer = null;
   }
 }
+
+// A hot reload replaces this module: stop the old player so two tracks never play at once.
+import.meta.hot?.dispose(() => disposeSharedMusicPlayer());

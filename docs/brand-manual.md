@@ -11,7 +11,7 @@ La interfaz tiene una dirección visual clara y consistente en su intención:
 - **Preparación:** briefing de misión a la izquierda y configuración de sala, facción y dificultad a la derecha.
 - **Hangar:** composición editorial de preview de nave + colección cosmética.
 - **Ajustes:** navegación lateral y panel de configuración con el mismo lenguaje de consola.
-- **Mapa:** inspector isométrico más utilitario, centrado en el terreno y la ruta.
+- **Mapa:** vista previa isométrica del sector elegido dentro del briefing, con el terreno transitable, las bases, el Núcleo y los nodos en los colores del minimapa.
 - **Gameplay:** HUD táctico sobre mapa isométrico; recursos, sector, minimapa, escuadrón y acciones tienen posiciones estables.
 
 ### Fortalezas

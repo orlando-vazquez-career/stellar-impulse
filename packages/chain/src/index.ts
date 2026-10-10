@@ -18,11 +18,19 @@ export type ChainErrorCode =
   | "WALLET_REJECTED"
   | "INVALID_ADDRESS"
   | "CONTRACT_REJECTED"
-  | "UNFUNDED_ACCOUNT";
+  | "UNFUNDED_ACCOUNT"
+  /** Sent, but the ledger had not confirmed it when polling stopped: it may still go through. */
+  | "PENDING";
 
 export class ChainError extends Error {
-  /** `contractCode`: the contract's error number when a contract refused the call. */
-  constructor(public readonly code: ChainErrorCode, message: string, public readonly contractCode?: number) {
+  /**
+   * `contractCode`: the contract's error number when a contract refused the call.
+   * `transactionHash`: the submitted transaction, when there is one to look up in the explorer.
+   */
+  constructor(
+    public readonly code: ChainErrorCode, message: string, public readonly contractCode?: number,
+    public readonly transactionHash?: string,
+  ) {
     super(message);
     this.name = "ChainError";
   }

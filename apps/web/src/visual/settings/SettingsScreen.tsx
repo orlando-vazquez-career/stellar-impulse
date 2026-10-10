@@ -1,48 +1,78 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { useI18n } from '../i18n';
-import { Brand } from '../shared/Brand';
-import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
-import { createCommandSpaceScene } from '../menu/command-space';
-import { freshDefaultVisualPreferences, type ControlAction, type VisualPreferences } from './preferences';
+import { chooseReducedMotion, freshDefaultVisualPreferences, hasUnsavedChanges, type ControlAction, type VisualPreferences } from './preferences';
 import { CONTROL_SECTIONS, findBindingConflict, formatKeyBinding, keyBindingFromEvent, type ControlBindings } from './control-bindings';
 import { AudioControls } from './AudioControls';
+import { commitSavedAccessibility, setAccessibilityPreview } from './accessibility-store';
 import './settings.css';
 
 type SettingsCategory = 'audio' | 'controls' | 'language' | 'accessibility';
+
+/** What a screen that hosts the panel can ask of it before leaving (see useSettingsLeaveGuard). */
+export interface SettingsPanelHandle {
+  /** True when the draft differs from what is saved. */
+  isDirty(): boolean;
+  /** Saves the draft, as the save button does. */
+  save(): void;
+  /** Drops the draft: the audio and accessibility previews go back to what is saved and key recording stops. */
+  discard(): void;
+}
+
+function copyPreferences(preferences: VisualPreferences): VisualPreferences {
+  return { audio: { ...preferences.audio }, controls: { ...preferences.controls }, accessibility: { ...preferences.accessibility } };
+}
 
 function ToggleSetting({ title, detail, checked, onChange }: { title: string; detail: string; checked: boolean; onChange(checked: boolean): void }) {
   return <label className="vi-setting-toggle"><span><strong>{title}</strong><small>{detail}</small></span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /></label>;
 }
 
-export type SettingsPanelHandle = { requestLeave(): void };
-
-type SettingsPanelProps = {
-  preferences: VisualPreferences;
-  onBack(): void;
-  onSave(preferences: VisualPreferences): void;
-  onPreviewAudio?(audio: VisualPreferences['audio']): void;
-  isEmbedded?: boolean;
-};
-
-export const SettingsPanel = forwardRef<SettingsPanelHandle, SettingsPanelProps>(function SettingsPanel({
+export function SettingsPanel({
   preferences,
   onBack,
   onSave,
   onPreviewAudio,
   isEmbedded = false,
-}, ref) {
+  ref,
+}: {
+  preferences: VisualPreferences;
+  onBack(): void;
+  onSave(preferences: VisualPreferences): void;
+  onPreviewAudio?(audio: VisualPreferences['audio']): void;
+  isEmbedded?: boolean;
+  ref?: Ref<SettingsPanelHandle>;
+}) {
   const { locale, setLocale, t } = useI18n();
   const sound = useSpaceSound();
   const [category, setCategory] = useState<SettingsCategory>('audio');
-  const [draft, setDraft] = useState<VisualPreferences>(() => ({
-    audio: { ...preferences.audio }, controls: { ...preferences.controls }, accessibility: { ...preferences.accessibility },
-  }));
+  const [draft, setDraft] = useState<VisualPreferences>(() => copyPreferences(preferences));
   const [saved, setSaved] = useState(false);
-  const [dirty, setDirty] = useState(false);
+  /** What is saved right now; save() moves it before the host re-renders with the new preferences. */
+  const savedRef = useRef(preferences);
+  useEffect(() => { savedRef.current = preferences; }, [preferences]);
+  const dirty = hasUnsavedChanges(preferences, draft);
+  const previewAudio = useRef(onPreviewAudio);
+  previewAudio.current = onPreviewAudio;
+  // However the panel goes away, the live mix and the accessibility preview return to what is saved.
+  useEffect(() => () => {
+    previewAudio.current?.(savedRef.current.audio);
+    setAccessibilityPreview(null);
+  }, []);
+  /** Accessibility changes show at once across the app, before they are saved. */
+  const changeAccessibility = (change: Partial<VisualPreferences['accessibility']>) => {
+    showAccessibility({ ...draft.accessibility, ...change });
+  };
+  /** The motion switch is the player's own choice; until they touch it, motion follows the system. */
+  const changeReducedMotion = (reducedMotion: boolean) => {
+    showAccessibility(chooseReducedMotion(savedRef.current.accessibility, draft.accessibility, reducedMotion));
+  };
+  const showAccessibility = (accessibility: VisualPreferences['accessibility']) => {
+    setDraft({ ...draft, accessibility });
+    setAccessibilityPreview(accessibility);
+    clearSavedNotice();
+  };
   const [recording, setRecording] = useState<{ action: ControlAction; replacing: string | null } | null>(null);
   const [bindingError, setBindingError] = useState<{ action: ControlAction; message: string } | null>(null);
-  const [leaveOpen, setLeaveOpen] = useState(false);
 
   const soundEnabled = !draft.audio.muted && draft.audio.master > 0 && draft.audio.effects > 0;
   const hover = () => { if (soundEnabled) sound.playHover({ pitch: 560 }); };
@@ -50,12 +80,14 @@ export const SettingsPanel = forwardRef<SettingsPanelHandle, SettingsPanelProps>
   const changeAudio = (audio: VisualPreferences['audio']) => {
     setDraft({ ...draft, audio });
     onPreviewAudio?.(audio);
-    markDirty();
+    setSaved(false);
   };
 
   useEffect(() => {
     if (!recording) return;
     const capture = (event: KeyboardEvent) => {
+      // Keys aimed at a modal dialog (such as the leave confirmation) are not a new binding.
+      if (event.target instanceof Element && event.target.closest('[aria-modal="true"]')) return;
       const binding = keyBindingFromEvent(event);
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -77,7 +109,6 @@ export const SettingsPanel = forwardRef<SettingsPanelHandle, SettingsPanelProps>
       setRecording(null);
       setBindingError(null);
       setSaved(false);
-      setDirty(true);
     };
     window.addEventListener('keydown', capture, true);
     return () => window.removeEventListener('keydown', capture, true);
@@ -99,7 +130,7 @@ export const SettingsPanel = forwardRef<SettingsPanelHandle, SettingsPanelProps>
     const recall = /^groupRecall([1-9])$/.exec(action);
     if (recall) return `${t('recallGroup')} ${recall[1]}`;
     const labels: Partial<Record<ControlAction, string>> = {
-      move: t('move'), attack: t('attack'), hold: t('hold'), capture: t('capture'), cancel: t('cancel'),
+      move: t('move'), attack: t('attack'), hold: t('hold'), capture: t('capture'), cancel: t('cancel'), selectBase: t('selectBase'),
       cameraFocus: t('resetCamera'), panUp: t('panUp'), panDown: t('panDown'), panLeft: t('panLeft'), panRight: t('panRight'),
       produceInterceptor: t('produceInterceptor'), produceFrigate: t('produceFrigate'), produceBomber: t('produceBomber'), produceExplorer: t('produceExplorer'),
       cycleFormation: t('cycleFormation'), disband: t('disbandSelected'),
@@ -110,7 +141,6 @@ export const SettingsPanel = forwardRef<SettingsPanelHandle, SettingsPanelProps>
   const changeBindings = (action: ControlAction, bindings: string[]) => {
     setDraft({ ...draft, controls: { ...draft.controls, [action]: bindings } });
     setSaved(false);
-    setDirty(true);
     setBindingError(null);
   };
 
@@ -119,40 +149,41 @@ export const SettingsPanel = forwardRef<SettingsPanelHandle, SettingsPanelProps>
     setRecording({ action, replacing });
   };
 
-  const markDirty = () => { setSaved(false); setDirty(true); };
+  const clearSavedNotice = () => { setSaved(false); };
+  const commit = () => {
+    setRecording(null);
+    onSave(draft);
+    savedRef.current = draft;
+    // The saved accessibility takes over from the preview in one step, whatever the host does next.
+    commitSavedAccessibility(draft.accessibility);
+    setSaved(true);
+  };
   const save = () => {
     sound.playEnter({ pitch: 392 });
-    onSave(draft);
-    setSaved(true);
-    setDirty(false);
+    commit();
   };
+  const discard = () => {
+    setRecording(null);
+    setBindingError(null);
+    const current = savedRef.current;
+    setDraft(copyPreferences(current));
+    onPreviewAudio?.(current.audio);
+    setAccessibilityPreview(null);
+    setSaved(false);
+  };
+  useImperativeHandle(ref, () => ({
+    isDirty: () => hasUnsavedChanges(savedRef.current, draft),
+    save: commit,
+    discard,
+  }));
   const restore = () => {
     select();
     const defaults = freshDefaultVisualPreferences();
     setDraft(defaults);
     onPreviewAudio?.(defaults.audio);
-    markDirty();
+    setAccessibilityPreview(defaults.accessibility);
+    clearSavedNotice();
   };
-  const leaveWithoutSaving = () => {
-    onPreviewAudio?.(preferences.audio);
-    setLeaveOpen(false);
-    onBack();
-  };
-  const saveAndLeave = () => {
-    save();
-    setLeaveOpen(false);
-    onPreviewAudio?.(draft.audio);
-    onBack();
-  };
-  const requestLeave = () => {
-    select();
-    if (!dirty) {
-      onBack();
-      return;
-    }
-    setLeaveOpen(true);
-  };
-  useImperativeHandle(ref, () => ({ requestLeave }), [dirty]);
 
   return (
     <section className={`vi-settings__content ${isEmbedded ? 'vi-settings__content--embedded' : ''}`}>
@@ -166,7 +197,10 @@ export const SettingsPanel = forwardRef<SettingsPanelHandle, SettingsPanelProps>
           {isEmbedded && (
             <button
               className="vi-embedded-close"
-              onClick={requestLeave}
+              onClick={() => {
+                select();
+                onBack();
+              }}
               aria-label={t('backToCommand')}
               title={t('backToCommand')}
             >
@@ -228,6 +262,7 @@ export const SettingsPanel = forwardRef<SettingsPanelHandle, SettingsPanelProps>
             <header><span>03</span><div><h2 id="settings-language">{t('language')}</h2><p>{t('languageDescription')}</p></div></header>
             <div className="vi-settings-panel__body vi-language-settings">
               <h3>{t('interfaceLanguage')}</h3>
+              <p className="vi-language-settings__note">{t('languageInstantNote')}</p>
               <div><button className={locale === 'es' ? 'is-selected' : ''} onClick={() => setLocale('es')} aria-pressed={locale === 'es'}><span>ES</span><strong>{t('spanishName')}</strong><i>01</i></button><button className={locale === 'en' ? 'is-selected' : ''} onClick={() => setLocale('en')} aria-pressed={locale === 'en'}><span>EN</span><strong>{t('englishName')}</strong><i>02</i></button></div>
             </div>
           </>}
@@ -235,99 +270,16 @@ export const SettingsPanel = forwardRef<SettingsPanelHandle, SettingsPanelProps>
           {category === 'accessibility' && <>
             <header><span>04</span><div><h2 id="settings-accessibility">{t('accessibility')}</h2><p>{t('accessibilityDescription')}</p></div></header>
             <div className="vi-settings-panel__body vi-accessibility-settings">
-              <ToggleSetting title={t('highContrast')} detail={t('highContrastDetail')} checked={draft.accessibility.highContrast} onChange={(highContrast) => { setDraft({ ...draft, accessibility: { ...draft.accessibility, highContrast } }); markDirty(); }} />
-              <ToggleSetting title={t('reducedMotion')} detail={t('reducedMotionDetail')} checked={draft.accessibility.reducedMotion} onChange={(reducedMotion) => { setDraft({ ...draft, accessibility: { ...draft.accessibility, reducedMotion } }); markDirty(); }} />
-              <ToggleSetting title={t('largeInterfaceText')} detail={t('largeInterfaceTextDetail')} checked={draft.accessibility.largeText} onChange={(largeText) => { setDraft({ ...draft, accessibility: { ...draft.accessibility, largeText } }); markDirty(); }} />
-              <label className="vi-color-profile"><span><strong>{t('colorProfile')}</strong></span><select value={draft.accessibility.colorProfile} onChange={(event) => { setDraft({ ...draft, accessibility: { ...draft.accessibility, colorProfile: event.target.value as VisualPreferences['accessibility']['colorProfile'] } }); markDirty(); }}><option value="default">{t('colorDefault')}</option><option value="deuteranopia">{t('colorDeuteranopia')}</option><option value="tritanopia">{t('colorTritanopia')}</option></select></label>
+              <ToggleSetting title={t('highContrast')} detail={t('highContrastDetail')} checked={draft.accessibility.highContrast} onChange={(highContrast) => changeAccessibility({ highContrast })} />
+              <ToggleSetting title={t('reducedMotion')} detail={t('reducedMotionDetail')} checked={draft.accessibility.reducedMotion} onChange={changeReducedMotion} />
+              <ToggleSetting title={t('largeInterfaceText')} detail={t('largeInterfaceTextDetail')} checked={draft.accessibility.largeText} onChange={(largeText) => changeAccessibility({ largeText })} />
+              {/* The colour profile stays in the saved preferences, but no palette uses it yet, so it is not offered. */}
             </div>
           </>}
 
           <footer><button className="vi-settings__restore" onMouseEnter={hover} onClick={restore}>{t('restoreDefaults')}</button><div>{saved && <output>{t('settingsSaved')}</output>}<button className="vi-settings__save" onMouseEnter={hover} onClick={save}>{t('saveSettings')}<span>→</span></button></div></footer>
         </section>
       </div>
-
-      {leaveOpen && (
-        <div className="vi-result vi-settings-leave" role="dialog" aria-modal="true" aria-labelledby="settings-leave-title">
-          <div className="vi-result__card">
-            <h2 id="settings-leave-title">{t('settingsLeaveTitle')}</h2>
-            <p>{t('settingsLeaveBody')}</p>
-            <div>
-              <button type="button" onMouseEnter={hover} onClick={() => { select(); setLeaveOpen(false); }}>{t('settingsLeaveStay')}</button>
-              <button type="button" onMouseEnter={hover} onClick={() => { select(); leaveWithoutSaving(); }}>{t('settingsLeaveDiscard')}</button>
-              <button type="button" className="vi-primary" onMouseEnter={hover} onClick={saveAndLeave}>{t('settingsLeaveSave')}</button>
-            </div>
-          </div>
-        </div>
-      )}
     </section>
-  );
-});
-
-export function SettingsScreen({
-  preferences,
-  onBack,
-  onSave,
-  onPreviewAudio,
-  embedded = false,
-}: {
-  preferences: VisualPreferences;
-  onBack(): void;
-  onSave(preferences: VisualPreferences): void;
-  onPreviewAudio?(audio: VisualPreferences['audio']): void;
-  embedded?: boolean;
-}) {
-  const { t } = useI18n();
-  const sound = useSpaceSound();
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const panelRef = useRef<SettingsPanelHandle>(null);
-
-  useEffect(() => {
-    if (embedded || !canvas.current) return;
-    const scene = createCommandSpaceScene(canvas.current);
-    scene.start();
-    if (preferences.accessibility.reducedMotion) scene.stop();
-
-    const onResize = () => scene.resize();
-    const onPointer = (event: PointerEvent) => {
-      scene.setPointer(
-        (event.clientX / window.innerWidth) * 2 - 1,
-        (event.clientY / window.innerHeight) * 2 - 1,
-      );
-    };
-    window.addEventListener('resize', onResize);
-    if (!preferences.accessibility.reducedMotion) window.addEventListener('pointermove', onPointer);
-    return () => {
-      scene.stop();
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('pointermove', onPointer);
-    };
-  }, [embedded, preferences.accessibility.reducedMotion]);
-
-  if (embedded) {
-    return <SettingsPanel ref={panelRef} preferences={preferences} onBack={onBack} onSave={onSave} onPreviewAudio={onPreviewAudio} isEmbedded />;
-  }
-
-  const hover = () => sound.playHover({ pitch: 560 });
-
-  return (
-    <main className="vi-settings vi-screen">
-      <canvas ref={canvas} className="vi-settings-canvas" aria-hidden="true" />
-      <header className="vi-screen__header">
-        <Brand />
-        <div className="vi-header-actions">
-          <LanguageToggle />
-          <button className="vi-text-button" onMouseEnter={hover} onClick={() => panelRef.current?.requestLeave()}>
-            ← {t('backToCommand')}
-          </button>
-        </div>
-      </header>
-
-      <SettingsPanel ref={panelRef} preferences={preferences} onBack={onBack} onSave={onSave} onPreviewAudio={onPreviewAudio} />
-
-      <footer className="vi-screen__footer">
-        <span>IMPULSO // {t('settings').toUpperCase()}</span>
-        <span>LOCAL // v0.4</span>
-      </footer>
-    </main>
   );
 }

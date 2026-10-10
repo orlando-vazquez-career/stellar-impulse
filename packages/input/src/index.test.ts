@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseCommand } from './index.js';
+import { MAX_PRODUCTION_QUEUE, parseCommand } from './index.js';
 
 const valid = { seq: 1, type: 'move', squadId: 'p1-interceptor', x: 3, y: 4 };
 describe('command boundary', () => {
@@ -57,6 +57,17 @@ describe('command boundary', () => {
     expect(parseCommand({ seq: 1, type: 'build_module', module: 'radar', slot: 2 }).ok).toBe(false);
     expect(parseCommand({ seq: 2, type: 'surrender' })).toEqual({ ok: true, command: { seq: 2, type: 'surrender' } });
     expect(parseCommand({ seq: 2, type: 'surrender', winner: 'p1' }).ok).toBe(false);
+  });
+  it('cancels one hangar order by its slot and kind, and nothing looser', () => {
+    expect(MAX_PRODUCTION_QUEUE).toBe(5);
+    const cancel = { seq: 9, type: 'cancel_production', slot: 0, kind: 'frigate' };
+    expect(parseCommand(cancel)).toEqual({ ok: true, command: cancel });
+    expect(parseCommand({ ...cancel, slot: 4 })).toEqual({ ok: true, command: { ...cancel, slot: 4 } });
+    expect(parseCommand({ ...cancel, refund: 9 }).ok).toBe(false);
+    for (const slot of [1.5, -1, 5, 6, '2', NaN, null]) expect(parseCommand({ ...cancel, slot }).ok).toBe(false);
+    for (const kind of ['cruiser', '', 3, null]) expect(parseCommand({ ...cancel, kind }).ok).toBe(false);
+    const { kind: _kind, ...withoutKind } = cancel;
+    expect(parseCommand(withoutKind).ok).toBe(false);
   });
   it('does not execute property accessors', () => {
     const value = { ...valid };

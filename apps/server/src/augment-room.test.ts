@@ -5,7 +5,7 @@ import {createMatchWorld} from '@impulso/sim';
 import {AuthService} from './auth';
 import {createGameServer} from './app';
 const port=37000+Math.floor(Math.random()*900),url=`http://127.0.0.1:${port}`,auth=new AuthService();
-const a=await auth.register('aug-a@example.com','Test-password!'),b=await auth.register('aug-b@example.com','Test-password!');
+const a=await auth.register('aug-a@example.com','Test-password'),b=await auth.register('aug-b@example.com','Test-password');
 const world=createMatchWorld('sector-01','complete');world.winner='p1';world.matchRecord!.players.p1.combatLosses=1;
 for(let i=0;i<3;i++)await auth.awardMatch(a.user.id,`level-${i}`,world,'p1','medium');
 const server=createGameServer({auth});

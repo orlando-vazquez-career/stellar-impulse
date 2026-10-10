@@ -1,3 +1,5 @@
+import { passwordIssues } from '@impulso/input';
+
 const SERVER_URL = (import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567').replace(/\/$/, '');
 const TOKEN_KEY = 'impulso.auth-token';
 
@@ -13,7 +15,8 @@ export class AuthRequestError extends Error {
 }
 
 /** i18n keys for what went wrong while signing in or creating an account. */
-export type AccountErrorKey = 'accountInvalid' | 'accountRegisterInvalid' | 'accountEmailInUse' | 'accountAliasInvalid' | 'accountUnavailable';
+export type AccountErrorKey =
+  | 'accountInvalid' | 'accountRegisterInvalid' | 'accountPasswordWeak' | 'accountEmailInUse' | 'accountAliasInvalid' | 'accountUnavailable';
 
 export function sessionToken(): string | null { return sessionStorage.getItem(TOKEN_KEY); }
 export function clearSession(): void { sessionStorage.removeItem(TOKEN_KEY); }
@@ -58,8 +61,12 @@ export function loginAccount(email: string, password: string): Promise<AccountUs
   return startSession('/auth/login', { email, password });
 }
 
-/** Creates the account and signs in with it. Without `displayName` the account starts with no alias. */
-export function registerAccount(email: string, password: string, displayName?: string): Promise<AccountUser> {
+/**
+ * Creates the account and signs in with it. Without `displayName` the account starts with no alias.
+ * A password that misses the rule is refused here, as the server would (`400 weak_password`).
+ */
+export async function registerAccount(email: string, password: string, displayName?: string): Promise<AccountUser> {
+  if (passwordIssues(password).length > 0) throw new AuthRequestError(400, 'weak_password');
   return startSession('/auth/register', { email, password, ...(displayName === undefined ? {} : { displayName }) });
 }
 
@@ -141,6 +148,7 @@ export function accountErrorKey(error: unknown, action: 'login' | 'register'): A
   if (!(error instanceof AuthRequestError)) return 'accountUnavailable';
   if (error.status === 409) return 'accountEmailInUse';
   if (error.code === 'invalid_display_name') return 'accountAliasInvalid';
+  if (error.code === 'weak_password') return 'accountPasswordWeak';
   if (error.status === 400 || error.status === 401) return action === 'register' ? 'accountRegisterInvalid' : 'accountInvalid';
   return 'accountUnavailable';
 }

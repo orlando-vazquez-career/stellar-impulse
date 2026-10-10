@@ -276,4 +276,45 @@ describe('visual presentation adapter', () => {
     }
     vi.useRealTimers();
   });
+
+  it('offers a pause that stops the clock and gives back the running state it found', () => {
+    vi.useFakeTimers();
+    const adapter = createMockGameplayAdapter();
+    try {
+      const start = adapter.getSnapshot();
+      expect(start).toMatchObject({ canPause: true, paused: false, clockRunning: false, productionQueue: [], selectedBase: null, noticeCode: null });
+      adapter.dispatch({ type: 'set-paused', paused: true });
+      expect(adapter.getSnapshot()).toMatchObject({ paused: true, clockRunning: false });
+      adapter.dispatch({ type: 'set-paused', paused: false });
+      expect(adapter.getSnapshot()).toMatchObject({ paused: false, clockRunning: false });
+      adapter.dispatch({ type: 'set-clock-running', running: true });
+      adapter.dispatch({ type: 'set-paused', paused: true });
+      const frozen = adapter.getSnapshot().elapsedSeconds;
+      vi.advanceTimersByTime(3000);
+      expect(adapter.getSnapshot()).toMatchObject({ paused: true, clockRunning: false, elapsedSeconds: frozen });
+      adapter.dispatch({ type: 'set-paused', paused: false });
+      vi.advanceTimersByTime(1000);
+      expect(adapter.getSnapshot()).toMatchObject({ paused: false, clockRunning: true, elapsedSeconds: frozen + 1 });
+    } finally { adapter.destroy(); vi.useRealTimers(); }
+  });
+
+  it('selects a base instead of the ships, and the ships instead of the base', () => {
+    const adapter = createMockGameplayAdapter();
+    try {
+      adapter.dispatch({ type: 'set-action', action: 'move' });
+      adapter.dispatch({ type: 'select-base', base: 'own' });
+      expect(adapter.getSnapshot()).toMatchObject({ selectedBase: 'own', selectedSquadIds: [], selectedSquadId: null, activeAction: null });
+      adapter.dispatch({ type: 'select-squads', squadIds: ['blue-beta'] });
+      expect(adapter.getSnapshot()).toMatchObject({ selectedBase: null, selectedSquadIds: ['blue-beta'] });
+    } finally { adapter.destroy(); }
+  });
+
+  it('has no hangar orders to cancel', () => {
+    const adapter = createMockGameplayAdapter();
+    try {
+      const before = adapter.getSnapshot();
+      adapter.dispatch({ type: 'cancel-production', slot: 0, kind: 'frigate' });
+      expect(adapter.getSnapshot()).toEqual(before);
+    } finally { adapter.destroy(); }
+  });
 });

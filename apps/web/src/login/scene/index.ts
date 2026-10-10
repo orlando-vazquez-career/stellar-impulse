@@ -1,3 +1,4 @@
+import { isReducedMotion } from '../../visual/settings/accessibility-store';
 import { createAsteroidField, type AsteroidField } from './asteroids';
 import { createBackground, DESIGN_H, DESIGN_W, type Background } from './background';
 import { createBlobSprites } from './particles';
@@ -44,8 +45,8 @@ export function createLoginScene(canvas: HTMLCanvasElement, options: LoginSceneO
   const wreck: Wreck = createWreck(rng, sprites);
   const post: PostFx = createPostFx();
 
-  const reduced = typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // The player's setting (which starts from the system one) decides whether the scene moves.
+  const reduced = isReducedMotion();
 
   let running = false;
   let raf = 0;

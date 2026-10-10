@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CONTROL_ACTIONS,
+  CONTROL_SECTIONS,
   DEFAULT_CONTROL_BINDINGS,
   controlActionForEvent,
   findBindingConflict,
@@ -40,6 +42,25 @@ describe('rebindable control bindings', () => {
   it('detects duplicate bindings so each key can invoke one action only', () => {
     expect(findBindingConflict(DEFAULT_CONTROL_BINDINGS, 'KeyG', 'move')).toBe('attack');
     expect(findBindingConflict(DEFAULT_CONTROL_BINDINGS, 'Ctrl+KeyZ', 'move')).toBeNull();
+  });
+
+  it('selects the base with B by default, among the orders, without clashing with another action', () => {
+    expect(DEFAULT_CONTROL_BINDINGS.selectBase).toEqual(['KeyB']);
+    expect(CONTROL_SECTIONS.find((section) => section.id === 'orders')?.actions).toContain('selectBase');
+    expect(findBindingConflict(DEFAULT_CONTROL_BINDINGS, 'KeyB', 'selectBase')).toBeNull();
+    const everyDefault = CONTROL_ACTIONS.flatMap((action) => DEFAULT_CONTROL_BINDINGS[action]);
+    expect(new Set(everyDefault).size).toBe(everyDefault.length);
+  });
+
+  it('gives older saved bindings the base shortcut through the default fallback', () => {
+    const controls = readControlBindings({ move: ['KeyM'], attack: ['KeyG'], cancel: ['Escape'] });
+    expect(controls.selectBase).toEqual(['KeyB']);
+  });
+
+  it('leaves the base shortcut unassigned when a saved action already took B', () => {
+    const controls = readControlBindings({ move: ['KeyB'] });
+    expect(controls.move).toEqual(['KeyB']);
+    expect(controls.selectBase).toEqual([]);
   });
 
   it('migrates legacy keys while keeping default camera, production, and group controls', () => {

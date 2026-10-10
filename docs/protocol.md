@@ -67,11 +67,13 @@ Todos los mensajes del cliente llevan `{ protocolVersion: 3, body }`. El servido
 | Canal | `body` | Uso |
 |---|---|---|
 | `ready` | `{}` | En lobby; con ambos jugadores listos comienza la cuenta regresiva de 5 s. |
-| `command` | Órdenes del motor de partida: `move`, `move_formation`, `attack`, `stop`, `enqueue`, `stance`, `produce`, `build_module`, `upgrade_base`, `disband` y `surrender`, cada una con su `seq` | Durante un sector activo, después de la elección de aumento. Son las mismas órdenes y validaciones del entrenamiento (`parseCommand` y `applyCommand`). |
+| `command` | Órdenes del motor de partida: `move`, `move_formation`, `attack`, `stop`, `enqueue`, `stance`, `produce`, `station_produce`, `cancel_production`, `build_module`, `upgrade_base`, `disband` y `surrender`, cada una con su `seq` | Durante un sector activo, después de la elección de aumento. Son las mismas órdenes y validaciones del entrenamiento (`parseCommand` y `applyCommand`). |
 | `augmentPick` | `{ choice, id }` | Elige una carta de la oferta vigente; `choice` es 0, 1 o 2. |
 | `augmentReroll` | `{ choice }` | Renueva las cartas de la oferta vigente mientras queden renovaciones. |
 
 `surrender` hace perder el sector, no la campaña, y solo se acepta cuando la base ya no tiene escudo (`surrender_locked` antes). Los cuerpos no admiten campos extra.
+
+El hangar guarda hasta `MAX_PRODUCTION_QUEUE` (5) pedidos: la nave en construcción y cuatro en espera. `produce` se acepta aunque el hangar esté ocupado; se cobra al encolar y el pedido espera su turno. El sexto se rechaza con `production_queue_full`. Cada pedido pendiente ocupa su plaza de flota: las naves vivas sin señuelos, más la activa y la cola, no pueden superar el tope (`fleet_full`), tampoco para `station_produce` `{ seq, type, kind, stationId }`, que compra una nave al instante en una estación propia. `cancel_production` `{ seq, type, slot, kind }` cancela un pedido: `slot` 0 es la nave en construcción y 1 a 4 los pedidos en espera, en orden; `kind` debe coincidir con ese pedido. Devuelve exactamente el Metal que se pagó, aunque el precio haya cambiado. Un `slot` vacío o fuera de 0 a 4, o un `kind` distinto, se rechazan con `invalid_command`; una `seq` ya usada, con `stale_sequence`.
 
 ## Mensajes del servidor
 
@@ -84,7 +86,7 @@ Todos los mensajes del cliente llevan `{ protocolVersion: 3, body }`. El servido
 | `paused` | `{ protocolVersion, by, remainingMs }` | Cuando una desconexión pausa el sector. |
 | `campaign_end` | `{ protocolVersion, result: { winner, reason }, sectorResults, reward? }` | Una vez al terminar la campaña. `reward` es el premio de cuenta de quien lo recibe (`xpGained`, `beforeXp`, `profile`, `challenges`, `merits`, `unlocked`); ver [progresión](progression.md). |
 
-La vista es la misma proyección privada del entrenamiento (`viewFor`): solo las unidades, guardianes y nodos que el jugador ve, su propio Metal, producción, módulos y mejoras, y su `lastSequence`. Del rival nunca llegan Metal, órdenes, secuencia ni la oferta de aumento; sus aumentos elegidos sí son públicos. `augments.offer` muestra la oferta propia con `rerolls` usados y `rerollLimit`.
+La vista es la misma proyección privada del entrenamiento (`viewFor`): solo las unidades, guardianes y nodos que el jugador ve, su propio Metal, producción, módulos y mejoras, y su `lastSequence`. `players[playerId].production` trae `kind`, `remainingTicks`, `totalTicks` y `refund`, y `players[playerId].queue` los pedidos en espera como `{ kind, refund }`. `core` es público: además de `open` y `progress` trae `radius`, `status` (`locked`, `idle`, `capturing` o `contested`), `captor`, `fraction` por jugador (de 0 a 1) y `remainingTicks` del captor. La presencia solo cuenta con el guardián del Núcleo caído, así que el estado nunca revela si un guardián fuera de visión sigue en pie. Del rival nunca llegan Metal, órdenes, secuencia ni la oferta de aumento; sus aumentos elegidos sí son públicos. `augments.offer` muestra la oferta propia con `rerolls` usados y `rerollLimit`.
 
 ## Fases de campaña
 
@@ -101,6 +103,12 @@ Un sector termina cuando la partida tiene ganador (núcleo, base destruida o ren
 Cada jugador dispone de hasta 2 pausas por campaña. Cada caída inicia una ventana de reconexión de 60 s desde el instante original de esa caída; el plazo no se renueva al pasar a otro sector. Si la caída ocurre durante un sector y queda cuota de pausa, la simulación se detiene para ambos hasta la reconexión o el plazo. Si ya agotó la cuota, la simulación sigue y, al vencer el plazo sin reconexión, se declara `forfeit` si el rival sigue conectado o `annulled` si ambos asientos están ausentes. Al volver de una pausa activa, recibe una vista completa y una cuenta regresiva de reanudación de 3 s. Si se reconecta dentro del plazo cuando no hubo pausa activa, no hay cuenta regresiva. Una caída durante transición no pausa esa transición; al iniciar el siguiente sector, puede pausarlo si la cuota lo permite y el plazo original sigue vigente.
 
 El servidor limita las órdenes a 32 acciones de escuadrón por segundo y jugador; una orden grupal cuenta una acción por cada ID en `squadIds`. El corte duro es de 40 mensajes entrantes por segundo y el máximo de 4 KiB aplica a cada payload entrante del cliente; las vistas que envía el servidor pueden superar ese tamaño.
+
+## Pausa de práctica (sala `training`)
+
+La sala `training` no usa sobres. Acepta `pause` `{ paused: boolean }` solo en práctica contra la IA, con un único humano y sin ganador; en cualquier otro caso responde `rejected` con `pause_unavailable`, y un cuerpo con otra forma, con `invalid_command`. En pausa la sala no mueve la IA ni la simulación, pero sigue enviando vistas con el mismo `tick`. Los mensajes `command`, `augmentPick` y `augmentReroll` se rechazan con `paused` antes del límite de ritmo, así que las órdenes enviadas durante la pausa no cuentan al reanudar. No hay límite de duración y el cierre de la sala a los 45 minutos de reloj real no cambia. Si entra un segundo humano, la pausa termina. En multijugador no hay pausa voluntaria.
+
+Cada vista de `training` trae `pausable` y `paused`. `pausable` dice si la pausa está disponible en ese momento: solo contra la IA, con un único humano y con la partida en curso. El cliente solo envía `pause` cuando la última vista dice `pausable: true`, porque `@colyseus/core` 0.18 cierra la conexión ante un mensaje sin manejador y la sala `campaign` no tiene ese mensaje ni ese campo. Si igual llega un `pause` cuando no está disponible (contra otro humano, con dos humanos o con la partida decidida), la sala responde `pause_unavailable`.
 
 ## Referencias del repositorio
 

@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { createBelt, gateAt, type BeltField, type BeltGate } from '@impulso/sim';
 import { activeMapId, sectorMap, sectorSurface } from '../../map/sector-map';
 import { cellToIso, TILE_HALF_HEIGHT } from './isometric';
+import { gameText } from '../game-copy';
+import type { Locale } from '../../i18n';
 
 /** Rocks sort with ships and structures; the warning sits on the ground and its sign in the sky. */
 const DEPTH = { ground: 90004, rocks: 100000, sign: 290000 } as const;
@@ -28,6 +30,7 @@ interface GateVisual {
 export class BeltEffects {
   private readonly field?: BeltField;
   private readonly visuals: GateVisual[] = [];
+  private locale: Locale = 'es';
 
   constructor(private readonly scene: Phaser.Scene, tickRate: number) {
     this.field = createBelt(sectorSurface.belt, sectorSurface, tickRate);
@@ -50,6 +53,12 @@ export class BeltEffects {
         }).setOrigin(0.5, 1).setDepth(DEPTH.sign).setVisible(false),
       });
     }
+  }
+
+  /** Language of the countdown signs; a sign up now is rewritten on the next update. */
+  setLocale(locale: Locale): void {
+    this.locale = locale;
+    for (const visual of this.visuals) visual.countdown = -1;
   }
 
   /** Cells of the passages: their static asteroid art is left out, these rocks replace it. */
@@ -88,7 +97,7 @@ export class BeltEffects {
       }
       if (!sign) continue;
       const left = Math.max(0, Math.ceil((state.phaseEndsAt - tick) / tickRate));
-      if (left !== visual.countdown) { visual.countdown = left; sign.setText(`⚠ CINTURÓN ${left}`); }
+      if (left !== visual.countdown) { visual.countdown = left; sign.setText(gameText(this.locale, 'beltWarning', { seconds: left })); }
       sign.setVisible(true).setAlpha(0.65 + 0.35 * pulse);
     }
   }

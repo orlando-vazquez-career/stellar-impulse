@@ -19,7 +19,6 @@ export interface LoginScreenProps {
   notice?: string;
   onCreateTraining?: (alias: string) => void;
   onJoinRoom?: (code: string, alias: string) => void;
-  onConnectWallet?: () => void;
   chainStatus?: string;
   chainBusy?: boolean;
   /** Si existe, muestra el acceso al centro de mando debajo del panel. */
@@ -46,7 +45,6 @@ export function LoginScreen(props: LoginScreenProps) {
     notice = '',
     onCreateTraining = () => {},
     onJoinRoom = () => {},
-    onConnectWallet = () => {},
     chainStatus = 'Stellar Testnet',
     chainBusy = false,
     onOpenAtlas,
@@ -139,7 +137,6 @@ export function LoginScreen(props: LoginScreenProps) {
             dispatch={dispatch}
             onCreateTraining={onCreateTraining}
             onJoinRoom={onJoinRoom}
-            onConnectWallet={onConnectWallet}
             chainStatus={chainStatus}
             chainBusy={chainBusy}
             onOpenAtlas={onOpenAtlas}

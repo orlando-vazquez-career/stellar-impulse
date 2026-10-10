@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { RUN_SECTORS, afterVictory, formatTime, isLastSector, newRun, totalSeconds, type SectorSummary } from './run-state';
+import { mapName } from '../map/map-name';
+import { RUN_SECTORS, afterVictory, clearedSectorName, formatTime, isLastSector, newRun, totalSeconds, type SectorSummary } from './run-state';
 
 const card = (id: string) => ({ id, tier: 'silver' as const, icon: '✦', text: { es: { name: id, advantage: '' }, en: { name: id, advantage: '' } } });
 const summary = (sector: number, seconds: number, ids: string[]): SectorSummary =>
@@ -23,6 +24,15 @@ describe('run of sectors', () => {
     expect(run.sector).toBe(RUN_SECTORS.length - 1);
     expect(run.history).toHaveLength(RUN_SECTORS.length);
     expect(totalSeconds(run)).toBe(600);
+  });
+
+  it('names a cleared sector by its map, in the language on screen', () => {
+    const cleared = summary(3, 420, []);
+    expect(clearedSectorName(cleared, 'es')).toBe('Trascendencia Estelar');
+    expect(clearedSectorName(cleared, 'en')).toBe('Stellar Transcendence');
+    // The name comes from the map, not from the text saved when the sector ended.
+    expect(clearedSectorName({ ...cleared, name: 'Trascendencia Estelar' }, 'en')).toBe('Stellar Transcendence');
+    expect(RUN_SECTORS.map((sector) => mapName(sector.map, 'es'))).toEqual(RUN_SECTORS.map((sector) => sector.name));
   });
 
   it('formats match time as mm:ss', () => {

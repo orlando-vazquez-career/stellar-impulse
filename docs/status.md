@@ -1,8 +1,20 @@
 # Estado del repositorio
 
-Actualizado: 8 de octubre de 2026. Base de producto: 0.1.0.
+Actualizado: 9 de octubre de 2026. Base de producto: 0.1.0.
 
 ## Implementado
+
+### Cola del hangar, captura y pausa de práctica (9 de octubre de 2026)
+
+El hangar acepta hasta cinco pedidos (uno en construcción y cuatro en cola), cobra al
+encolar y permite cancelar cualquiera con reembolso exacto (`cancel_production`). Cada
+pedido pendiente ocupa su plaza de flota, también para las compras en estaciones. Las
+naves nacen en el primer anillo de la base y en el segundo de las estaciones, nunca
+dentro del casco, y primero del lado del Núcleo, así ningún bando lanza más lejos que el otro. El Núcleo y los nodos de Metal se capturan desde un radio de 2 casillas
+en los mapas de Tiled. La vista indica si el Núcleo está bloqueado, libre, capturándose
+o en disputa, quién lo captura y cuánto le falta. La práctica contra la IA admite una
+pausa ilimitada del único humano; en multijugador no hay pausa voluntaria. Consulta
+[protocolo](protocol.md) y [sistema de base](base-system.md).
 
 ### Campaña multijugador con el motor de partida (8 de octubre de 2026)
 
@@ -36,11 +48,9 @@ mensaje de mapa incompatible. El entrenamiento contra IA conserva su ruta indepe
 
 `/` y `/visual` abren la misma experiencia Visual. El antiguo Atlas de Mando y su
 cliente Canvas de entrenamiento se retiraron de la entrada web; las salas del servidor
-no se tocaron. Desde la preparación se puede probar el TMJ editable de Sector 01
-(29×29): su atlas, los datos de superficie y una nave local que usa el buscador de
-rutas de la simulación (incluidas las restricciones de altura/rampas).
-El TMJ referencia un segundo atlas ausente para una única casilla de espacio: el
-inspector la dibuja con un color de reserva, sin alterar el archivo de Tiled.
+no se tocaron. El inspector del TMJ de Sector 01 que se abría desde la preparación
+se retiró el 10-oct-2026: la preparación y la sala multijugador muestran ahora una
+vista previa esquemática del mapa elegido.
 El combate Phaser ahora dibuja las capas del mismo TMJ de 29×29 y sus naves se
 mueven en continuo cuando el terreno es llano; en las rampas siguen las rutas
 válidas de la simulación. Selección individual y múltiple, órdenes de movimiento y
@@ -70,7 +80,7 @@ pendiente. El modo training conserva su IA y producción.
 Las limitaciones de blockchain y persistencia descritas en las entregas históricas
 requieren su propia verificación antes de una publicación.
 
-Las salas son efímeras de desarrollo. campaign reserva un asiento desconectado hasta 60 s desde la caída original, con hasta dos pausas por jugador; training no ofrece reconexión. Los lobbies de campaña sin empezar caducan a los 15 minutos.
+Las salas son efímeras de desarrollo. campaign reserva un asiento desconectado hasta 60 s desde la caída original, con hasta dos pausas por jugador; training no ofrece reconexión, pero sí una pausa voluntaria en práctica contra la IA con un único humano. Los lobbies de campaña sin empezar caducan a los 15 minutos.
 
 No se ha aprobado interactivamente Freighter ni ejecutado prueba nativa macOS.
 Los tests del adapter no equivalen a una firma o conexión humana real.

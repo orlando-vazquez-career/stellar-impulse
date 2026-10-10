@@ -1,4 +1,4 @@
-import { canEquip, cosmeticCatalog, type HangarCategory } from './catalog';
+import { canEquip, cosmeticCatalog, type CosmeticItem, type HangarCategory } from './catalog';
 import { cachedWallet, readOwnedClasses } from './ownership';
 
 export type CosmeticLoadout = Record<HangarCategory, string>;
@@ -25,6 +25,21 @@ export function loadCosmeticLoadout(ownedClasses: ReadonlySet<number> = readOwne
   } catch {
     return { ...defaultCosmeticLoadout };
   }
+}
+
+/**
+ * What the try-on shows: the equipped loadout with `candidate` in its slot. Pure: it never saves,
+ * so trying a piece on (owned or not) cannot change what the player takes into a match.
+ */
+export function previewLoadout(loadout: CosmeticLoadout, candidate: CosmeticItem | null | undefined): CosmeticLoadout {
+  if (!candidate?.unlocked || loadout[candidate.category] === candidate.id) return loadout;
+  return { ...loadout, [candidate.category]: candidate.id };
+}
+
+/** A bought NFT piece goes straight into its slot. Free or locked pieces are never bought. */
+export function equipAfterPurchase(loadout: CosmeticLoadout, item: CosmeticItem): CosmeticLoadout {
+  if (!item.chain || !item.unlocked || loadout[item.category] === item.id) return loadout;
+  return { ...loadout, [item.category]: item.id };
 }
 
 export function saveCosmeticLoadout(loadout: CosmeticLoadout) {

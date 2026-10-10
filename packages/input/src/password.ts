@@ -1,12 +1,14 @@
+import { passwordIssues } from './protocol.js';
+
+/** Length limits of a new account's password; the login accepts any password of this length range. */
 export const PASSWORD_MIN_LENGTH = 8;
-export const PASSWORD_MAX_LENGTH = 20;
+export const PASSWORD_MAX_LENGTH = 128;
 
-const HAS_LOWERCASE = /[a-z]/;
-const HAS_UPPERCASE = /[A-Z]/;
-const HAS_SPECIAL = /[^A-Za-z0-9]/;
-
-/** New accounts: 8–20 characters, mixed case and one character that is not a letter or digit. */
+/**
+ * New accounts: 8–128 characters with a lowercase letter, an uppercase letter and a symbol (any character that is
+ * not a letter, mark or digit). Letters include accented ones, so "Ñandú-clave" passes. The rule only applies when
+ * an account is created: existing accounts keep signing in with the passwords they already have.
+ */
 export function passwordMeetsPolicy(password: string): boolean {
-  if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) return false;
-  return HAS_LOWERCASE.test(password) && HAS_UPPERCASE.test(password) && HAS_SPECIAL.test(password);
+  return passwordIssues(password).length === 0;
 }

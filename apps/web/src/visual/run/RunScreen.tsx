@@ -1,5 +1,5 @@
 import type { DurationMode } from '@impulso/sim';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GameplayScreen } from '../game/GameplayScreen';
 import { useI18n } from '../i18n';
 import type { RivalDifficulty } from '../lobby/PreparationLobby';
@@ -29,8 +29,8 @@ export function RunScreen({ preferences, difficulty, duration, onLeave, onAudioC
   const [phase, setPhase] = useState<Phase>('warp');
   const [arrival, setArrival] = useState<Arrival>('start');
   const [jumps, setJumps] = useState(0);
-  const volume = preferences.audio.muted ? 0 : preferences.audio.master / 100 * preferences.audio.effects / 100;
-  const sfx = useMemo(() => new RunSfx(volume), [volume]);
+  // One synth for the whole run; its sounds follow the live effects channel.
+  const [sfx] = useState(() => new RunSfx());
   useEffect(() => () => sfx.dispose(), [sfx]);
 
   const arrive = (next: Arrival) => {

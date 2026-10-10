@@ -1,5 +1,5 @@
 import {
-  Account, BASE_FEE, Contract, rpc, scValToNative, TransactionBuilder,
+  Account, BASE_FEE, Contract, humanizeEvents, rpc, scValToNative, TransactionBuilder,
   type Transaction, type xdr,
 } from "@stellar/stellar-sdk";
 import { ChainError, STELLAR_TESTNET, validatePublicAddress } from "./index.js";
@@ -49,27 +49,27 @@ export function buildCall(source: Account, contractId: string, method: string, a
  * contract reporting an insufficient balance.
  */
 const CONTRACT_MESSAGES: Record<number, string> = {
-  2: "Esa pieza no existe en el catalogo.",
+  2: "Esa pieza no existe en el catálogo.",
   3: "Esa pieza ya no existe.",
-  4: "No eres dueno de esta pieza.",
+  4: "No eres dueño de esta pieza.",
   6: "Esta pieza no se puede vender ni transferir.",
-  7: "Esta pieza no esta a la venta.",
-  8: "Esta pieza se agoto.",
+  7: "Esta pieza no está a la venta.",
+  8: "Esta pieza se agotó.",
   9: "Ese premio ya fue entregado.",
   10: "No tienes saldo suficiente en testnet.",
-  12: "La autorizacion de venta vencio. Publica el anuncio otra vez.",
-  13: "Tu inventario esta lleno.",
+  12: "La autorización de venta venció. Publica el anuncio otra vez.",
+  13: "Tu inventario está lleno.",
   14: "No puedes enviarte una pieza a ti mismo.",
   101: "Ese anuncio no existe.",
-  102: "El anuncio ya no esta disponible.",
-  103: "El anuncio vencio.",
-  104: "Solo quien publico el anuncio puede cancelarlo.",
+  102: "El anuncio ya no está disponible.",
+  103: "El anuncio venció.",
+  104: "Solo quien publicó el anuncio puede cancelarlo.",
   105: "El vendedor ya no tiene esta pieza.",
   106: "El precio tiene que ser mayor que cero.",
-  107: "El precio cambio. Revisa el anuncio antes de comprar.",
+  107: "El precio cambió. Revisa el anuncio antes de comprar.",
   108: "No puedes comprar tu propio anuncio.",
-  109: "El vendedor retiro la autorizacion de venta.",
-  111: "La duracion del anuncio no es valida.",
+  109: "El vendedor retiró la autorización de venta.",
+  111: "La duración del anuncio no es válida.",
 };
 
 /** The player-facing text for a contract error number, if there is one. */
@@ -90,6 +90,22 @@ export function contractError(error: unknown, fallback: string): ChainError {
     return new ChainError("UNFUNDED_ACCOUNT", "Tu wallet no tiene fondos en testnet. Cargala con Friendbot desde Freighter.");
   }
   return new ChainError("INVALID_RESPONSE", fallback);
+}
+
+/** The `Error(Contract, #n)` a failed transaction left in its diagnostic events, if any. */
+function failedContractCode(final: rpc.Api.GetTransactionResponse): number | undefined {
+  const events = (final as { diagnosticEventsXdr?: xdr.DiagnosticEvent[] }).diagnosticEventsXdr ?? [];
+  let readable: ReturnType<typeof humanizeEvents>;
+  try { readable = humanizeEvents(events); } catch { return undefined; }
+  for (const event of readable) {
+    for (const value of [...event.topics, event.data]) {
+      if (typeof value === "object" && value !== null && (value as { type?: unknown }).type === "contract") {
+        const code = (value as { code?: unknown }).code;
+        if (typeof code === "number" && Number.isInteger(code)) return code;
+      }
+    }
+  }
+  return undefined;
 }
 
 /** Read-only contract call through simulation; never signs or submits. */
@@ -148,8 +164,15 @@ export async function submitContractCall(
     throw new ChainError("RPC_UNAVAILABLE", "La red no acepto la operacion. Intenta nuevamente.");
   }
   const final = await server.pollTransaction(sent.hash, { attempts: 30 });
+  if (final.status === rpc.Api.GetTransactionStatus.NOT_FOUND) {
+    throw new ChainError("PENDING", "La operación sigue pendiente en testnet.", undefined, sent.hash);
+  }
   if (final.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
-    throw new ChainError("INVALID_RESPONSE", "La operacion no se confirmo en testnet.");
+    const code = failedContractCode(final);
+    if (code !== undefined) {
+      throw new ChainError("CONTRACT_REJECTED", CONTRACT_MESSAGES[code] ?? fallback, code, sent.hash);
+    }
+    throw new ChainError("INVALID_RESPONSE", "La operación no se confirmó en testnet.", undefined, sent.hash);
   }
   return { transactionHash: sent.hash, value: final.returnValue ? scValToNative(final.returnValue) : undefined };
 }

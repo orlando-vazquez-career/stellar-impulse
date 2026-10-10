@@ -3,7 +3,7 @@ export type ControlGroupSlot = typeof CONTROL_GROUP_SLOTS[number];
 type GroupControlAction = `groupAssign${ControlGroupSlot}` | `groupRecall${ControlGroupSlot}`;
 
 export type ControlAction =
-  | 'move' | 'attack' | 'hold' | 'capture' | 'cancel'
+  | 'move' | 'attack' | 'hold' | 'capture' | 'cancel' | 'selectBase'
   | 'cameraFocus' | 'panUp' | 'panDown' | 'panLeft' | 'panRight'
   | 'produceInterceptor' | 'produceFrigate' | 'produceBomber' | 'produceExplorer'
   | 'cycleFormation' | 'disband'
@@ -23,6 +23,7 @@ export const DEFAULT_CONTROL_BINDINGS: ControlBindings = {
   hold: ['KeyH'],
   capture: ['KeyC'],
   cancel: ['Escape'],
+  selectBase: ['KeyB'],
   cameraFocus: ['Space'],
   panUp: ['KeyW', 'ArrowUp'],
   panDown: ['KeyS', 'ArrowDown'],
@@ -38,7 +39,7 @@ export const DEFAULT_CONTROL_BINDINGS: ControlBindings = {
 };
 
 export const CONTROL_SECTIONS: ReadonlyArray<{ id: 'orders' | 'camera' | 'production' | 'formation' | 'groups'; actions: readonly ControlAction[] }> = [
-  { id: 'orders', actions: ['move', 'attack', 'hold', 'capture', 'cancel'] },
+  { id: 'orders', actions: ['move', 'attack', 'hold', 'capture', 'cancel', 'selectBase'] },
   { id: 'camera', actions: ['cameraFocus', 'panUp', 'panDown', 'panLeft', 'panRight'] },
   { id: 'production', actions: ['produceInterceptor', 'produceFrigate', 'produceBomber', 'produceExplorer'] },
   { id: 'formation', actions: ['cycleFormation', 'disband'] },
