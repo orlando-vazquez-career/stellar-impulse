@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 370" role="img" aria-labelledby="title desc">
+  <title id="title">Stellar Impulse</title>
+  <desc id="desc">Estrategia en tiempo real, identidad propia y propiedad digital en Stellar. Juega primero. Descubre Stellar después.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#071523"/><stop offset="1" stop-color="#15273c"/></linearGradient>
+    <radialGradient id="glow"><stop stop-color="#36a9ff" stop-opacity=".18"/><stop offset="1" stop-color="#36a9ff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1400" height="370" rx="18" fill="url(#bg)"/>
+  <circle cx="1150" cy="160" r="400" fill="url(#glow)"/>
+  <g fill="#83d4ff" opacity=".35"><circle cx="76" cy="46" r="2"/><circle cx="1250" cy="70" r="2"/><circle cx="1320" cy="275" r="2"/><circle cx="990" cy="325" r="1.5"/><circle cx="530" cy="50" r="1.5"/><circle cx="330" cy="326" r="2"/></g>
+  <g transform="translate(62 96) scale(1.4)">
+    <path d="M60 5 115 60 60 115 5 60Z" fill="none" stroke="#83d4ff" stroke-width="3"/>
+    <path d="M60 25 95 60 60 95 25 60Z" fill="none" stroke="#36a9ff" stroke-width="2"/>
+    <path d="m27 86 33-33 33 33" fill="none" stroke="#71e5dc" stroke-width="3"/>
+    <circle cx="60" cy="60" r="7" fill="#ffd84d"/>
+  </g>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="268" y="94" fill="#71e5dc" font-size="16" letter-spacing="4">BROWSER RTS · ROGUELITE · STELLAR TESTNET</text>
+    <text x="264" y="167" fill="#f2f6fa" font-size="66" font-weight="700" letter-spacing="2">STELLAR IMPULSE</text>
+    <text x="268" y="214" fill="#b9ccdd" font-size="25">Juega primero. Descubre Stellar después.</text>
+    <text x="268" y="278" fill="#83d4ff" font-size="17">ESTRATEGIA EN TIEMPO REAL</text>
+    <text x="268" y="307" fill="#91a9bf" font-size="16">Flotas, exploración y aumentos</text>
+    <text x="644" y="278" fill="#71e5dc" font-size="17">IDENTIDAD PROPIA</text>
+    <text x="644" y="307" fill="#91a9bf" font-size="16">Cosméticos y méritos verificables</text>
+    <text x="1050" y="278" fill="#ffd84d" font-size="17">COMPETENCIA JUSTA</text>
+    <text x="1050" y="307" fill="#91a9bf" font-size="16">Las compras no dan poder</text>
+  </g>
+  <path d="M268 241H1325" stroke="#2b4259"/>
+</svg>
