@@ -12,9 +12,10 @@ const BASE_VIEW_PADDING = 0.08;
 /** Closest the player may zoom from the opening view. */
 export const VIEW_CLOSE_MULTIPLIER = 2.4;
 
-function yawCell(x: number, y: number, radians: number) {
-  const centerX = (sectorMap.width - 1) / 2;
-  const centerY = (sectorMap.height - 1) / 2;
+/** Turns a grid point around the centre of a `width`×`height` map. */
+function yawCellOn(width: number, height: number, x: number, y: number, radians: number) {
+  const centerX = (width - 1) / 2;
+  const centerY = (height - 1) / 2;
   const cosine = Math.cos(radians);
   const sine = Math.sin(radians);
   const deltaX = x - centerX;
@@ -22,13 +23,34 @@ function yawCell(x: number, y: number, radians: number) {
   return { x: centerX + deltaX * cosine - deltaY * sine, y: centerY + deltaX * sine + deltaY * cosine };
 }
 
-function projectCell(x: number, y: number) {
-  return { x: MAP_ORIGIN_X + (x - y) * TILE_HALF_WIDTH, y: MAP_ORIGIN_Y + (x + y) * TILE_HALF_HEIGHT };
+function yawCell(x: number, y: number, radians: number) {
+  return yawCellOn(sectorMap.width, sectorMap.height, x, y, radians);
+}
+
+/**
+ * Where a grid point of a `width`×`height` map lands in world pixels, with the battlefield's view yaw.
+ * Pure: it never reads the active map, so a lobby can draw any map without selecting it.
+ */
+export function projectCellOn(width: number, height: number, x: number, y: number) {
+  const viewed = yawCellOn(width, height, x, y, VIEW_YAW_RADIANS);
+  const originX = height * TILE_WIDTH / 2;
+  return { x: originX + (viewed.x - viewed.y) * TILE_HALF_WIDTH, y: MAP_ORIGIN_Y + (viewed.x + viewed.y) * TILE_HALF_HEIGHT };
+}
+
+/** Axis-aligned box that holds every projected corner of a `width`×`height` map. Pure, like projectCellOn. */
+export function projectedBoundsOn(width: number, height: number) {
+  const lastX = width - 1;
+  const lastY = height - 1;
+  const corners = [[0, 0], [lastX, 0], [lastX, lastY], [0, lastY]].map(([x, y]) => projectCellOn(width, height, x!, y!));
+  const xs = corners.map((corner) => corner.x);
+  const ys = corners.map((corner) => corner.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  return { x: left, y: top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
 }
 
 export function cellToIso(x: number, y: number) {
-  const viewed = yawCell(x, y, VIEW_YAW_RADIANS);
-  return projectCell(viewed.x, viewed.y);
+  return projectCellOn(sectorMap.width, sectorMap.height, x, y);
 }
 
 export function isoToCell(worldX: number, worldY: number): GridCell | null {
@@ -48,14 +70,7 @@ export function isoToPoint(worldX: number, worldY: number): GridPoint | null {
 
 /** Axis-aligned box that holds every projected map corner. The map is not cropped. */
 export function projectedWorldBounds() {
-  const lastX = sectorMap.width - 1;
-  const lastY = sectorMap.height - 1;
-  const corners = [cellToIso(0, 0), cellToIso(lastX, 0), cellToIso(lastX, lastY), cellToIso(0, lastY)];
-  const xs = corners.map((corner) => corner.x);
-  const ys = corners.map((corner) => corner.y);
-  const left = Math.min(...xs);
-  const top = Math.min(...ys);
-  return { x: left, y: top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
+  return projectedBoundsOn(sectorMap.width, sectorMap.height);
 }
 
 function paddedBaseBox() {
