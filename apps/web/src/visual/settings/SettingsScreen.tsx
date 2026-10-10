@@ -4,7 +4,7 @@ import { useSpaceSound } from '../../login/sound';
 import { freshDefaultVisualPreferences, hasUnsavedChanges, type ControlAction, type VisualPreferences } from './preferences';
 import { CONTROL_SECTIONS, findBindingConflict, formatKeyBinding, keyBindingFromEvent, type ControlBindings } from './control-bindings';
 import { AudioControls } from './AudioControls';
-import { setAccessibilityPreview } from './accessibility-store';
+import { publishSavedAccessibility, setAccessibilityPreview } from './accessibility-store';
 import './settings.css';
 
 type SettingsCategory = 'audio' | 'controls' | 'language' | 'accessibility';
@@ -148,6 +148,8 @@ export function SettingsPanel({
     setRecording(null);
     onSave(draft);
     savedRef.current = draft;
+    // The saved accessibility takes over from the preview in one step, whatever the host does next.
+    publishSavedAccessibility(draft.accessibility);
     setAccessibilityPreview(null);
     setSaved(true);
   };
