@@ -230,8 +230,9 @@ test.describe('visual battle', () => {
     await expect(page.locator('.vi-minimap .map-base[data-owner="own"]')).toHaveCount(1);
     await expect(page.locator('.vi-minimap .map-base[data-owner="rival"]')).toHaveCount(1);
 
-    // A Bomber in production (8 s) and two paid Explorers waiting behind it, by their shortcuts. The slow Bomber holds
-    // the queue still while the test reads it: three Explorers alone drain in 9 s, faster than CI's software renderer.
+    // A Bomber in production (8 s) and two paid Explorers waiting behind it, by their shortcuts. The second slot holds
+    // a waiting Explorer until a single order is left: 11 s, 8 s if the opening card builds faster. More orders would
+    // not buy time cheaply (an Explorer costs 16 s of income for 3 s of queue), so the test acts fast instead.
     const metal = async () => Number(await page.locator('.vi-resource--metal strong').innerText());
     const costOf = async (ship: RegExp) => Number(/(\d+) M/.exec(await production.locator('.vi-production__list').getByRole('button', { name: ship }).innerText())?.[1]);
     const explorerCost = await costOf(/Explorador/);
@@ -239,26 +240,37 @@ test.describe('visual battle', () => {
     expect(explorerCost).toBeGreaterThan(0);
     expect(bomberCost).toBeGreaterThan(0);
     await expect.poll(metal, { timeout: 60000 }).toBeGreaterThanOrEqual(bomberCost + 2 * explorerCost);
-    await page.keyboard.press('r');
-    for (let order = 0; order < 2; order++) await page.keyboard.press('t');
-    const slots = production.locator('.vi-hangar-queue .vi-hangar-slot');
-    await expect(slots).toHaveCount(3, { timeout: 20000 });
-    const first = slots.first();
-    const label = /^Cancelar Explorador \(reembolso \+(\d+) Metal\)$/;
-    await expect(slots.nth(1)).toHaveAttribute('aria-label', label);
-    const refund = Number(label.exec(await slots.nth(1).getAttribute('aria-label') ?? '')?.[1]);
-    expect(refund).toBeGreaterThan(0);
-
-    // A double click on a waiting order cancels it alone, never also the order that moves up into its slot: two
-    // cancels would give back two refunds at once. Income is counted by server ticks (ten a second), so a slow
-    // click on a software-rendered page cannot pass for a second refund.
+    // One read of the page: each extra round trip costs a frame of CI's software renderer.
     const economy = () => page.evaluate(() => ({
       metal: Number(document.querySelector('.vi-resource--metal strong')?.textContent),
       rate: Number(/\+([\d.]+)\/s/.exec(document.querySelector('.vi-resource--metal small')?.textContent ?? '')?.[1] ?? 0),
       tick: Number(document.querySelector('.vi-gameplay')?.getAttribute('data-tick')),
+      queue: [...document.querySelectorAll('.vi-hangar-queue .vi-hangar-slot')].map((slot) => slot.getAttribute('aria-label')),
     }));
+    await page.keyboard.press('r');
+    for (let order = 0; order < 2; order++) await page.keyboard.press('t');
+    const queuedAt = Date.now();
+    const slots = production.locator('.vi-hangar-queue .vi-hangar-slot');
+    await expect(slots).toHaveCount(3, { timeout: 20000 });
+    const first = slots.first();
+
+    // A double click on a waiting order cancels it alone, never also the order that moves up into its slot: two
+    // cancels would give back two refunds at once. Income is counted by server ticks (ten a second), so a slow
+    // click on a software-rendered page cannot pass for a second refund.
     const before = await economy();
-    await slots.nth(1).dblclick();
+    const label = /^Cancelar Explorador \(reembolso \+(\d+) Metal\)$/;
+    expect(before.queue[1]).toMatch(label);
+    const refund = Number(label.exec(before.queue[1] ?? '')?.[1]);
+    expect(refund).toBeGreaterThan(0);
+    try {
+      // Forced: real mouse events, without the visible-and-stable wait that takes seconds at CI's few frames a second
+      // while the queue drains. The layout checks below keep the slot clear of any other panel.
+      await slots.nth(1).dblclick({ force: true, timeout: 30000 });
+    } catch (error) {
+      // Tells a queue that drained before the click apart from a click the page never took.
+      console.log(`hangar double click missed ${Date.now() - queuedAt} ms after queueing; queue now ${JSON.stringify((await economy()).queue)}`);
+      throw error;
+    }
     await expect.poll(metal, { timeout: 20000 }).toBeGreaterThanOrEqual(before.metal + refund);
     await page.waitForTimeout(1500);
     const after = await economy();
