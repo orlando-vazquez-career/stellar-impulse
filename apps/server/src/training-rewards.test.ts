@@ -18,7 +18,7 @@ it.each(rows)('%s',(_name,player,aiRival,seats,expected)=>{
 });
 
 it('records nothing for a practice win and tells the account why', async () => {
-  const auth=new AuthService(),user=(await auth.register('practice@example.com','password-123')).user;
+  const auth=new AuthService(),user=(await auth.register('practice@example.com','Password-123')).user;
   const world=createMatchWorld('sector-01','complete');world.winner='p1';
   const reward=(await trainingReward(auth,user.id,'practice-room',world,'p1',null));
   expect(reward).toMatchObject({xpGained:0,challenges:[],unlocked:[],practice:true});
@@ -28,7 +28,7 @@ it('records nothing for a practice win and tells the account why', async () => {
 });
 
 it('still pays a real win against the AI and marks guests as guests', async () => {
-  const auth=new AuthService(),user=(await auth.register('rated@example.com','password-123')).user;
+  const auth=new AuthService(),user=(await auth.register('rated@example.com','Password-123')).user;
   const world=createMatchWorld('sector-01','complete');world.winner='p1';
   // Win 100 + core 25, no nodes, factor 1 on a complete match; "elite-veteran" and "untouchable" add 50 each.
   expect((await trainingReward(auth,user.id,'rated-room',world,'p1','hard')).xpGained).toBe(225);

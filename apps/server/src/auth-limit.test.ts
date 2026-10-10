@@ -10,7 +10,7 @@ afterAll(async () => { await server.gracefullyShutdown(false); });
 
 const post = (path: string, email: string) => fetch(`${URL}${path}`, {
   method: 'POST', headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ email, password: 'wrong-password' }),
+  body: JSON.stringify({ email, password: 'Wrong-password' }),
 });
 
 it('refuses password checks beyond the shared budget without hashing them', async () => {

@@ -3,7 +3,7 @@ import {expect,test} from '@playwright/test';
 import {chooseOpening} from './helpers';
 test('shows an authenticated official match reward and the saved account profile',async({page,request})=>{
   test.setTimeout(120000);
-  const response=await request.post(`${TEST_SERVER_URL}/auth/register`,{data:{email:`progress-${Date.now()}@example.com`,password:'test-password-123'}});
+  const response=await request.post(`${TEST_SERVER_URL}/auth/register`,{data:{email:`progress-${Date.now()}@example.com`,password:'Test-password-123'}});
   expect(response.status()).toBe(201);
   const account=await response.json() as {token:string};
   await page.addInitScript(token=>sessionStorage.setItem('impulso.auth-token',token),account.token);
