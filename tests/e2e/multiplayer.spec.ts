@@ -58,6 +58,8 @@ test('two accounts play the campaign on Espiral and recover the same match after
     // Each commander sees their own base blue in the preview, as in the match: the guest sits in p2.
     await expect(host.locator('.vi-briefing').getByRole('img', { name: /Vista previa/ })).toHaveAttribute('data-self', 'p1');
     await expect(guest.locator('.vi-briefing').getByRole('img', { name: /Vista previa/ })).toHaveAttribute('data-self', 'p2');
+    await expect(guest.getByTestId('multiplayer-seat-p2')).toContainText('Tú · Flota azul');
+    await expect(guest.getByTestId('multiplayer-seat-p1')).toContainText('Flota roja');
     await expect(host.locator('.vi-commanders')).toContainText('Nova');
     await expect(guest.locator('.vi-commanders')).toContainText('Vega');
     await expect(guest.locator('.vi-gameplay')).toHaveCount(0);

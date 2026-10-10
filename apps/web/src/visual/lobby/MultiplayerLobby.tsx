@@ -5,6 +5,7 @@ import { sessionToken } from '../../auth/client';
 import { useSpaceSound } from '../../login/sound';
 import { useI18n } from '../i18n';
 import { MapPreview } from '../map/MapPreview';
+import { seatFactions } from '../map/map-preview';
 import { createCommandSpaceScene } from '../menu/command-space';
 import { isReducedMotion, subscribeAccessibility } from '../settings/accessibility-store';
 import { Brand } from '../shared/Brand';
@@ -404,16 +405,18 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
                         {(['p1', 'p2'] as const).map((playerId) => {
                           const seat = phase.seats[playerId];
                           const own = phase.playerId === playerId;
+                          // Like the preview and the match: each commander's own fleet is blue, the rival's red.
+                          const faction = seatFactions(phase.playerId)[playerId];
                           return (
                             <article
                               key={playerId}
-                              className={`vi-commander vi-commander--${playerId === 'p1' ? 'blue' : 'red'}${!seat ? ' is-muted' : ''}`}
+                              className={`vi-commander vi-commander--${faction}${!seat ? ' is-muted' : ''}`}
                               data-testid={`multiplayer-seat-${playerId}`}
                             >
                               <span className="vi-commander__mark" aria-hidden="true">{seat ? seat.name.slice(0, 1).toUpperCase() : '?'}</span>
                               <div>
                                 <strong>{seat ? seat.name : copy.emptySeat}</strong>
-                                <small>{own ? `${copy.you} · ` : ''}{playerId === 'p1' ? copy.blueFleet : copy.redFleet}</small>
+                                <small>{own ? `${copy.you} · ` : ''}{faction === 'blue' ? copy.blueFleet : copy.redFleet}</small>
                               </div>
                               <em className={seat?.connected && seat.ready ? 'is-ready' : ''}>
                                 {!seat ? copy.availableSeat : !seat.connected ? copy.disconnected : seat.ready ? copy.ready : copy.notReady}
