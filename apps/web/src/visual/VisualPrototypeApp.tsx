@@ -32,7 +32,7 @@ type Screen = 'access' | 'command' | 'lobby' | 'multiplayer' | 'map' | 'hangar' 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567';
 
 function VisualPrototypeContent() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [screen, setScreen] = useState<Screen>('access');
   const [alias, setAlias] = useState('');
   const [account, setAccount] = useState<AccountUser | null>(null);
@@ -151,9 +151,9 @@ function VisualPrototypeContent() {
 
   useEffect(() => {
     const previousTitle = document.title;
-    document.title = 'Stellar Impulse · Interfaz visual';
+    document.title = t('documentTitle');
     return () => { document.title = previousTitle; };
-  }, []);
+  }, [locale]);
 
   // What is saved, unless the settings panel is previewing a change; published before paint.
   useLayoutEffect(() => publishSavedAccessibility(preferences.accessibility), [preferences.accessibility]);

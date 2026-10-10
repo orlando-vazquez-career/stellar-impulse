@@ -165,8 +165,8 @@ export function CommandCenter({
         <div className="vi-command__header-brand">
           <Brand />
           <div className="vi-command__header-tag">
-            <span className="vi-hud-badge">● SISTEMAS EN LÍNEA</span>
-            <span className="vi-command__channel">{t('sector').toUpperCase()} 01 // PUENTE</span>
+            <span className="vi-hud-badge">{t('systemsOnline')}</span>
+            <span className="vi-command__channel">{t('bridgeChannel')}</span>
           </div>
         </div>
 

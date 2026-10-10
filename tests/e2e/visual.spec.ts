@@ -21,6 +21,14 @@ test.describe('visual interface foundation', () => {
     await expect(page.getByRole('heading', { name: 'Comandante Vega, el sector espera.' })).toBeVisible();
     // Signing out lives in the header; the sidebar has no back button that did the same.
     await expect(page.getByRole('button', { name: /Ir atrás|IR ATRÁS/ })).toHaveCount(0);
+    await expect(page).toHaveTitle('Stellar Impulse · Interfaz visual');
+    await page.getByRole('button', { name: 'EN', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Commander Vega, the sector awaits.' })).toBeVisible();
+    await expect(page.getByText('OPERATIONS', { exact: true })).toBeVisible();
+    await expect(page.getByText(/OPERACIONES|SISTEMAS EN LÍNEA/)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Mute music', exact: true })).toBeVisible();
+    await expect(page).toHaveTitle('Stellar Impulse · Visual interface');
+    await page.getByRole('button', { name: 'ES', exact: true }).click();
     await page.getByRole('button', { name: /Preparar operación/ }).click();
     await expect(page.getByRole('heading', { name: 'Configura la operación.' })).toBeVisible();
     await expect(page.getByText('ST-0427', { exact: true })).toBeVisible();
