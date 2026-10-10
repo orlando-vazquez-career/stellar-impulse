@@ -38,6 +38,7 @@ export type { ProductionOrder, ProductionState } from './economia.js';
 export { baseUpgradeCost, fleetCapacity, baseDamage, MAX_BASE_UPGRADE_LEVEL, BASE_DEFENSE_RANGE, CAPACITY_PER_LEVEL, BASE_DAMAGE_PER_LEVEL } from './economia.js';
 export type { BaseUpgrades, BaseUpgradeKind } from './economia.js';
 export { leerSuperficie } from './mapas/leer-tiled.js';
+export { CORE_CAPTURE_RADIUS, METAL_CAPTURE_RADIUS } from './mapas/espiral.js';
 export { OBSTACLE_MODELS } from './mapas/obstaculos.js';
 export type { MapObstacle, ObstacleModel } from './mapas/obstaculos.js';
 export { findPath as findTiledPath } from './maps/pathfinding.js';
@@ -332,7 +333,7 @@ export function createWorldOn(sector: SectorLeido): World {
     guardianId: `${input.id}-guardian`, ownerId: null, progress: { p1: 0, p2: 0 },
     ...(input.radius !== undefined ? { radius: input.radius } : {}),
   });
-  const metals = sector.metals.map((cell, index) => node({ id: `metal-${index + 1}`, kind: 'metal', x: cell.x, y: cell.y }));
+  const metals = sector.metals.map((cell, index) => node({ id: `metal-${index + 1}`, kind: 'metal', x: cell.x, y: cell.y, radius: cell.radius }));
   // p2 mirrors p1 through the map centre, so both fleets face the same terrain.
   // p2 mirrors p1 around its base; on any map a blocked spot falls back to the nearest open cell.
   const fleet = (player: PlayerId) => {
@@ -372,11 +373,12 @@ export function createWorldOn(sector: SectorLeido): World {
     guardians: [
       ...metals.map((metal) => ({ id: metal.guardianId, objectiveId: metal.id, x: metal.x, y: metal.y, hp: 60, maxHp: 60, damage: 3 })),
       { id: 'core-guardian', objectiveId: 'core', x: sector.core.x, y: sector.core.y, hp: 160, maxHp: 160, damage: 5 },
-      ...createTurrets(sector.turrets, [...captures, ...metals, { id: 'core', ...sector.core }]),
+      ...createTurrets(sector.turrets, [...captures, ...metals, { id: 'core', x: sector.core.x, y: sector.core.y }]),
       ...(barriers?.guardians ?? []),
     ],
     nodes: [...metals, ...captures, ...stations],
-    core: { id: 'core', x: sector.core.x, y: sector.core.y, guardianId: 'core-guardian', open: false, progress: { p1: 0, p2: 0 } },
+    core: { id: 'core', x: sector.core.x, y: sector.core.y, guardianId: 'core-guardian', open: false, progress: { p1: 0, p2: 0 },
+      ...(sector.core.radius !== undefined ? { radius: sector.core.radius } : {}) },
     winner: null,
     production: { p1: null, p2: null },
     built: { p1: 0, p2: 0 },
