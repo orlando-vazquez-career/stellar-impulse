@@ -7,6 +7,37 @@ async function advanceMockCombat(page: import('@playwright/test').Page) {
   for (let step = 0; step < 200; step++) await page.clock.fastForward(100);
 }
 
+/** Overlaps, off-screen panels, page overflow and the smallest text of the match HUD. */
+async function hudLayout(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const selectors = ['.vi-resources', '.vi-sector-status', '.vi-top-controls', '.vi-minimap', '.vi-squad'];
+    const boxes = selectors.map((selector) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`Missing ${selector}`);
+      return { selector, rect: element.getBoundingClientRect().toJSON() };
+    });
+    const overlaps: string[] = [];
+    for (let left = 0; left < boxes.length; left += 1) {
+      for (let right = left + 1; right < boxes.length; right += 1) {
+        const a = boxes[left].rect;
+        const b = boxes[right].rect;
+        if (a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y) {
+          overlaps.push(`${boxes[left].selector}:${boxes[right].selector}`);
+        }
+      }
+    }
+    const smallestText = Math.min(...Array.from(document.querySelectorAll('.vi-hud *'))
+      .filter((element) => element.children.length === 0 && element.textContent?.trim())
+      .map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
+    return {
+      overlaps,
+      outside: boxes.filter(({ rect }) => rect.x < 0 || rect.y < 0 || rect.right > innerWidth || rect.bottom > innerHeight).map(({ selector }) => selector),
+      overflow: [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight],
+      smallestText,
+    };
+  });
+}
+
 test.describe('visual battle', () => {
   test('loads the complete ship and top-down structure art set', async ({ page }) => {
     const assetStatuses = new Map<string, number>();
@@ -27,8 +58,10 @@ test.describe('visual battle', () => {
     const expected = [
       ...['ax7', 'explorer', 'frigate', 'bomber'].flatMap((ship) => factions.map((faction) => `/assets/game/ships/${ship}-${faction}.png`)),
       ...['command-base', 'nexus-core'].flatMap((structure) => factions.map((faction) => `/assets/game/structures/${structure}-top-${faction}.png`)),
+      '/assets/game/structures/turret-base-neutral.png',
+      '/assets/game/structures/turret-head-neutral.png',
     ];
-    expect(assetStatuses.size).toBe(18);
+    expect(assetStatuses.size).toBe(20);
     expect(expected.map((path) => assetStatuses.get(path))).toEqual(expected.map(() => 200));
     await page.screenshot({ path: 'test-results/structures-top-down.png' });
   });
@@ -61,34 +94,7 @@ test.describe('visual battle', () => {
     await page.getByRole('button', { name: 'Iniciar operación' }).click();
     await expect(page.locator('.vi-resources')).toBeVisible();
 
-    const layout = await page.evaluate(() => {
-      const selectors = ['.vi-resources', '.vi-sector-status', '.vi-top-controls', '.vi-minimap', '.vi-squad'];
-      const boxes = selectors.map((selector) => {
-        const element = document.querySelector(selector);
-        if (!element) throw new Error(`Missing ${selector}`);
-        return { selector, rect: element.getBoundingClientRect().toJSON() };
-      });
-      const overlaps: string[] = [];
-      for (let left = 0; left < boxes.length; left += 1) {
-        for (let right = left + 1; right < boxes.length; right += 1) {
-          const a = boxes[left].rect;
-          const b = boxes[right].rect;
-          if (a.x < b.right && a.right > b.x && a.y < b.bottom && a.bottom > b.y) {
-            overlaps.push(`${boxes[left].selector}:${boxes[right].selector}`);
-          }
-        }
-      }
-      const smallestText = Math.min(...Array.from(document.querySelectorAll('.vi-hud *'))
-        .filter((element) => element.children.length === 0 && element.textContent?.trim())
-        .map((element) => Number.parseFloat(getComputedStyle(element).fontSize)));
-      return {
-        overlaps,
-        outside: boxes.filter(({ rect }) => rect.x < 0 || rect.y < 0 || rect.right > innerWidth || rect.bottom > innerHeight).map(({ selector }) => selector),
-        overflow: [document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight],
-        smallestText,
-      };
-    });
-
+    const layout = await hudLayout(page);
     expect(layout.overlaps).toEqual([]);
     expect(layout.outside).toEqual([]);
     expect(layout.overflow).toEqual([0, 0]);
@@ -101,9 +107,64 @@ test.describe('visual battle', () => {
     await minimap.getByRole('button', { name: 'Expandir' }).click();
     await expect(minimap.getByRole('img', { name: 'Minimapa' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Preferencias' }).click();
-    await expect(page.getByRole('complementary', { name: 'Development Controls' })).toBeVisible();
+    // The development panel sits behind its own button; its simulated clock moves the match tick.
+    const gameplay = page.locator('.vi-gameplay');
+    const tick = async () => Number(await gameplay.getAttribute('data-tick'));
+    await page.getByRole('button', { name: 'Desarrollo' }).click();
+    const development = page.getByRole('complementary', { name: 'Development Controls' });
+    await expect(development).toBeVisible();
     await expect(page.getByLabel('Estado del Núcleo')).toHaveValue('locked');
+    await development.getByLabel('Reloj simulado').check();
+    const started = await tick();
+    await expect.poll(tick, { timeout: 15000 }).toBeGreaterThan(started);
+
+    // A contested Core says so in the sector panel, with its capture bar at the progress set here.
+    await page.getByLabel('Estado del Núcleo').selectOption('contested');
+    // The first slider of the panel is the Core's capture progress.
+    const progress = development.getByRole('slider').first();
+    await progress.focus();
+    await page.keyboard.press('Home');
+    for (let step = 0; step < 6; step++) await page.keyboard.press('PageUp');
+    await expect(development.locator('output').first()).toHaveText('60%');
+    const sector = page.locator('.vi-sector-status');
+    await expect(sector).toContainText('Núcleo disputado');
+    await expect(sector).toContainText('Ambos bandos dentro');
+    await expect(sector.getByRole('progressbar', { name: 'Progreso de captura' })).toHaveJSProperty('value', 60);
+    await development.getByRole('button', { name: 'Cerrar' }).click();
+    await expect(development).toHaveCount(0);
+
+    // The menu pauses the sandbox: the tick holds while it is open and moves again once Escape closes it.
+    await page.getByRole('button', { name: 'Menú' }).click();
+    const menu = page.getByRole('dialog', { name: 'Partida en pausa' });
+    await expect(menu).toBeVisible();
+    await expect(sector).toContainText('EN PAUSA');
+    const paused = await tick();
+    await page.waitForTimeout(2500);
+    expect(await tick()).toBe(paused);
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(sector).not.toContainText('EN PAUSA');
+    const resumed = await tick();
+    await expect.poll(tick, { timeout: 15000 }).toBeGreaterThan(resumed);
+  });
+
+  test('keeps HUD modules inside 1366×768 with the larger interface text', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.addInitScript(() => localStorage.setItem('impulso.visual-preferences', JSON.stringify({ accessibility: { largeText: true } })));
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    await page.getByRole('button', { name: /Preparar operación/ }).click();
+    await page.getByLabel('Estoy listo para desplegar').check();
+    await page.getByRole('button', { name: 'Iniciar operación' }).click();
+    await expect(page.locator('.vi-resources')).toBeVisible();
+    await expect(page.locator('.visual-app')).toHaveClass(/is-large-text/);
+
+    const layout = await hudLayout(page);
+    expect(layout.overlaps).toEqual([]);
+    expect(layout.outside).toEqual([]);
+    expect(layout.overflow).toEqual([0, 0]);
+    expect(layout.smallestText).toBeGreaterThanOrEqual(12);
   });
 
   test('loads one Phaser canvas and pans at the edge without clicking', async ({ page }) => {
