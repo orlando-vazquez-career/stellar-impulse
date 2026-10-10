@@ -313,11 +313,9 @@ export function createWorld(): World {
 }
 /**
  * Starting fleet beside each base: a scout and one combat ship; the rest comes from the hangar.
- * Both sit on the base's first ring, clear of its hull; p2 mirrors the offsets.
+ * Both sit on the base's first ring, clear of its hull, on the open cells nearest the Core.
  */
-const STARTING_FLEET: readonly { kind: UnitKind; dx: number; dy: number }[] = [
-  { kind: 'interceptor', dx: 1, dy: 0 }, { kind: 'explorer', dx: 1, dy: 1 },
-];
+const STARTING_FLEET: readonly UnitKind[] = ['interceptor', 'explorer'];
 /**
  * Hangar launches start at this ring of the base, station docks at this ring of the station.
  * Both try the cells nearest the Core first, so mirrored bases and stations launch equally far from it.
@@ -341,18 +339,14 @@ export function createWorldOn(sector: SectorLeido): World {
     ...(input.radius !== undefined ? { radius: input.radius } : {}),
   });
   const metals = sector.metals.map((cell, index) => node({ id: `metal-${index + 1}`, kind: 'metal', x: cell.x, y: cell.y, radius: cell.radius }));
-  // p2 mirrors p1 through the map centre, so both fleets face the same terrain.
-  // p2 mirrors p1 around its base; on any map a blocked spot falls back to the nearest open cell.
+  // The starting fleet takes the open first-ring cells nearest the Core, like hangar launches, so mirrored bases
+  // start equally far from it whatever the map's orientation.
   const fleet = (player: PlayerId) => {
     const base = sector.bases[player];
     const used = new Set<string>();
     const open = (cell: Position) => sector.walkable[cell.y * sector.width + cell.x] === true;
-    return STARTING_FLEET.map(({ kind, dx, dy }) => {
-      const sign = player === 'p1' ? 1 : -1;
-      const preferred = { x: base.x + sign * dx, y: base.y + sign * dy };
-      const inside = preferred.x >= 0 && preferred.y >= 0 && preferred.x < sector.width && preferred.y < sector.height;
-      const cell = inside && open(preferred) && !used.has(`${preferred.x},${preferred.y}`) ? preferred
-        : launchCell(base, sector.width, sector.height, open, (point) => used.has(`${point.x},${point.y}`), HANGAR_RING, sector.core) ?? base;
+    return STARTING_FLEET.map((kind) => {
+      const cell = launchCell(base, sector.width, sector.height, open, (point) => used.has(`${point.x},${point.y}`), HANGAR_RING, sector.core) ?? base;
       used.add(`${cell.x},${cell.y}`);
       return createSquad(`${player}-${kind}`, player, kind, cell);
     });

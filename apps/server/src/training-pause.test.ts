@@ -95,8 +95,8 @@ describe('pause in practice against the AI', () => {
     quiet(guest);
     try {
       const both = await next<TrainingView>(host, 'view', (value) => value.paused === false);
-      // The handshake stays on: the room has the handler, and the refusal says the pause is not available now.
-      expect(both.pausable).toBe(true);
+      // With two humans the pause is no longer available, so the client hides it; the room still refuses a stray request.
+      expect(both.pausable).toBe(false);
       const refused = next<{ reason: string; message: string }>(host, 'rejected');
       host.send('pause', { paused: true });
       expect(await refused).toEqual({ reason: 'pause_unavailable', message: 'La pausa no está disponible en esta partida.' });
@@ -105,7 +105,7 @@ describe('pause in practice against the AI', () => {
       guest.send('augmentPick', { choice: 0, id: guestOffer.augments!.offer!.cards[0]!.id });
       const running = await open(host, hostOffer);
       const later = await next<TrainingView>(host, 'view', (value) => value.tick > running.tick + 2);
-      expect(later).toMatchObject({ paused: false, pausable: true });
+      expect(later).toMatchObject({ paused: false, pausable: false });
     } finally { await guest.leave(); await host.leave(); }
   }, 40_000);
 
@@ -122,7 +122,7 @@ describe('pause in practice against the AI', () => {
     quiet(room);
     try {
       const view = await next<TrainingView>(room, 'view');
-      expect(view.pausable).toBe(true);
+      expect(view.pausable).toBe(false);
       const refused = next<{ reason: string }>(room, 'rejected');
       room.send('pause', { paused: true });
       expect((await refused).reason).toBe('pause_unavailable');
@@ -140,7 +140,7 @@ describe('pause in practice against the AI', () => {
       const refused = next<{ reason: string }>(room, 'rejected');
       room.send('pause', { paused: true });
       expect((await refused).reason).toBe('pause_unavailable');
-      for (const later of await views(room, 3)) expect(later).toMatchObject({ paused: false, pausable: true });
+      for (const later of await views(room, 3)) expect(later).toMatchObject({ paused: false, pausable: false });
     } finally { await room.leave(); }
   }, 60_000);
 });

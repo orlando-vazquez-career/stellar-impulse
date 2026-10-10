@@ -29,14 +29,18 @@ describe('ships are born outside the base hull', () => {
     }
   });
 
-  it('parks the starting fleet on the first ring, mirrored for p2', () => {
-    const world = createSectorWorld('espiral-2');
-    const at = (id: string) => { const ship = world.squads.find((unit) => unit.id === id)!; return { x: ship.x, y: ship.y }; };
-    const { p1, p2 } = world.players;
-    expect(at('p1-interceptor')).toEqual({ x: p1.base.x + 1, y: p1.base.y });
-    expect(at('p1-explorer')).toEqual({ x: p1.base.x + 1, y: p1.base.y + 1 });
-    expect(at('p2-interceptor')).toEqual({ x: p2.base.x - 1, y: p2.base.y });
-    expect(at('p2-explorer')).toEqual({ x: p2.base.x - 1, y: p2.base.y - 1 });
+  it.each(Object.keys(TRAINING_MAPS) as TrainingMapId[])('parks the %s starting fleet on the first ring, as close to the Core for both players', (map) => {
+    const world = createSectorWorld(map);
+    const core = world.core;
+    const reach = (player: PlayerId) => world.squads.filter((unit) => unit.ownerId === player)
+      .map((ship) => (ship.x - core.x) ** 2 + (ship.y - core.y) ** 2).sort((a, b) => a - b);
+    for (const player of ['p1', 'p2'] as const) {
+      for (const ship of world.squads.filter((unit) => unit.ownerId === player)) expect(ring(ship, world.players[player].base)).toBe(1);
+    }
+    // Bases equally far from the Core give equally far fleets. Espiral's bases are not (a Tiled data issue), so it only
+    // checks the ring.
+    const far = (cell: Position) => (cell.x - core.x) ** 2 + (cell.y - core.y) ** 2;
+    if (far(world.players.p1.base) === far(world.players.p2.base)) expect(reach('p1')).toEqual(reach('p2'));
   });
 
   it('falls back to another cell of the ring, never the base, when the preferred one is closed', () => {
