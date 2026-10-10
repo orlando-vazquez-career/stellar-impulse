@@ -1071,7 +1071,6 @@
 .vi-sound-panel .vi-setting-toggle small { color: var(--vi-muted); font-size: calc(11px * var(--vi-text-scale, 1)); }
 .vi-setting-range__tail { display: flex; align-items: center; gap: 10px; }
 .vi-audio-test { padding: 2px 10px; border: 1px solid var(--settings-border, rgba(113, 229, 220, .38)); border-radius: 2px; background: rgba(113, 229, 220, .08); color: var(--settings-accent, #71e5dc); font: 700 11px var(--vi-display); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; transition: all .18s ease; }
-.vi-settings .vi-audio-test { border-color: var(--settings-border, rgba(113, 229, 220, .38)); color: var(--settings-accent, #71e5dc); }
 .vi-sound-panel .vi-setting-range .vi-audio-test { min-width: 0; min-height: 0; padding: 2px 10px; border: 1px solid var(--settings-border, rgba(113, 229, 220, .38)); font-size: calc(11px * var(--vi-text-scale, 1)); color: var(--settings-accent, #71e5dc); background: rgba(113, 229, 220, .08); }
 .vi-audio-test:hover:not(:disabled) { border-color: var(--settings-accent-light, #a3f6ee); background: rgba(113, 229, 220, .22); color: var(--settings-accent-light, #a3f6ee); box-shadow: 0 0 10px rgba(113, 229, 220, .35); }
 .vi-audio-test:disabled { opacity: .35; cursor: not-allowed; }

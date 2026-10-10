@@ -1,9 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { useI18n } from '../i18n';
-import { Brand } from '../shared/Brand';
-import { LanguageToggle } from '../shared/LanguageToggle';
 import { useSpaceSound } from '../../login/sound';
-import { createCommandSpaceScene } from '../menu/command-space';
 import { freshDefaultVisualPreferences, hasUnsavedChanges, type ControlAction, type VisualPreferences } from './preferences';
 import { CONTROL_SECTIONS, findBindingConflict, formatKeyBinding, keyBindingFromEvent, type ControlBindings } from './control-bindings';
 import { AudioControls } from './AudioControls';
@@ -277,74 +274,5 @@ export function SettingsPanel({
         </section>
       </div>
     </section>
-  );
-}
-
-export function SettingsScreen({
-  preferences,
-  onBack,
-  onSave,
-  onPreviewAudio,
-  embedded = false,
-}: {
-  preferences: VisualPreferences;
-  onBack(): void;
-  onSave(preferences: VisualPreferences): void;
-  onPreviewAudio?(audio: VisualPreferences['audio']): void;
-  embedded?: boolean;
-}) {
-  const { t } = useI18n();
-  const sound = useSpaceSound();
-  const canvas = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    if (embedded || !canvas.current) return;
-    const scene = createCommandSpaceScene(canvas.current);
-    scene.start();
-    if (preferences.accessibility.reducedMotion) scene.stop();
-
-    const onResize = () => scene.resize();
-    const onPointer = (event: PointerEvent) => {
-      scene.setPointer(
-        (event.clientX / window.innerWidth) * 2 - 1,
-        (event.clientY / window.innerHeight) * 2 - 1,
-      );
-    };
-    window.addEventListener('resize', onResize);
-    if (!preferences.accessibility.reducedMotion) window.addEventListener('pointermove', onPointer);
-    return () => {
-      scene.stop();
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('pointermove', onPointer);
-    };
-  }, [embedded, preferences.accessibility.reducedMotion]);
-
-  if (embedded) {
-    return <SettingsPanel preferences={preferences} onBack={onBack} onSave={onSave} onPreviewAudio={onPreviewAudio} isEmbedded />;
-  }
-
-  const hover = () => sound.playHover({ pitch: 560 });
-  const select = () => sound.playSelect();
-
-  return (
-    <main className="vi-settings vi-screen">
-      <canvas ref={canvas} className="vi-settings-canvas" aria-hidden="true" />
-      <header className="vi-screen__header">
-        <Brand />
-        <div className="vi-header-actions">
-          <LanguageToggle />
-          <button className="vi-text-button" onMouseEnter={hover} onClick={() => { select(); onBack(); }}>
-            ← {t('backToCommand')}
-          </button>
-        </div>
-      </header>
-
-      <SettingsPanel preferences={preferences} onBack={onBack} onSave={onSave} onPreviewAudio={onPreviewAudio} />
-
-      <footer className="vi-screen__footer">
-        <span>IMPULSO // {t('settings').toUpperCase()}</span>
-        <span>LOCAL // v0.4</span>
-      </footer>
-    </main>
   );
 }

@@ -78,8 +78,6 @@ export interface CommandCenterProps {
   onCampaign?(): void;
   onCreateMultiplayer(): void;
   onJoinRoom(): void;
-  onHangar?(): void;
-  onSettings?(): void;
   onSignOut(): void;
   onProfile?(): void;
   /** The signed-in account (null for guests): the embedded Hangar needs it for the linked wallet. */
@@ -96,8 +94,6 @@ export function CommandCenter({
   onCampaign,
   onCreateMultiplayer,
   onJoinRoom,
-  onHangar,
-  onSettings,
   onSignOut,
   onProfile,
   account = null,

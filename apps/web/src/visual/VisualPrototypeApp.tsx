@@ -1,14 +1,12 @@
 import type { DurationMode } from '@impulso/sim';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { MusicPlayer, getMusicPlayer } from './music';
-import { setAudioMix } from './audio-mix';
 import { AccessScreen } from './access/AccessScreen';
 import { clearSession, logoutAccount, restoreAccount, sessionToken, type AccountUser } from '../auth/client';
 import { createMultiplayerSession, type MultiplayerSession } from '../multiplayer/session';
 import { accountAlias, readPilotAlias, writePilotAlias } from '../login/pilot-alias';
 import { GameplayScreen } from './game/GameplayScreen';
 import { RunScreen } from './run/RunScreen';
-import { HangarScreen } from './hangar/HangarScreen';
 import { LanguageProvider, useI18n } from './i18n';
 import { PreparationLobby, type LobbyMode, type RivalDifficulty } from './lobby/PreparationLobby';
 import { MultiplayerLobby } from './lobby/MultiplayerLobby';
@@ -18,7 +16,6 @@ import { CommandCenter } from './menu/CommandCenter';
 import { loadVisualPreferences } from './settings/preferences';
 import { PreferencesProvider, usePreferences } from './settings/preferences-context';
 import { getEffectiveAccessibility, publishSavedAccessibility, subscribeAccessibility } from './settings/accessibility-store';
-import { SettingsScreen } from './settings/SettingsScreen';
 import { Brand } from './shared/Brand';
 import { ProfileScreen } from './profile/ProfileScreen';
 import '@fontsource/inter/latin-400.css';
@@ -28,7 +25,7 @@ import '@fontsource/rajdhani/latin-600.css';
 import '@fontsource/rajdhani/latin-700.css';
 import './visual.css';
 
-type Screen = 'access' | 'command' | 'lobby' | 'multiplayer' | 'map' | 'hangar' | 'settings' | 'gameplay' | 'profile';
+type Screen = 'access' | 'command' | 'lobby' | 'multiplayer' | 'map' | 'gameplay' | 'profile';
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567';
 
 function VisualPrototypeContent() {
@@ -201,10 +198,6 @@ function VisualPrototypeContent() {
     {screen === 'lobby' && <PreparationLobby alias={alias} mode={lobbyMode} initialJoinCode={joinCode} onBack={() => setScreen('command')} onExploreMap={() => { selectMap('sector-01'); setScreen('map'); }} onDeploy={(chosen, chosenMap, chosenDuration) => { setDuration(chosenDuration); setDifficulty(chosen); setMap(chosenMap); setRunMode(false); setScreen('gameplay'); }} />}
     {screen === 'multiplayer' && multiplayer && <MultiplayerLobby alias={alias} token={sessionToken() || ''} mode={lobbyMode} session={multiplayer} initialJoinCode={joinCode} onBack={() => { setMultiplayerMatch(false); setJoinCode(''); setScreen('command'); }} />}
     {screen === 'map' && <SectorMapScreen onBack={() => setScreen('lobby')} />}
-    {screen === 'hangar' && <HangarScreen onBack={() => setScreen('command')} account={account} onAccountChange={setAccount} />}
-    {screen === 'settings' && <SettingsScreen preferences={preferences} onPreviewAudio={setAudioMix}
-      onBack={() => setScreen('command')}
-      onSave={savePreferences} />}
     {screen === 'gameplay' && runMode && !multiplayerMatch && <RunScreen preferences={preferences} onAudioChange={changeAudio} difficulty={difficulty} duration={duration} onLeave={() => setScreen('command')} />}
     {screen === 'gameplay' && !(runMode && !multiplayerMatch) && <GameplayScreen preferences={preferences} onAudioChange={changeAudio} difficulty={difficulty} map={map} duration={duration} multiplayerSession={multiplayerMatch ? multiplayer ?? undefined : undefined} onLeave={() => multiplayerMatch ? void leaveMultiplayer() : setScreen('command')} />}
     <div className="vi-resolution-warning" role="alert"><div><Brand /><h1>{t('resolutionWarningTitle')}</h1><p>{t('resolutionWarningBody')}</p></div></div>
