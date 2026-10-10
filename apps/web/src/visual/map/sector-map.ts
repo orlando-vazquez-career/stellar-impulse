@@ -1,5 +1,7 @@
 import { barrierSurface, beltSurface, createBarriers, createBelt, findTiledPath, TRAINING_MAPS, type BarrierField, type BeltField, type TrainingMapId } from '@impulso/sim';
 import { parseTiledTsx } from '../../../../../packages/sim/src/mapas/tsx-tileset';
+import type { Locale } from '../i18n';
+import { mapName } from './map-name';
 import sectorSource from '../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/sector-01.tmj?raw';
 import espiralSource from '../../../../../packages/sim/src/tiled-maps/espiral-estelar/espiral-estelar.json?raw';
 import espiral2Source from '../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/espiral-estelar_2.json?raw';
@@ -54,15 +56,10 @@ const ESPIRAL_TSX = import.meta.glob(['../../../../../packages/sim/src/tiled-map
 /** Tile layers that carry rules for the server, not art. */
 export const HIDDEN_LAYERS = new Set(['logica', 'altura']);
 export const DEFAULT_PLAYABLE_MAP: TrainingMapId = 'espiral';
-const MAP_DISPLAY_NAME = {
-  espiral: 'Espiral Estelar',
-  'espiral-2': 'Caos Estelar',
-  trascendencia: 'Trascendencia Estelar',
-  'sector-01': 'Sector 01',
-} as const satisfies Record<TrainingMapId, string>;
 
-export function playableMapLabel(id: TrainingMapId): string {
-  return MAP_DISPLAY_NAME[id];
+/** The name of a map in the player's language; Spanish unless the caller passes the locale. */
+export function playableMapLabel(id: TrainingMapId, locale: Locale = 'es'): string {
+  return mapName(id, locale);
 }
 const MAP_SOURCE_FILE: Record<TrainingMapId, string> = {
   espiral: 'espiral-estelar.json',
