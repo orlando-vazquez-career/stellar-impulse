@@ -1,4 +1,5 @@
 import { createRng, range } from '../../login/scene/rng';
+import { isReducedMotion } from '../settings/accessibility-store';
 
 export interface CommandSpaceScene {
   start(): void;
@@ -128,8 +129,8 @@ export function createCommandSpaceScene(
 
   let meteorTimer = range(rng, 3, 7);
 
-  const reduced = typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // The player's setting (which starts from the system one) decides whether the backdrop moves.
+  const reduced = isReducedMotion();
 
   let running = false;
   let raf = 0;

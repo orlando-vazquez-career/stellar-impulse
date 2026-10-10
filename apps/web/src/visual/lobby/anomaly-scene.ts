@@ -1,4 +1,5 @@
 import { AudioChannelBus } from '../audio-mix';
+import { isReducedMotion } from '../settings/accessibility-store';
 import { ANOMALY_WORDS } from './anomaly-words';
 
 export interface AnomalyScene {
@@ -93,7 +94,7 @@ export function createAnomalyScene(back: HTMLCanvasElement, front: HTMLCanvasEle
   if (!backContext) return { start() {}, stop() {}, resize() {}, setPointer() {} };
   const ctx: CanvasRenderingContext2D = backContext;
   const random = seeded(20261009);
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduced = isReducedMotion();
 
   let width = 0, height = 0, ratio = 1, frontRatio = 1;
   let running = false, raf = 0, last = 0, clock = 0;

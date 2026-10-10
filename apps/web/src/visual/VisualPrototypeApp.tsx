@@ -1,5 +1,5 @@
 import type { DurationMode } from '@impulso/sim';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { MusicPlayer, getMusicPlayer } from './music';
 import { setAudioMix } from './audio-mix';
 import { AccessScreen } from './access/AccessScreen';
@@ -17,6 +17,7 @@ import { DEFAULT_PLAYABLE_MAP, selectMap, type TrainingMapId } from './map/secto
 import { CommandCenter } from './menu/CommandCenter';
 import { loadVisualPreferences } from './settings/preferences';
 import { PreferencesProvider, usePreferences } from './settings/preferences-context';
+import { getEffectiveAccessibility, publishSavedAccessibility, subscribeAccessibility } from './settings/accessibility-store';
 import { SettingsScreen } from './settings/SettingsScreen';
 import { Brand } from './shared/Brand';
 import { ProfileScreen } from './profile/ProfileScreen';
@@ -154,17 +155,20 @@ function VisualPrototypeContent() {
     return () => { document.title = previousTitle; };
   }, []);
 
+  // What is saved, unless the settings panel is previewing a change; published before paint.
+  useLayoutEffect(() => publishSavedAccessibility(preferences.accessibility), [preferences.accessibility]);
+  const accessibility = useSyncExternalStore(subscribeAccessibility, getEffectiveAccessibility);
   const accessibilityClasses = [
-    preferences.accessibility.highContrast && 'is-high-contrast',
-    preferences.accessibility.reducedMotion && 'is-reduced-motion',
-    preferences.accessibility.largeText && 'is-large-text',
+    accessibility.highContrast && 'is-high-contrast',
+    accessibility.reducedMotion && 'is-reduced-motion',
+    accessibility.largeText && 'is-large-text',
   ].filter(Boolean).join(' ');
 
   const updateMusic = (change: Partial<Pick<typeof preferences.audio, 'music' | 'musicMuted'>>) => {
     savePreferences({ ...preferences, audio: { ...preferences.audio, ...change } });
   };
 
-  return <div className={`visual-app ${accessibilityClasses}`} data-color-profile={preferences.accessibility.colorProfile}>
+  return <div className={`visual-app ${accessibilityClasses}`}>
     {screen === 'access' && <AccessScreen
       sessionBusy={sessionBusy}
       sessionNotice={sessionNotice ? t(sessionNotice) : ''}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useI18n } from '../i18n';
 import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
@@ -8,6 +8,7 @@ import { createCommandSpaceScene } from './command-space';
 import { HangarPanel } from '../hangar/HangarScreen';
 import { SettingsPanel } from '../settings/SettingsScreen';
 import { useSettingsLeaveGuard } from '../settings/useSettingsLeaveGuard';
+import { isReducedMotion, subscribeAccessibility } from '../settings/accessibility-store';
 import { loadVisualPreferences, saveVisualPreferences, type VisualPreferences } from '../settings/preferences';
 import { setAudioMix } from '../audio-mix';
 import type { AccountUser } from '../../auth/client';
@@ -125,6 +126,8 @@ export function CommandCenter({
     onSavePreferences?.(next);
   };
 
+  // The backdrop restarts when reduced motion changes, even while it is only previewed.
+  const reducedMotion = useSyncExternalStore(subscribeAccessibility, isReducedMotion);
   useEffect(() => {
     const el = canvas.current;
     if (!el) return;
@@ -145,7 +148,7 @@ export function CommandCenter({
       window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onPointer);
     };
-  }, []);
+  }, [reducedMotion]);
 
   function toggleHangar() {
     guard(() => setUnfoldedPanel((current) => (current === 'hangar' ? null : 'hangar')));

@@ -7,6 +7,7 @@ import { createCommandSpaceScene } from '../menu/command-space';
 import { freshDefaultVisualPreferences, hasUnsavedChanges, type ControlAction, type VisualPreferences } from './preferences';
 import { CONTROL_SECTIONS, findBindingConflict, formatKeyBinding, keyBindingFromEvent, type ControlBindings } from './control-bindings';
 import { AudioControls } from './AudioControls';
+import { setAccessibilityPreview } from './accessibility-store';
 import './settings.css';
 
 type SettingsCategory = 'audio' | 'controls' | 'language' | 'accessibility';
@@ -55,8 +56,18 @@ export function SettingsPanel({
   const dirty = hasUnsavedChanges(preferences, draft);
   const previewAudio = useRef(onPreviewAudio);
   previewAudio.current = onPreviewAudio;
-  // However the panel goes away, the live mix returns to what is saved.
-  useEffect(() => () => previewAudio.current?.(savedRef.current.audio), []);
+  // However the panel goes away, the live mix and the accessibility preview return to what is saved.
+  useEffect(() => () => {
+    previewAudio.current?.(savedRef.current.audio);
+    setAccessibilityPreview(null);
+  }, []);
+  /** Accessibility changes show at once across the app, before they are saved. */
+  const changeAccessibility = (change: Partial<VisualPreferences['accessibility']>) => {
+    const accessibility = { ...draft.accessibility, ...change };
+    setDraft({ ...draft, accessibility });
+    setAccessibilityPreview(accessibility);
+    clearSavedNotice();
+  };
   const [recording, setRecording] = useState<{ action: ControlAction; replacing: string | null } | null>(null);
   const [bindingError, setBindingError] = useState<{ action: ControlAction; message: string } | null>(null);
 
@@ -140,6 +151,7 @@ export function SettingsPanel({
     setRecording(null);
     onSave(draft);
     savedRef.current = draft;
+    setAccessibilityPreview(null);
     setSaved(true);
   };
   const save = () => {
@@ -152,6 +164,7 @@ export function SettingsPanel({
     const current = savedRef.current;
     setDraft(copyPreferences(current));
     onPreviewAudio?.(current.audio);
+    setAccessibilityPreview(null);
     setSaved(false);
   };
   useImperativeHandle(ref, () => ({
@@ -164,6 +177,7 @@ export function SettingsPanel({
     const defaults = freshDefaultVisualPreferences();
     setDraft(defaults);
     onPreviewAudio?.(defaults.audio);
+    setAccessibilityPreview(defaults.accessibility);
     clearSavedNotice();
   };
 
@@ -252,10 +266,10 @@ export function SettingsPanel({
           {category === 'accessibility' && <>
             <header><span>04</span><div><h2 id="settings-accessibility">{t('accessibility')}</h2><p>{t('accessibilityDescription')}</p></div></header>
             <div className="vi-settings-panel__body vi-accessibility-settings">
-              <ToggleSetting title={t('highContrast')} detail={t('highContrastDetail')} checked={draft.accessibility.highContrast} onChange={(highContrast) => { setDraft({ ...draft, accessibility: { ...draft.accessibility, highContrast } }); clearSavedNotice(); }} />
-              <ToggleSetting title={t('reducedMotion')} detail={t('reducedMotionDetail')} checked={draft.accessibility.reducedMotion} onChange={(reducedMotion) => { setDraft({ ...draft, accessibility: { ...draft.accessibility, reducedMotion } }); clearSavedNotice(); }} />
-              <ToggleSetting title={t('largeInterfaceText')} detail={t('largeInterfaceTextDetail')} checked={draft.accessibility.largeText} onChange={(largeText) => { setDraft({ ...draft, accessibility: { ...draft.accessibility, largeText } }); clearSavedNotice(); }} />
-              <label className="vi-color-profile"><span><strong>{t('colorProfile')}</strong></span><select value={draft.accessibility.colorProfile} onChange={(event) => { setDraft({ ...draft, accessibility: { ...draft.accessibility, colorProfile: event.target.value as VisualPreferences['accessibility']['colorProfile'] } }); clearSavedNotice(); }}><option value="default">{t('colorDefault')}</option><option value="deuteranopia">{t('colorDeuteranopia')}</option><option value="tritanopia">{t('colorTritanopia')}</option></select></label>
+              <ToggleSetting title={t('highContrast')} detail={t('highContrastDetail')} checked={draft.accessibility.highContrast} onChange={(highContrast) => changeAccessibility({ highContrast })} />
+              <ToggleSetting title={t('reducedMotion')} detail={t('reducedMotionDetail')} checked={draft.accessibility.reducedMotion} onChange={(reducedMotion) => changeAccessibility({ reducedMotion })} />
+              <ToggleSetting title={t('largeInterfaceText')} detail={t('largeInterfaceTextDetail')} checked={draft.accessibility.largeText} onChange={(largeText) => changeAccessibility({ largeText })} />
+              {/* The colour profile stays in the saved preferences, but no palette uses it yet, so it is not offered. */}
             </div>
           </>}
 
