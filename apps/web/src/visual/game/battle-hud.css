@@ -1,0 +1,94 @@
+/*
+ * Match HUD additions: the Core panel, the hangar queue, the in-match menu and relative base colours.
+ * visual.css is bundled after this file, so every rule here is scoped under .vi-hud or .vi-gameplay to win on
+ * specificity. Text never drops under 12 px and always follows the player's text scale.
+ */
+
+/* Core panel: state, hint and capture bar, inside the fixed-height sector panel. */
+.vi-hud .vi-sector-status .vi-core-state { min-width: 0; max-width: 220px; grid-template-columns: 8px minmax(0, 1fr); row-gap: 2px; }
+.vi-hud .vi-sector-status .vi-core-state > span { grid-row: 1 / 4; }
+.vi-hud .vi-sector-status .vi-core-state strong,
+.vi-hud .vi-sector-status .vi-core-state small { grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vi-hud .vi-sector-status .vi-core-state small { font-size: calc(12px * var(--vi-text-scale, 1)); line-height: 1.25; }
+.vi-hud .vi-sector-status .vi-core-state progress {
+  --vi-capture: var(--vi-core);
+  grid-column: 2; width: 100%; height: 4px; margin-top: 2px; display: block; border: 0; border-radius: 0;
+  appearance: none; -webkit-appearance: none; background: rgb(255 255 255 / 12%); accent-color: var(--vi-capture);
+}
+.vi-hud .vi-sector-status .vi-core-state progress::-webkit-progress-bar { background: rgb(255 255 255 / 12%); }
+.vi-hud .vi-sector-status .vi-core-state progress::-webkit-progress-value { background: var(--vi-capture); }
+.vi-hud .vi-sector-status .vi-core-state progress::-moz-progress-bar { background: var(--vi-capture); }
+.vi-hud .vi-sector-status .vi-core-state.is-locked progress { --vi-capture: var(--vi-muted); }
+.vi-hud .vi-sector-status .vi-core-state.is-capturing-own progress { --vi-capture: var(--vi-blue); }
+.vi-hud .vi-sector-status .vi-core-state.is-capturing-rival progress { --vi-capture: var(--vi-red); }
+.vi-hud .vi-sector-status .vi-core-state.is-contested progress { --vi-capture: var(--vi-warning); }
+.vi-hud .vi-sector-status .vi-core-state.has-contested small { color: var(--vi-warning); }
+.vi-hud .vi-sector-status .vi-core-state.has-guardian small { color: #f7d774; }
+
+/* The pause takes the clock's place, at the clock's width. */
+.vi-hud .vi-sector-status .vi-sector-paused {
+  min-width: 0; padding: 0 4px; overflow: hidden; border-right: 1px solid var(--vi-border); border-left: 1px solid var(--vi-border);
+  color: var(--vi-warning); font-family: var(--vi-display); font-size: calc(14px * var(--vi-text-scale, 1)); font-weight: 700;
+  letter-spacing: .06em; text-align: center; white-space: nowrap;
+}
+
+/* Minimap: the Core in its state's colour; bases are coloured from the player's side in the markup. */
+.vi-hud .vi-minimap .map-core--locked { fill: #8aa0b8; }
+.vi-hud .vi-minimap .map-core--available { fill: var(--vi-core); }
+.vi-hud .vi-minimap .map-core--blue-capturing, .vi-hud .vi-minimap .map-core--blue-controlled { fill: var(--vi-blue); }
+.vi-hud .vi-minimap .map-core--red-capturing, .vi-hud .vi-minimap .map-core--red-controlled { fill: var(--vi-red); }
+.vi-hud .vi-minimap .map-core--contested { fill: var(--vi-warning); }
+.vi-hud .vi-minimap .map-base[data-owner='own'] { stroke: var(--vi-blue-light); stroke-width: .8; }
+
+/* A selected own base brings the hangar panel forward. */
+.vi-hud .vi-production.is-focused { border-color: var(--vi-blue-light); box-shadow: 0 0 0 1px rgb(131 212 255 / 35%), 0 0 22px rgb(54 169 255 / 22%); }
+
+/* Hangar queue: the ship in production with its progress, then the paid orders. A click cancels and refunds. */
+.vi-hud .vi-hangar-queue { margin: 0 0 8px; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; list-style: none; }
+.vi-hud .vi-hangar-queue > li { min-width: 0; }
+.vi-hud .vi-hangar-queue__empty { height: 40px; border: 1px dashed var(--vi-border); opacity: .45; }
+.vi-hud .vi-hangar-slot {
+  position: relative; width: 100%; height: 40px; padding: 0; display: grid; place-items: center;
+  border: 1px solid var(--vi-border); background: var(--vi-surface-raised); cursor: pointer;
+}
+.vi-hud .vi-hangar-slot img { width: 28px; height: 28px; object-fit: contain; pointer-events: none; }
+.vi-hud .vi-hangar-slot.is-active {
+  border-color: var(--vi-blue);
+  background: conic-gradient(rgb(54 169 255 / 42%) var(--vi-slot-progress, 0deg), rgb(13 21 34 / 88%) 0);
+}
+.vi-hud .vi-hangar-slot__time {
+  position: absolute; right: 2px; bottom: 0; color: var(--vi-text); font-family: var(--vi-display);
+  font-size: calc(12px * var(--vi-text-scale, 1)); font-variant-numeric: tabular-nums; line-height: 1.1;
+  text-shadow: 0 1px 2px #000;
+}
+.vi-hud .vi-hangar-slot:hover:not(:disabled), .vi-hud .vi-hangar-slot:focus-visible { border-color: #ff9ba7; }
+.vi-hud .vi-hangar-slot:hover:not(:disabled)::after {
+  content: '×'; position: absolute; top: -2px; right: 3px; color: #ff9ba7; font-size: calc(14px * var(--vi-text-scale, 1)); line-height: 1;
+}
+.vi-hud .vi-hangar-slot:disabled { opacity: .45; cursor: default; }
+
+/* In-match menu: over the battlefield and the HUD, under the leave confirmation. */
+.vi-gameplay .vi-game-menu { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: rgb(3 8 15 / 72%); }
+.vi-gameplay .vi-game-menu--settings { place-items: start center; overflow-y: auto; }
+.vi-gameplay .vi-game-menu__card {
+  width: min(420px, 100%); padding: 26px; border: 1px solid var(--vi-blue); border-top: 3px solid #77baff;
+  background: radial-gradient(ellipse at 50% 0, #203d53 0, transparent 65%), #0b1422f7; text-align: center;
+  box-shadow: 0 0 50px #122f5677, 0 24px 80px #0009;
+}
+.vi-gameplay .vi-game-menu__card h2 { margin: 0; font-family: var(--vi-display); font-size: calc(28px * var(--vi-text-scale, 1)); letter-spacing: .08em; text-transform: uppercase; }
+.vi-gameplay .vi-game-menu__card p { margin: 6px 0 20px; color: var(--vi-muted); font-size: calc(13px * var(--vi-text-scale, 1)); }
+.vi-gameplay .vi-game-menu__actions { display: grid; gap: 10px; }
+.vi-gameplay .vi-game-menu__actions button {
+  min-height: 44px; padding: 0 18px; border: 1px solid #45617d; background: #142333; color: var(--vi-text);
+  font-family: var(--vi-display); font-size: calc(16px * var(--vi-text-scale, 1)); font-weight: 600; letter-spacing: .06em; cursor: pointer;
+}
+.vi-gameplay .vi-game-menu__actions button:hover, .vi-gameplay .vi-game-menu__actions button:focus-visible { border-color: var(--vi-blue-light); }
+.vi-gameplay .vi-game-menu__actions .vi-primary { border-color: var(--vi-blue); background: var(--vi-blue); color: #04111d; font-weight: 700; }
+.vi-gameplay .vi-game-menu__settings {
+  width: min(1180px, 100%); padding: 8px 0 16px; border: 1px solid var(--settings-border, #45617d);
+  background: linear-gradient(160deg, rgb(8 22 33 / 97%), rgb(4 15 23 / 97%));
+}
+.vi-gameplay .vi-game-menu__settings .vi-settings__content { width: calc(100% - 48px); }
+.vi-gameplay .vi-game-menu__settings-title {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}

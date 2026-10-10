@@ -1,16 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
-import { SHIP_COUNTERS, UNIT_COSTS, EXTRA_MODULES, FORMATIONS, formationShape, type FormationKind, type ModuleKind } from '@impulso/sim';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { MAX_PRODUCTION_QUEUE, SHIP_COUNTERS, UNIT_COSTS, EXTRA_MODULES, FORMATIONS, formationShape, type FormationKind, type ModuleKind } from '@impulso/sim';
 import { useI18n } from '../i18n';
 import { LanguageToggle } from '../shared/LanguageToggle';
 import { formatStat } from './format-stat';
 import { Panel } from '../shared/Panel';
 import type { VisualPreferences } from '../settings/preferences';
 import { AudioControls } from '../settings/AudioControls';
-import type { CameraView, CoreState, GameplayPresentationAdapter, GameplayViewModel } from './model';
+import type { CameraView, CoreState, GameplayPresentationAdapter, GameplayViewModel, SquadType } from './model';
 import { activeMapId, sectorMap, sectorSurface } from '../map/sector-map';
 import { cellToIso, isoToPoint, ISO_ORIGIN_X, ISO_ORIGIN_Y, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, projectedWorldBounds, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, VIEW_YAW_RADIANS } from './phaser/isometric';
 import { PRODUCTION_ORDER } from './control-shortcuts';
 import { formatKeyBinding } from '../settings/control-bindings';
+import { baseFactions, coreHud, hangarSlots, productionBlock, type ProductionBlock } from './hud-logic';
+import { coreHint, gameText, noticeText, type GameTextKey } from './game-copy';
+import { shipIconSrc } from './phaser/game-assets';
+import './battle-hud.css';
 
 function formatTime(seconds: number) {
   return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -40,15 +44,20 @@ function ResourceHud({ view }: { view: GameplayViewModel }) {
   </Panel>;
 }
 
+/** Sector, match clock (or the pause) and the Core: its state, why nobody takes it or when it falls, and the capture bar. */
 function SectorHud({ view }: { view: GameplayViewModel }) {
-  const { t } = useI18n();
-  return <Panel className="vi-sector-status">
+  const { t, locale } = useI18n();
+  const hud = coreHud(view.core);
+  const hint = hud.status === 'locked' ? t('opensIn', { time: formatTime(view.core.opensInSeconds) }) : coreHint(locale, hud);
+  return <Panel className={`vi-sector-status${view.paused ? ' is-paused' : ''}`}>
     <div><span>{t('sector')}</span><strong>{String(view.sector).padStart(2, '0')}</strong></div>
-    <time>{formatTime(view.elapsedSeconds)}</time>
+    {view.paused ? <strong role="status" className="vi-sector-paused">{gameText(locale, 'matchPaused')}</strong>
+      : <time>{formatTime(view.elapsedSeconds)}</time>}
     {view.suddenDeath && <strong role="status" className="vi-sudden-death">{t('suddenDeath')}</strong>}
-    <div className={`vi-core-state vi-core-state--${view.core.state}`}><span aria-hidden="true" />
+    <div className={`vi-core-state vi-core-state--${view.core.state} is-${hud.status}${hud.hint ? ` has-${hud.hint}` : ''}`}><span aria-hidden="true" />
       <strong>{coreLabel(view.core.state, t)}</strong>
-      {view.core.state === 'locked' && <small>{t('opensIn', { time: formatTime(view.core.opensInSeconds) })}</small>}
+      {hint && <small>{hint}</small>}
+      <progress aria-label={t('captureProgress')} value={hud.percent} max={100} />
     </div>
   </Panel>;
 }
@@ -74,36 +83,47 @@ function SpeakerIcon({ muted }: { muted: boolean }) {
   </svg>;
 }
 
-/** Volume without leaving the match: every slider is heard at once and saved on this device. */
-function SoundButton({ audio, onAudioChange }: { audio: VisualPreferences['audio']; onAudioChange(audio: VisualPreferences['audio']): void }) {
+/**
+ * Volume without leaving the match: every slider is heard at once and saved on this device. The match owns whether
+ * the panel is open, so Escape closes it before it opens the menu. The panel never pauses the match.
+ */
+function SoundButton({ audio, onAudioChange, open, onOpenChange }: { audio: VisualPreferences['audio']; onAudioChange(audio: VisualPreferences['audio']): void; open: boolean; onOpenChange(open: boolean): void }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
-    window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
-  }, [open]);
   const silent = audio.muted || audio.master === 0;
   return <>
-    <button className="vi-sound-button" title={t('soundPanel')} aria-label={t('soundPanel')} aria-expanded={open} onClick={() => setOpen(!open)}><SpeakerIcon muted={silent} /></button>
+    <button className="vi-sound-button" title={t('soundPanel')} aria-label={t('soundPanel')} aria-expanded={open} onClick={() => onOpenChange(!open)}><SpeakerIcon muted={silent} /></button>
     {open && <Panel className="vi-sound-panel">
-      <header><strong>{t('soundPanel')}</strong><button onClick={() => setOpen(false)} aria-label={t('collapse')}>×</button></header>
+      <header><strong>{t('soundPanel')}</strong><button onClick={() => onOpenChange(false)} aria-label={t('collapse')}>×</button></header>
       <p>{t('soundPanelHelp')}</p>
       <AudioControls value={audio} onChange={onAudioChange} />
     </Panel>}
   </>;
 }
 
-function TopControls({ view, adapter, onResetCamera, onDevelopment, onLeave, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; onResetCamera(): void; onDevelopment(): void; onLeave(): void; multiplayer?: boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
-  const { t } = useI18n();
+export interface MatchControls {
+  onResetCamera(): void;
+  /** Opens the in-match menu (pause, settings, leave), in every kind of match. */
+  onMenu(): void;
+  /** Only where the development panel exists (the offline sandbox and dev builds). */
+  onDevelopment?(): void;
+  developmentOpen?: boolean;
+  onLeave(): void;
+  soundOpen: boolean;
+  onSoundOpenChange(open: boolean): void;
+}
+
+function TopControls({ view, adapter, controls, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: MatchControls; multiplayer?: boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
+  const { t, locale } = useI18n();
+  const menu = gameText(locale, 'menu'), development = gameText(locale, 'development');
   return <div className="vi-top-controls">
     <SurrenderButton view={view} adapter={adapter} />
-    {audio && onAudioChange && <SoundButton audio={audio} onAudioChange={onAudioChange} />}
-    <button title={t('cameraReset')} onClick={onResetCamera}><span aria-hidden="true">◎</span></button>
-    {!multiplayer && <button title={t('preferences')} onClick={onDevelopment}><span aria-hidden="true">⚙</span></button>}
+    {audio && onAudioChange && <SoundButton audio={audio} onAudioChange={onAudioChange} open={controls.soundOpen} onOpenChange={controls.onSoundOpenChange} />}
+    <button title={t('cameraReset')} onClick={controls.onResetCamera}><span aria-hidden="true">◎</span></button>
+    <button className="vi-menu-button" title={menu} aria-label={menu} aria-haspopup="dialog" onClick={controls.onMenu}><span aria-hidden="true">☰</span></button>
+    {controls.onDevelopment && <button className="vi-development-button" title={development} aria-label={development}
+      aria-pressed={controls.developmentOpen ?? false} onClick={controls.onDevelopment}><span aria-hidden="true">⚙</span></button>}
     <LanguageToggle />
-    <button className="vi-leave" onClick={onLeave}>{multiplayer ? t('leaveMatch') : t('leaveSimulation')}</button>
+    <button className="vi-leave" onClick={controls.onLeave}>{multiplayer ? t('leaveMatch') : t('leaveSimulation')}</button>
   </div>;
 }
 
@@ -149,7 +169,8 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
   const route = view.moveOrder?.squadId === view.selectedSquadId ? view.moveOrder : null;
   const { scale: MINIMAP_SCALE, offset: MINIMAP_OFFSET, world, floor, terrainPath } = minimapLayout();
   const core = sectorSurface.core;
-  const bases = { blue: sectorSurface.bases.p1, red: sectorSurface.bases.p2 };
+  // The player's own base is blue wherever it sits; before the server says which one it is, p1 is.
+  const factions = baseFactions(view.base?.position, sectorSurface.bases);
   // Thousands of cells in one path: rebuild it only when vision changes, not on every camera or ship frame.
   const visibleCells = view.visibleCells;
   const exploredCells = view.exploredCells;
@@ -192,9 +213,10 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
       })}
       {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); const half = node.station ? 3.4 : 2.2; return <rect key={node.id} x={point.x - half} y={point.y - half} width={half * 2} height={half * 2}
         transform={`rotate(45 ${point.x} ${point.y})`} fill={node.owner ? OWNER_FILL[node.owner] : '#8aa0b8'} opacity={node.stale ? 0.45 : 1} />; })}
-      <circle className="map-core" cx={miniPoint(core.x, core.y).x} cy={miniPoint(core.x, core.y).y} r="4" />
-      {Object.entries(bases).map(([owner, cell]) => { const point = miniPoint(cell.x, cell.y); return <rect key={owner}
-        x={point.x - 5} y={point.y - 3.5} width="10" height="7" fill={owner === 'blue' ? OWNER_FILL.blue : OWNER_FILL.red} />; })}
+      <circle className={`map-core map-core--${view.core.state}`} cx={miniPoint(core.x, core.y).x} cy={miniPoint(core.x, core.y).y} r="4" />
+      {(['p1', 'p2'] as const).map((slot) => { const cell = sectorSurface.bases[slot]; const point = miniPoint(cell.x, cell.y); return <rect key={slot}
+        className="map-base" data-owner={factions[slot] === 'blue' ? 'own' : 'rival'}
+        x={point.x - 5} y={point.y - 3.5} width="10" height="7" fill={OWNER_FILL[factions[slot]]} />; })}
       {route && <polyline className="map-move-route" points={route.route.map((cell) => { const point = miniPoint(cell.x, cell.y); return `${point.x},${point.y}`; }).join(' ')} />}
       {view.squads.filter((squad) => squad.visible).map((squad) => {
         const point = miniPoint(squad.gridX, squad.gridY);
@@ -285,16 +307,57 @@ function SquadHud({ view, adapter, controls }: { view: GameplayViewModel; adapte
   </Panel>;
 }
 
-/** Base hangar: one ship at a time, paid in Metal. Hidden in the offline mock. */
+/** Why the hangar would refuse a ship now, said on its disabled button. */
+const BLOCK_TEXT: Record<ProductionBlock, GameTextKey> = {
+  queue_full: 'blockQueueFull', fleet_full: 'blockFleetFull', metal: 'blockMetal', forbidden: 'blockForbidden', finished: 'blockFinished',
+};
+
+/** How far the ship in production has come, 0 to 1. */
+function buildProgress(production: GameplayViewModel['production']): number {
+  if (!production) return 0;
+  if (production.progress !== undefined) return Math.min(1, Math.max(0, production.progress));
+  return production.totalSeconds ? Math.min(1, Math.max(0, 1 - production.remainingSeconds / production.totalSeconds)) : 0;
+}
+
+/**
+ * The hangar's orders, slot by slot: the ship in production first, with its progress and seconds left, then the paid
+ * orders behind it. A click cancels an order and gives back what it paid. Never a `.vi-production__unit`: those are
+ * the build buttons.
+ */
+function HangarQueue({ view, adapter, unitNames }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; unitNames: Record<SquadType, string> }) {
+  const { locale } = useI18n();
+  const slots = hangarSlots(view.production, view.productionQueue);
+  return <ol className="vi-hangar-queue" aria-label={gameText(locale, 'hangarQueue')}>
+    {Array.from({ length: MAX_PRODUCTION_QUEUE }, (_, index) => {
+      const slot = slots[index];
+      if (!slot) return <li key={`empty-${index}`} className="vi-hangar-queue__empty" aria-hidden="true" />;
+      const label = gameText(locale, 'cancelOrder', { ship: unitNames[slot.kind], refund: slot.refund });
+      const active = slot.slot === 0;
+      const progress = active ? slot.progress ?? buildProgress(view.production) : 0;
+      return <li key={`${slot.slot}-${slot.kind}`}>
+        <button className={`vi-hangar-slot${active ? ' is-active' : ''}`} aria-label={label} title={label} disabled={!!view.result}
+          style={active ? { '--vi-slot-progress': `${Math.round(progress * 360)}deg` } as CSSProperties : undefined}
+          onClick={() => adapter.dispatch({ type: 'cancel-production', slot: slot.slot, kind: slot.kind })}>
+          <img src={shipIconSrc(slot.kind)} alt="" draggable={false} />
+          {active && slot.secondsLeft !== undefined && <span className="vi-hangar-slot__time">{Math.ceil(slot.secondsLeft)} s</span>}
+        </button>
+      </li>;
+    })}
+  </ol>;
+}
+
+/** Base hangar: a queue of paid orders, built one at a time. Hidden in the offline mock. A selected own base opens its tab. */
 function ProductionHud({ view, adapter, controls, onBaseRange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; onBaseRange?:(show:boolean)=>void }) {
   const { t,locale } = useI18n();
   const [tab, setTab] = useState<'hangar' | 'modules' | 'base'>('hangar');
   const [hovered,setHovered]=useState<keyof typeof UNIT_COSTS|null>(null);
   useEffect(()=>{onBaseRange?.(tab==='base');return ()=>onBaseRange?.(false);},[tab,onBaseRange]);
+  // Selecting the own base (a click on it or its shortcut) brings its tab forward; the player may still switch away.
+  useEffect(() => { if (view.selectedBase === 'own') setTab('base'); }, [view.selectedBase]);
   if (view.connection === 'local' || view.canProduce === false) return null;
   const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
   const full = view.resources.fleet >= view.resources.fleetCap;
-  return <Panel className="vi-production"><div className="vi-production__tabs" role="tablist" aria-label={t('baseTab')}>
+  return <Panel className={`vi-production${view.selectedBase === 'own' ? ' is-focused' : ''}`}><div className="vi-production__tabs" role="tablist" aria-label={t('baseTab')}>
     <button id="hangar-tab" role="tab" aria-selected={tab === 'hangar'} aria-controls="hangar-panel" onClick={() => setTab('hangar')}>{t('hangar')}</button>
     {view.base?.modules && <button id="modules-tab" role="tab" aria-selected={tab === 'modules'} aria-controls="modules-panel" onClick={() => setTab('modules')}>{t('modules')}</button>}
     <button id="base-tab" role="tab" aria-selected={tab === 'base'} aria-controls="base-panel" disabled={!view.base} onClick={() => setTab('base')}>{t('baseTab')}</button>
@@ -317,20 +380,23 @@ function ProductionHud({ view, adapter, controls, onBaseRange }: { view: Gamepla
         </button>;
       })}</div>
     </div> : tab === 'modules' && view.base?.modules ? null : <div role="tabpanel" id="hangar-panel" aria-labelledby="hangar-tab">
-    {view.production
-      ? <p className="vi-production__queue">{unitNames[view.production.kind]} · {view.production.remainingSeconds} s</p>
-      : <p className="vi-production__queue">{full ? 'Flota completa' : 'Listo para construir'}</p>}
+    <p className="vi-production__queue">{view.production
+      ? gameText(locale, 'hangarBuilding', { ship: unitNames[view.production.kind], seconds: view.production.remainingSeconds })
+      : gameText(locale, full ? 'hangarFull' : 'hangarReady')}</p>
+    <HangarQueue view={view} adapter={adapter} unitNames={unitNames} />
     <div className="vi-production__list">
       {PRODUCTION_ORDER.map(({ kind, control }) => {
         const binding = controls[control][0];
         const key = binding ? formatKeyBinding(binding, locale === 'es' ? 'Espacio' : 'Space') : '';
         const cost = view.unitStats?.[kind]?.cost ?? UNIT_COSTS[kind];
-        const disabled = !!view.production || !!view.productionForbidden?.includes(kind) || full || view.resources.metal < cost || !!view.result;
+        // The same checks the server makes, in its order: a full queue or fleet, a ship this sector forbids, Metal.
+        const block = productionBlock(view, kind);
         const stats=view.unitStats?.[kind];
         const counters=Object.entries(SHIP_COUNTERS[kind]??{});
         const names=(strong:boolean)=>counters.filter(([,multiplier])=>strong?multiplier>1:multiplier<1).map(([target,multiplier])=>`${target==='guardian'?t('guardiansCore'):unitNames[target as keyof typeof unitNames]} ×${multiplier}`).join(', ');
         return <div className="vi-production__unit" key={kind} onMouseEnter={()=>setHovered(kind)} onMouseLeave={()=>setHovered(null)} onFocus={()=>setHovered(kind)} onBlur={()=>setHovered(null)}>
-          <button disabled={disabled} onClick={() => adapter.dispatch({ type: 'produce', kind })} aria-describedby={hovered===kind?`build-guide-${kind}`:undefined}>
+          <button disabled={block !== null} title={block ? gameText(locale, BLOCK_TEXT[block]) : undefined}
+            onClick={() => adapter.dispatch({ type: 'produce', kind })} aria-describedby={hovered===kind?`build-guide-${kind}`:undefined}>
             <span>{unitNames[kind]}</span><small>{cost} M · {t('attackRange')} {stats?.range??'—'}</small>{key && <kbd>{key}</kbd>}
           </button>
           {hovered===kind&&stats&&<div className="vi-unit-guide" role="tooltip" id={`build-guide-${kind}`}>
@@ -344,13 +410,13 @@ function ProductionHud({ view, adapter, controls, onBaseRange }: { view: Gamepla
       })}
     </div>
     {(view.stations ?? []).map((station, index) => <div className="vi-production__station" key={station.id}>
-      <p className="vi-production__queue">{locale === 'es' ? `Estación ${index + 1} · entrega inmediata` : `Station ${index + 1} · instant delivery`}</p>
+      <p className="vi-production__queue">{gameText(locale, 'stationHeader', { n: index + 1 })}</p>
       <div className="vi-production__list">{PRODUCTION_ORDER.map(({ kind }) => {
         const cost = station.prices[kind];
         const disabled = !!view.productionForbidden?.includes(kind) || full || view.resources.metal < cost || !!view.result;
         return <div className="vi-production__unit" key={kind}>
           <button disabled={disabled} onClick={() => adapter.dispatch({ type: 'station-produce', stationId: station.id, kind })}>
-            <span>{unitNames[kind]}</span><small>{cost} M · ×3</small>
+            <span>{unitNames[kind]}</span><small>{gameText(locale, 'stationPrice', { cost })}</small>
           </button>
         </div>;
       })}</div>
@@ -425,17 +491,19 @@ function BaseModules({ view, adapter }: { view: GameplayViewModel; adapter: Game
   </section>;
 }
 
+/** A server rejection or connection notice in the player's language, by its code; free text stays as it came. */
 function NoticeHud({ view }: { view: GameplayViewModel }) {
+  const { locale } = useI18n();
   if (!view.notice) return null;
-  return <div className={`vi-notice vi-notice--${view.connection}`} role="status">{view.notice}</div>;
+  return <div className={`vi-notice vi-notice--${view.connection}`} role="status">{noticeText(locale, view.noticeCode, view.notice)}</div>;
 }
 
-export function Hud({ view, adapter, controls, cameraView, onPanMap, onResetCamera, onDevelopment, onLeave,onBaseRange, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; onResetCamera(): void; onDevelopment(): void; onLeave(): void;onBaseRange?:(show:boolean)=>void; multiplayer?:boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
+export function Hud({ view, adapter, controls, cameraView, onPanMap, match, onBaseRange, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; match: MatchControls; onBaseRange?:(show:boolean)=>void; multiplayer?:boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const { t } = useI18n();
   return <div className="vi-hud" aria-label={t('hud')}>
     <ResourceHud view={view} />
     <SectorHud view={view} />
-    <TopControls view={view} adapter={adapter} onResetCamera={onResetCamera} onDevelopment={onDevelopment} onLeave={onLeave} multiplayer={multiplayer} audio={audio} onAudioChange={onAudioChange} />
+    <TopControls view={view} adapter={adapter} controls={match} multiplayer={multiplayer} audio={audio} onAudioChange={onAudioChange} />
     <Minimap view={view} cameraView={cameraView} onPanMap={onPanMap} />
     <SquadHud view={view} adapter={adapter} controls={controls} />
     <ProductionHud view={view} adapter={adapter} controls={controls} onBaseRange={onBaseRange}/>

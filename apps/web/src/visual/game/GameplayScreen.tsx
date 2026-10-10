@@ -21,12 +21,18 @@ import type { PhaserBattlefieldHandle } from './phaser/PhaserBattlefield';
 import { controlActionForEvent, keyBindingFromEvent, panDirectionForControl, shouldReleaseKeyBinding, type CameraPanDirection, type ControlAction } from '../settings/control-bindings';
 import { RunOutcome, type RunLink } from '../run/RunOutcome';
 import { RUN_SECTORS } from '../run/run-state';
+import { GameMenu, type GameMenuHandle } from './GameMenu';
+import { escapeAction, isEscapeKey } from './escape-action';
+import { gameText, type GameTextKey } from './game-copy';
+import { mapName } from '../map/map-name';
 
 const PhaserBattlefield = lazy(() => import('./phaser/PhaserBattlefield').then((module) => ({ default: module.PhaserBattlefield })));
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://127.0.0.1:2567';
 /** `?adapter=mock` keeps the offline visual sandbox (used by the visual E2E tests). */
 const wantsLocalMock = () => new URLSearchParams(window.location.search).get('adapter') === 'mock';
+/** The development panel exists only in the offline sandbox and in development builds. */
+const developmentAvailable = () => wantsLocalMock() || import.meta.env.DEV;
 const emptySubscribe = () => () => {};
 const emptyMultiplayer = () => null;
 
@@ -60,7 +66,6 @@ function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, 
   const pressedPanBindings = useRef(new Set<string>());
   const roomState = useSyncExternalStore(multiplayerSession?.subscribe ?? emptySubscribe, multiplayerSession?.getSnapshot ?? emptyMultiplayer);
   const { locale } = useI18n();
-  const english = locale === 'en';
   const finalPhase = roomState?.phase?.phase === 'results' || roomState?.phase?.phase === 'closed';
   const resultReason = roomState?.phase?.result?.reason;
   const [announcement, setAnnouncement] = useState<(Announcement & { id: number }) | null>(null);
@@ -84,6 +89,30 @@ function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, 
   const [cameraView, setCameraView] = useState<CameraView | null>(null);
   const battlefieldRef = useRef<PhaserBattlefieldHandle>(null);
   const previewBaseRange=useCallback((enabled:boolean)=>battlefieldRef.current?.previewBaseRange(enabled),[]);
+  // The in-match menu pauses the match where it can; the sound panel never does.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [soundOpen, setSoundOpen] = useState(false);
+  const menuRef = useRef<GameMenuHandle>(null);
+  const escapeState = useRef({ menuOpen, soundOpen });
+  escapeState.current = { menuOpen, soundOpen };
+  const openMenu = useCallback(() => {
+    // The result dialog already offers every way out.
+    if (viewRef.current.result) return;
+    setSoundOpen(false);
+    setMenuOpen(true);
+    if (viewRef.current.canPause) adapter.dispatch({ type: 'set-paused', paused: true });
+  }, [adapter]);
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+    if (viewRef.current.canPause) adapter.dispatch({ type: 'set-paused', paused: false });
+  }, [adapter]);
+  // A match that ends with the menu open hands the keyboard back to the result dialog.
+  useEffect(() => { if (view.result) setMenuOpen(false); }, [view.result]);
+  const selectOwnBase = useCallback(() => {
+    adapter.dispatch({ type: 'select-base', base: 'own' });
+    const base = viewRef.current.base?.position;
+    if (base) battlefieldRef.current?.centerOnCell(base.x, base.y);
+  }, [adapter]);
   const centered = useRef(false);
   // Open the match looking at your own fleet, not at the map origin.
   useEffect(() => {
@@ -94,6 +123,21 @@ function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, 
   }, [view]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      // Escape is fixed, not a binding, and backs out of the innermost thing open: the menu, the sound panel, the
+      // pending order, and otherwise opens the menu. It wins over a 'cancel' binding on the same key.
+      if (isEscapeKey(event)) {
+        event.preventDefault();
+        if (event.repeat) return;
+        const action = escapeAction({ menuOpen: escapeState.current.menuOpen, panelOpen: escapeState.current.soundOpen, activeAction: viewRef.current.activeAction });
+        if (action === 'close-menu') {
+          if (menuRef.current) menuRef.current.requestClose(); else closeMenu();
+        } else if (action === 'close-panel') setSoundOpen(false);
+        else if (action === 'cancel') adapter.dispatch({ type: 'set-action', action: null });
+        else openMenu();
+        return;
+      }
+      // With the menu open the match takes no other shortcut.
+      if (escapeState.current.menuOpen) return;
       if (event.target instanceof HTMLElement && event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
       if (event.key === ' ' && event.target instanceof HTMLElement && event.target.closest('button, a')) return;
       const action = controlActionForEvent(event, preferences.controls);
@@ -127,6 +171,10 @@ function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, 
       }
       if (action === 'cancel') {
         adapter.dispatch({ type: 'set-action', action: null });
+        return;
+      }
+      if (action === 'selectBase') {
+        selectOwnBase();
         return;
       }
       if (action === 'cameraFocus') {
@@ -174,41 +222,54 @@ function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, 
       window.removeEventListener('blur', clearCameraPan);
       clearCameraPan();
     };
-  }, [adapter, preferences.controls]);
-  return <main className="vi-gameplay vi-screen" data-room-id={roomState?.roomId} data-player-id={roomState?.phase?.playerId} data-connection={roomState?.connection} data-sequence={roomState?.acknowledgedSequence} data-tick={view.tick} data-active-action={view.activeAction ?? ''}>
+  }, [adapter, preferences.controls, openMenu, closeMenu, selectOwnBase]);
+  const text = (key: GameTextKey, values?: Record<string, string | number>) => gameText(locale, key, values);
+  return <main className="vi-gameplay vi-screen" data-room-id={roomState?.roomId} data-player-id={roomState?.phase?.playerId} data-connection={roomState?.connection} data-sequence={roomState?.acknowledgedSequence} data-tick={view.tick} data-active-action={view.activeAction ?? ''} data-selected-base={view.selectedBase ?? ''}>
     <Suspense fallback={<div className="vi-phaser" aria-busy="true" data-map-source={activeMapSourceFile()} />}>
       <PhaserBattlefield ref={battlefieldRef} view={view}
         onSelectSquads={(squadIds) => adapter.dispatch({ type: 'select-squads', squadIds })}
+        onSelectBase={(base) => adapter.dispatch({ type: 'select-base', base })}
         onMoveSelected={(x, y) => adapter.dispatch({ type: 'move-selected', x, y })}
         onAttackSelected={(targetId) => adapter.dispatch({ type: 'attack-selected', targetId })}
         onCameraChange={setCameraView} />
     </Suspense>
-    <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onBaseRange={previewBaseRange} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)} onResetCamera={() => battlefieldRef.current?.resetCamera()} onDevelopment={() => setDevelopmentOpen(true)} onLeave={onLeave} multiplayer={Boolean(multiplayerSession)} audio={preferences.audio} onAudioChange={onAudioChange} />
-    {developmentOpen && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}
+    <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onBaseRange={previewBaseRange} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)}
+      match={{
+        onResetCamera: () => battlefieldRef.current?.resetCamera(),
+        onMenu: () => (menuOpen ? closeMenu() : openMenu()),
+        onDevelopment: developmentAvailable() ? () => setDevelopmentOpen(!developmentOpen) : undefined,
+        developmentOpen,
+        onLeave,
+        soundOpen,
+        onSoundOpenChange: setSoundOpen,
+      }}
+      multiplayer={Boolean(multiplayerSession)} audio={preferences.audio} onAudioChange={onAudioChange} />
+    {developmentOpen && developmentAvailable() && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}
     <AugmentHud view={view} adapter={adapter} sound={!preferences.audio.muted && preferences.audio.effects > 0 && preferences.audio.master > 0} />
     {!multiplayerSession && <FirstMatchTutorial view={view} />}
     {announcement && !view.result && <div key={announcement.id} className={`vi-announcement vi-announcement--${announcement.tone}`} role="status">{announcement.text}</div>}
-    {roomState?.phase?.phase === 'transition' && <div className="vi-result" role="dialog" aria-label={english ? 'Next sector' : 'Siguiente sector'}><div className="vi-result__card">
-      <h2>{english ? 'Preparing sector' : 'Preparando sector'} {roomState.phase.sector + 1}</h2>
-      <p>{english ? 'The next sector starts in' : 'El siguiente sector comienza en'} {Math.ceil((roomState.phase.remainingMs ?? 0) / 1000)} s.</p>
-      <button onClick={onLeave}>{english ? 'Leave' : 'Salir'}</button>
+    {menuOpen && !view.result && <GameMenu ref={menuRef} canPause={view.canPause} onResume={closeMenu} onLeave={onLeave} />}
+    {roomState?.phase?.phase === 'transition' && <div className="vi-result" role="dialog" aria-label={text('nextSector')}><div className="vi-result__card">
+      <h2>{text('preparingSector', { sector: roomState.phase.sector + 1 })}</h2>
+      <p>{text('nextSectorIn', { seconds: Math.ceil((roomState.phase.remainingMs ?? 0) / 1000) })}</p>
+      <button onClick={onLeave}>{text('leave')}</button>
     </div></div>}
-    {finalPhase && !view.result && <div className="vi-result" role="dialog" aria-label={english ? 'Match ended' : 'Partida finalizada'}><div className="vi-result__card">
-      <h2>{resultReason === 'annulled' ? (english ? 'Match cancelled' : 'Partida anulada') : (english ? 'Draw' : 'Empate')}</h2>
-      <button className="vi-primary" onClick={onLeave}>{english ? 'Back to command center' : 'Volver al mando'}</button>
+    {finalPhase && !view.result && <div className="vi-result" role="dialog" aria-label={text('matchEnded')}><div className="vi-result__card">
+      <h2>{text(resultReason === 'annulled' ? 'matchAnnulled' : 'matchDraw')}</h2>
+      <button className="vi-primary" onClick={onLeave}>{text('backToCommand')}</button>
     </div></div>}
     {view.result && run && <RunOutcome won={view.result === 'victory'} run={run} locale={locale} onLeave={onLeave}
-      summary={{ sector: run.state.sector + 1, name: RUN_SECTORS[run.state.sector]!.name, seconds: view.elapsedSeconds,
+      summary={{ sector: run.state.sector + 1, name: mapName(RUN_SECTORS[run.state.sector]!.map, locale), seconds: view.elapsedSeconds,
         nodesOwned: view.nodes.filter((node) => node.owner === 'blue').length, nodesTotal: view.nodes.length, augments: view.augments?.own ?? run.state.augments }}>
       {view.reward && <MatchProgress reward={view.reward} />}
     </RunOutcome>}
-    {view.result && !run && <div className="vi-result" role="dialog" aria-label={view.result === 'victory' ? 'Victoria' : 'Derrota'}>
+    {view.result && !run && <div className="vi-result" role="dialog" aria-label={text(view.result === 'victory' ? 'resultVictory' : 'resultDefeat')}>
       <div className={`vi-result__card vi-result__card--${view.result}`}>
         <div className="vi-result__crest" aria-hidden="true">{view.result === 'victory'?'✦':'⌁'}</div>
-        <h2>{multiplayerSession ? (view.result === 'victory' ? (english ? 'Victory' : 'Victoria') : (english ? 'Defeat' : 'Derrota')) : view.result === 'victory' ? 'VICTORIA' : 'DERROTA'}</h2>
-        <p>{multiplayerSession ? (resultReason === 'forfeit' ? (english ? 'A player left the match.' : 'Un jugador abandonó la partida.') : (english ? 'The campaign has ended.' : 'La campaña ha terminado.')) : view.result === 'victory' ? 'Victoria. Tu flota controla el sector.' : 'Derrota. Reagrupa la flota y vuelve a intentarlo.'}</p>
+        <h2>{multiplayerSession ? text(view.result === 'victory' ? 'resultVictory' : 'resultDefeat') : text(view.result === 'victory' ? 'resultVictoryTitle' : 'resultDefeatTitle')}</h2>
+        <p>{multiplayerSession ? text(resultReason === 'forfeit' ? 'resultForfeit' : 'resultCampaignOver') : text(view.result === 'victory' ? 'resultVictoryBody' : 'resultDefeatBody')}</p>
         {view.reward&&<MatchProgress reward={view.reward}/>}
-        <div><button className="vi-primary" onClick={onRestart}>{multiplayerSession ? (english ? 'Back to command center' : 'Volver al mando') : 'Jugar de nuevo'}</button><button onClick={onLeave}>{english ? 'Leave' : 'Salir'}</button></div>
+        <div><button className="vi-primary" onClick={onRestart}>{text(multiplayerSession ? 'backToCommand' : 'playAgain')}</button><button onClick={onLeave}>{text('leave')}</button></div>
       </div>
     </div>}
   </main>;
