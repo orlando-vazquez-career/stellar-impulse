@@ -52,6 +52,27 @@ export function parseDisplayName(value: unknown): string | null {
   return NAME.test(name) ? name : null;
 }
 
+/**
+ * What a new account password needs, in the order the access screen lists it. Only registration
+ * enforces it: older accounts keep signing in with the password they chose.
+ */
+export const PASSWORD_RULES = ['length', 'lowercase', 'uppercase', 'symbol'] as const;
+export type PasswordRule = typeof PASSWORD_RULES[number];
+
+const PASSWORD_CHECKS: Record<PasswordRule, (value: string) => boolean> = {
+  length: (value) => value.length >= 8 && value.length <= 128,
+  lowercase: (value) => /\p{Ll}/u.test(value),
+  uppercase: (value) => /\p{Lu}/u.test(value),
+  // Anything that is not a letter, an accent mark or a digit: punctuation, a space, an emoji.
+  symbol: (value) => /[^\p{L}\p{M}\p{N}]/u.test(value),
+};
+
+/** The rules a password still misses; every rule when the value is not text. */
+export function passwordIssues(value: unknown): PasswordRule[] {
+  if (typeof value !== 'string') return [...PASSWORD_RULES];
+  return PASSWORD_RULES.filter((rule) => !PASSWORD_CHECKS[rule](value));
+}
+
 function openVersionedEnvelope(value: unknown, expectedVersion: number): EnvelopeResult {
   const fields = plainFields(value);
   if (!fields || !onlyKeys(fields, ['protocolVersion', 'body']) || !('body' in fields)) return { ok: false, reason: 'invalid_envelope' };

@@ -27,8 +27,8 @@ function next<T = any>(room: Room, type: string): Promise<T> {
 it('ends the campaign and keeps the server up when the account file cannot be written', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'impulso-campaign-'));
   const brokenAuth = new AuthService(join(dir, 'data', 'users.json'));
-  const vega = await brokenAuth.register('vega-rewards@example.com', 'secret-1234');
-  const nova = await brokenAuth.register('nova-rewards@example.com', 'secret-1234');
+  const vega = await brokenAuth.register('vega-rewards@example.com', 'Secret-1234');
+  const nova = await brokenAuth.register('nova-rewards@example.com', 'Secret-1234');
   rmSync(join(dir, 'data'), { recursive: true });
   writeFileSync(join(dir, 'data'), 'a file where the data folder should be');
   const port = PORT;

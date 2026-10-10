@@ -2,19 +2,21 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Client } from '@colyseus/sdk';
 import { CAMPAIGN_PROTOCOL_VERSION } from '@impulso/input';
 import { createGameServer } from './app.js';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
 import { readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { AuthService } from './auth.js';
+import type { AccountStore, StoredUser } from './account-store.js';
 
 const PORT = 34_000 + Math.floor(Math.random() * 900);
 const URL = `http://127.0.0.1:${PORT}`;
-const server = createGameServer({ authDataFile: null, campaign: { countdownMs: 100 } });
+// More password checks than the default budget of 20; auth-limit.test.ts covers the budget itself.
+const server = createGameServer({ authDataFile: null, campaign: { countdownMs: 100 }, authLimit: { burst: 100, refillPerSecond: 10 } });
 
 beforeAll(async () => { await server.listen(PORT, '127.0.0.1'); });
 afterAll(async () => { await server.gracefullyShutdown(false); });
 
-async function register(email: string, password = 'secret-1234', extra: Record<string, unknown> = {}) {
+async function register(email: string, password = 'Secret-1234', extra: Record<string, unknown> = {}) {
   const response = await fetch(`${URL}/auth/register`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, password, ...extra }),
@@ -36,12 +38,12 @@ describe('account and multiplayer admission', () => {
     const file = join(process.cwd(), '.local', `auth-test-${randomUUID()}.json`);
     try {
       const initial = new AuthService(file);
-      const account = await initial.register('persist@example.com', 'secret-1234');
+      const account = await initial.register('persist@example.com', 'Secret-1234');
       const stored = readFileSync(file, 'utf8');
-      expect(stored).not.toContain('secret-1234');
+      expect(stored).not.toContain('Secret-1234');
       expect(stored).not.toContain(account.token);
       const restarted = new AuthService(file);
-      expect(restarted.login('persist@example.com', 'secret-1234').user).toEqual(account.user);
+      expect(restarted.login('persist@example.com', 'Secret-1234').user).toEqual(account.user);
       expect(restarted.getUser(account.token)).toBeNull();
     } finally {
       unlinkSync(file);
@@ -53,7 +55,7 @@ describe('account and multiplayer admission', () => {
     expect(response.status).toBe(201);
     expect(body?.user.email).toBe('ana@example.com');
     expect(body?.token).toMatch(/^[A-Za-z0-9_-]{40,}$/);
-    expect(JSON.stringify(body)).not.toContain('secret-1234');
+    expect(JSON.stringify(body)).not.toContain('Secret-1234');
 
     const duplicate = await register('ana@example.com');
     expect(duplicate.response.status).toBe(409);
@@ -64,7 +66,7 @@ describe('account and multiplayer admission', () => {
     expect(wrong.status).toBe(401);
     const login = await fetch(`${URL}/auth/login`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'ana@example.com', password: 'secret-1234' }),
+      body: JSON.stringify({ email: 'ana@example.com', password: 'Secret-1234' }),
     });
     expect(login.status).toBe(200);
     const loggedIn = await login.json() as { token: string };
@@ -89,12 +91,12 @@ describe('account and multiplayer admission', () => {
   });
 
   it('registers with a commander alias and returns it on login, /auth/me and /auth/profile', async () => {
-    const { response, body } = await register('alias@example.com', 'secret-1234', { displayName: '  Ñandú 07 ' });
+    const { response, body } = await register('alias@example.com', 'Secret-1234', { displayName: '  Ñandú 07 ' });
     expect(response.status).toBe(201);
     expect(body?.user.displayName).toBe('Ñandú 07');
     const login = await fetch(`${URL}/auth/login`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'alias@example.com', password: 'secret-1234' }),
+      body: JSON.stringify({ email: 'alias@example.com', password: 'Secret-1234' }),
     });
     const session = await login.json() as { token: string; user: unknown };
     expect(session.user).toEqual(body?.user);
@@ -105,13 +107,55 @@ describe('account and multiplayer admission', () => {
 
   it('refuses an invalid alias at registration and creates no account', async () => {
     for (const displayName of ['<script>', '   ', 'x'.repeat(25), 7, null]) {
-      const { response } = await register('bad-alias@example.com', 'secret-1234', { displayName });
+      const { response } = await register('bad-alias@example.com', 'Secret-1234', { displayName });
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({ error: 'invalid_display_name' });
     }
     const { response, body } = await register('bad-alias@example.com');
     expect(response.status).toBe(201);
     expect(body?.user.displayName).toBeNull();
+  });
+
+  it('refuses a weak password at registration and creates the account once it is strong', async () => {
+    const weak = await register('weak@example.com', 'secret-1234');
+    expect(weak.response.status).toBe(400);
+    expect(await weak.response.json()).toEqual({ error: 'weak_password' });
+    const strong = await register('weak@example.com', 'Secret-1234');
+    expect(strong.response.status).toBe(201);
+  });
+
+  it('checks the password before telling whether the email is taken', async () => {
+    expect((await register('taken-weak@example.com')).response.status).toBe(201);
+    const again = await register('taken-weak@example.com', 'secret-1234');
+    expect(again.response.status).toBe(400);
+    expect(await again.response.json()).toEqual({ error: 'weak_password' });
+  });
+
+  it('still names an invalid email before looking at the password', async () => {
+    const { response } = await register('sin-arroba', 'Secret-1234');
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'invalid_credentials' });
+  });
+
+  it('calls a short or non-text password weak', async () => {
+    for (const password of ['Se-1', 7]) {
+      const { response } = await register('short-weak@example.com', password as string);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: 'weak_password' });
+    }
+  });
+
+  it('keeps signing in an account created before the rule', async () => {
+    const salt = randomBytes(16).toString('hex');
+    const legacyUser: StoredUser = {
+      id: randomUUID(), email: 'legacy@example.com', salt, passwordHash: scryptSync('secret-1234', salt, 64).toString('hex'),
+    };
+    const store: AccountStore = {
+      kind: 'memory',
+      createAccount: async () => {}, saveAward: async () => {}, saveProfile: async () => {}, saveWallet: async () => {},
+    };
+    const legacy = new AuthService(store, [legacyUser]);
+    expect(legacy.login('legacy@example.com', 'secret-1234').user.email).toBe('legacy@example.com');
   });
 
   it('changes the alias with PUT /auth/profile only for a valid alias and a live session', async () => {

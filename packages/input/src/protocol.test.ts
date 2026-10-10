@@ -2,8 +2,42 @@ import { describe, expect, it } from 'vitest';
 import {
   BATTLEFIELD_PROTOCOL_VERSION, CAMPAIGN_PROTOCOL_VERSION, openBattlefieldEnvelope, openCampaignEnvelope, openEnvelope,
   parseAugmentPick, parseAugmentReroll, parseBattlefieldJoinOptions, parseCampaignJoinOptions, parseDisplayName, parseJoinOptions,
-  parseReady, PROTOCOL_VERSION,
+  parseReady, passwordIssues, PASSWORD_RULES, PROTOCOL_VERSION,
 } from './protocol.js';
+
+describe('account password rule', () => {
+  it('lists the rules in the order the access screen shows them', () => {
+    expect(PASSWORD_RULES).toEqual(['length', 'lowercase', 'uppercase', 'symbol']);
+  });
+
+  it.each([
+    ['Secret-1234', []],
+    ['secret-1234', ['uppercase']],
+    ['SECRET-1234', ['lowercase']],
+    ['Secret1234', ['symbol']],
+    ['Se-1', ['length']],
+    ['Aa-' + 'x'.repeat(126), ['length']],
+    ['Ñandú-clave', []],
+    ['Clave segura', []],
+    ['Clave' + 'é' + 'segura', ['symbol']],
+    // A combining accent is part of its letter, not a symbol.
+    ['Clave' + 'é' + 'segura', ['symbol']],
+    ['Guest_abc12345_1700000000000', []],
+  ] as const)('%j misses %j', (value, issues) => {
+    expect(passwordIssues(value)).toEqual(issues);
+  });
+
+  it('accepts exactly 8 and 128 characters', () => {
+    expect(passwordIssues('Aa-' + 'x'.repeat(5))).toEqual([]);
+    expect(passwordIssues('Aa-' + 'x'.repeat(125))).toEqual([]);
+  });
+
+  it('misses every rule when the value is not text', () => {
+    for (const value of [7, null, undefined, {}, ['Secret-1234']]) {
+      expect(passwordIssues(value)).toEqual(['length', 'lowercase', 'uppercase', 'symbol']);
+    }
+  });
+});
 
 describe('campaign message envelope', () => {
   it('opens a message from a client speaking the current protocol', () => {

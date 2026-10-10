@@ -9,8 +9,8 @@ import { AuthService } from './auth.js';
 const PORT = 33_900 + Math.floor(Math.random() * 90);
 const URL = `http://127.0.0.1:${PORT}`;
 const auth = new AuthService();
-const vega = await auth.register('vega-flow@example.com', 'secret-1234');
-const nova = await auth.register('nova-flow@example.com', 'secret-1234');
+const vega = await auth.register('vega-flow@example.com', 'Secret-1234');
+const nova = await auth.register('nova-flow@example.com', 'Secret-1234');
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
 const server = createGameServer({
   auth,

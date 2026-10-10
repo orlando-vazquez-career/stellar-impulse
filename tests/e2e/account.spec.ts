@@ -60,6 +60,18 @@ test('explains an invalid alias and a taken email, then signs in to that account
   await page.goto('/');
   await page.getByRole('tab', { name: 'Crear cuenta' }).click();
   await page.getByLabel('Correo electrónico').fill(email);
+
+  // A password without an uppercase letter is explained, kept in the field and marked on the list.
+  await page.getByLabel('Contraseña').fill('piloto-sin-mayus');
+  await page.getByLabel('Alias de comandante').fill('Nova');
+  await page.getByRole('button', { name: /Crear cuenta/ }).click();
+  await expect(page.getByRole('status')).toContainText('La contraseña necesita');
+  await expect(page.getByLabel('Contraseña')).toHaveValue('piloto-sin-mayus');
+  const rules = page.locator('#account-password-rules li');
+  await expect(rules).toHaveCount(4);
+  await expect(rules.filter({ hasText: 'Una mayúscula' })).toHaveAttribute('data-met', 'false');
+  await expect(rules.filter({ hasText: 'Una minúscula' })).toHaveAttribute('data-met', 'true');
+
   await page.getByLabel('Contraseña').fill(password);
   await page.getByLabel('Alias de comandante').fill('<Nova>');
   await page.getByRole('button', { name: /Crear cuenta/ }).click();

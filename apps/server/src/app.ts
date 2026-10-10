@@ -20,6 +20,15 @@ export interface GameServerOptions {
   chainRewards?: ChainRewards;
 }
 
+/**
+ * Hands the minter to the accounts. With a key, merits earned while the server ran without one
+ * are minted now, in the background: the server never waits for testnet to start.
+ */
+export function connectChainRewards(auth: AuthService, rewards: ChainRewards): void {
+  auth.useChainRewards(rewards);
+  if (rewards.enabled) void auth.backfillMerits();
+}
+
 /** 20 testers can sign in at once; past that, a flood cannot keep hashing passwords on the game loop. */
 const DEFAULT_AUTH_LIMIT: AuthLimit = { burst: 20, refillPerSecond: 2 };
 
@@ -40,7 +49,7 @@ function tokenBucket({ burst, refillPerSecond }: AuthLimit) {
 export function createGameServer(options: GameServerOptions = {}) {
   const auth = options.auth ?? new AuthService(options.authDataFile === undefined
     ? (process.env.AUTH_DATA_FILE ?? './data/users.json') : options.authDataFile);
-  auth.useChainRewards(options.chainRewards ?? ChainRewards.fromEnv());
+  connectChainRewards(auth, options.chainRewards ?? ChainRewards.fromEnv());
   const passwordCheck = tokenBucket(options.authLimit ?? DEFAULT_AUTH_LIMIT);
   const limited = () => Response.json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': '1' } });
   const fields = (body: unknown) => body && typeof body === 'object' && !Array.isArray(body)
