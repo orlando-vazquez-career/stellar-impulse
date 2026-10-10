@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 480" role="img" aria-labelledby="title desc">
+  <title id="title">Escenarios económicos ilustrativos</title>
+  <desc id="desc">No son ingresos reales ni una proyección. A: 120 XLM primarios y 10 de comisión, total 130. B: 800 y 75, total 875. C: 4000 y 400, total 4400. Escala lineal en XLM, sin costos ni impuestos.</desc>
+  <rect width="1100" height="480" rx="16" fill="#0b1827"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="40" y="48" fill="#f2f6fa" font-size="25" font-weight="700">Escenarios de ingreso bruto</text>
+    <text x="40" y="77" fill="#a7bdd0" font-size="16">Ejercicio hipotético · XLM · Sin costos, impuestos ni comisiones de red</text>
+    <rect x="40" y="102" width="14" height="14" rx="3" fill="#36a9ff"/><text x="64" y="114" fill="#d1deea" font-size="15">Venta primaria</text>
+    <rect x="230" y="102" width="14" height="14" rx="3" fill="#71e5dc"/><text x="254" y="114" fill="#d1deea" font-size="15">Comisión secundaria (5 %)</text>
+    <g stroke="#24374b"><path d="M240 140V370"/><path d="M395.556 140V370"/><path d="M551.111 140V370"/><path d="M706.667 140V370"/><path d="M862.222 140V370"/></g>
+    <g fill="#a7bdd0" font-size="14" text-anchor="middle"><text x="240" y="396">0</text><text x="395.556" y="396">1.000</text><text x="551.111" y="396">2.000</text><text x="706.667" y="396">3.000</text><text x="862.222" y="396">4.000 XLM</text></g>
+    <text x="40" y="176" fill="#f2f6fa" font-size="19" font-weight="700">Escenario A</text><text x="40" y="201" fill="#a7bdd0" font-size="15">1.000 MAU · 3 %</text>
+    <rect x="240" y="160" width="18.667" height="42" fill="#36a9ff"/><rect x="258.667" y="160" width="1.556" height="42" fill="#71e5dc"/><text x="277" y="187" fill="#f2f6fa" font-size="18" font-weight="700">130</text>
+    <text x="40" y="256" fill="#f2f6fa" font-size="19" font-weight="700">Escenario B</text><text x="40" y="281" fill="#a7bdd0" font-size="15">5.000 MAU · 4 %</text>
+    <rect x="240" y="240" width="124.444" height="42" fill="#36a9ff"/><rect x="364.444" y="240" width="11.667" height="42" fill="#71e5dc"/><text x="393" y="267" fill="#f2f6fa" font-size="18" font-weight="700">875</text>
+    <text x="40" y="336" fill="#f2f6fa" font-size="19" font-weight="700">Escenario C</text><text x="40" y="361" fill="#a7bdd0" font-size="15">20.000 MAU · 5 %</text>
+    <rect x="240" y="320" width="622.222" height="42" fill="#36a9ff"/><rect x="862.222" y="320" width="62.222" height="42" fill="#71e5dc"/><text x="942" y="347" fill="#f2f6fa" font-size="18" font-weight="700">4.400</text>
+    <text x="40" y="446" fill="#ffd84d" font-size="16">Hipótesis por validar. No son métricas de adopción ni ingresos alcanzados.</text>
+  </g>
+</svg>
