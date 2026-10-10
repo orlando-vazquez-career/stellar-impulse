@@ -42,6 +42,9 @@ export const REJECTION_TEXT: Record<string, string> = {
   cannot_attack: 'El Explorador no ataca.',
   route_full: 'Ruta llena.',
   rate_limit: 'Demasiadas órdenes seguidas.',
+  production_queue_full: 'Cola del hangar llena.',
+  paused: 'Partida en pausa.',
+  pause_unavailable: 'La pausa no está disponible en esta partida.',
 };
 
 function blankSnapshot(): GameplayViewModel {
@@ -49,9 +52,10 @@ function blankSnapshot(): GameplayViewModel {
     tick: 0, sector: 1, elapsedSeconds: 0,
     selectedSquadId: null, selectedSquadIds: [], activeAction: null, moveOrder: null, formation: readStoredFormation(),
     resources: { metal: 0, metalRate: 0, energy: 0, energyRate: 0, fleet: 0, fleetCap: FLEET_CAP },
-    squads: [], core: { state: 'locked', progress: 0, opensInSeconds: 0 },
-    enemiesVisible: true, clockRunning: true,
-    nodes: [], production: null, result: null, notice: 'Conectando con el servidor…', connection: 'connecting',
+    squads: [], core: { state: 'locked', progress: 0, opensInSeconds: 0, radius: 1, captor: null, fractions: { own: 0, rival: 0 }, secondsLeft: null, guarded: false },
+    enemiesVisible: true, clockRunning: true, paused: false, canPause: false, selectedBase: null,
+    nodes: [], production: null, productionQueue: [], result: null,
+    notice: 'Conectando con el servidor…', noticeCode: 'connecting', connection: 'connecting',
     visibleCells: null,
   };
 }
@@ -165,8 +169,9 @@ export function diffViews(previous: PlayerView | null, next: PlayerView): Gamepl
   const opensIn = (view: PlayerView) => (view.rules.coreOpenTick - view.tick) / TICKS_PER_SECOND;
   if (opensIn(previous) > 30 && opensIn(next) <= 30) events.push({ kind: 'core-soon' });
   if (!previous.core.open && next.core.open) events.push({ kind: 'core-open' });
-  if (previous.core.progress[me] === 0 && next.core.progress[me] > 0) events.push({ kind: 'core-own-capturing' });
-  if (previous.core.progress[rival] === 0 && next.core.progress[rival] > 0) events.push({ kind: 'core-rival-capturing' });
+  // Once per new captor and once per dispute: a held state repeats nothing.
+  const captor = coreCaptor(next);
+  if (captor && captor !== coreCaptor(previous)) events.push({ kind: captor === me ? 'core-own-capturing' : 'core-rival-capturing' });
   if (coreState(previous) !== 'contested' && coreState(next) === 'contested') events.push({ kind: 'core-contested' });
   if (previous.winner === null && next.winner !== null) {
     // The result says it all: no alerts for the hits that decided the match.
@@ -199,21 +204,36 @@ export function nodeCapture(node: PlayerView['nodes'][number], captureTicks: num
   return leading ? { capture: leading } : {};
 }
 
+/** The Core as the server reports it: its status and captor, never the progress gap. */
 function coreState(view: PlayerView): CoreState {
-  if (!view.core.open) return 'locked';
-  const mine = view.core.progress[view.playerId];
-  const rival = view.core.progress[view.playerId === 'p1' ? 'p2' : 'p1'];
+  const core = view.core;
+  if (!core.open) return 'locked';
+  const rivalId = view.playerId === 'p1' ? 'p2' : 'p1';
+  if (core.status) {
+    if (core.status === 'contested') return 'contested';
+    if (core.status === 'capturing') return core.captor === view.playerId ? 'blue-capturing' : core.captor === rivalId ? 'red-capturing' : 'available';
+    return core.status === 'locked' ? 'locked' : 'available';
+  }
+  // An older server sends no status: the side further along is taking it.
+  const mine = core.progress[view.playerId];
+  const rival = core.progress[rivalId];
   if (mine > rival) return 'blue-capturing';
   if (rival > mine) return 'red-capturing';
   return mine > 0 ? 'contested' : 'available';
 }
+/** The player taking the Core now, or null. */
+function coreCaptor(view: PlayerView): PlayerView['playerId'] | null {
+  const state = coreState(view);
+  return state === 'blue-capturing' ? view.playerId : state === 'red-capturing' ? (view.playerId === 'p1' ? 'p2' : 'p1') : null;
+}
+const unitRange = (value: number) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
 
 /** What a transport tells the adapter. */
 export interface TransportEvents {
   view(view: PlayerView): void;
   rejected(reason: string): void;
-  /** Text for the HUD; null clears it. */
-  notice(text: string | null): void;
+  /** Text for the HUD and, when it has one, its stable key (see `noticeCode`); null clears it. */
+  notice(text: string | null, code?: string | null): void;
   connection(state: 'online' | 'connecting' | 'offline'): void;
   /** Something outside the views changed (campaign phase or outcome): rebuild. */
   refresh(): void;
@@ -225,6 +245,11 @@ export interface MatchTransport {
   command(command: Record<string, unknown>): void;
   augmentPick(choice: number, id: string): void;
   augmentReroll(choice: number): void;
+  /**
+   * Training rooms only: ask the server to stop or restart the clock. A room without the handler (the campaign)
+   * would close the connection, so the adapter calls it only when the last view says `pausable`.
+   */
+  pause?(paused: boolean): void;
   /** Campaign only: the running sector, and the campaign outcome that replaces each sector's winner. */
   sector?(): number;
   outcome?(): { result: 'victory' | 'defeat'; reward?: MatchReward } | null;
@@ -242,13 +267,14 @@ function roomTransport(room: Room): MatchTransport {
       room.onLeave(() => {
         open = false;
         events.connection('offline');
-        events.notice('Se perdió la conexión con el servidor.');
+        events.notice('Se perdió la conexión con el servidor.', 'connection_lost');
       });
       return () => { open = false; void room.leave(); };
     },
     command(command) { if (!open) return; seq += 1; room.send('command', { seq, ...command }); },
     augmentPick(choice, id) { if (open) room.send('augmentPick', { choice, id }); },
     augmentReroll(choice) { if (open) room.send('augmentReroll', { choice }); },
+    pause(paused) { if (open) room.send('pause', { paused }); },
   };
 }
 
@@ -363,6 +389,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       const isCore = !guardian.role && guardian.objectiveId === view.core.id;
       squads.push({
         id: guardian.id, callSign: turret ? 'TORRETA' : barrier ? 'BARRERA' : isCore ? 'GUARDIÁN Ω' : 'GUARDIÁN', owner: 'neutral',
+        guardianKind: turret ? 'turret' : barrier ? 'barrier' : isCore ? 'core' : 'node',
         ...(barrier ? { barrier: true, hp: guardian.hp, maxHp: guardian.maxHp } : {}),
         ...(turret ? { turret: { range: guardian.range ?? 1 }, hp: guardian.hp, maxHp: guardian.maxHp } : {}),
         ...(turret && guardian.lastShot ? { lastShot: { tick: guardian.lastShot.tick, from: { x: guardian.x, y: guardian.y }, to: guardian.lastShot.to, splashRadius: 0 } } : {}),
@@ -378,8 +405,17 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     if (!pendingOrder) pendingSeats = new Map();
     const ownedMetal = view.nodes.filter((node) => node.kind === 'metal' && node.ownerId === me).length;
     const own = view.players[me];
+    const rivalId = me === 'p1' ? 'p2' : 'p1';
+    const state = coreState(view);
+    const fractionOf = (player: 'p1' | 'p2') => unitRange(view.core.fraction?.[player] ?? view.core.progress[player] / view.rules.coreCaptureTicks);
+    const paused = view.paused === true;
     snapshot = {
       ...snapshot,
+      // A rival base out of sight cannot stay selected.
+      selectedBase: snapshot.selectedBase === 'enemy' && view.enemyBase?.visible !== true ? null : snapshot.selectedBase,
+      paused,
+      canPause: Boolean(link?.pause) && view.pausable === true,
+      clockRunning: !paused,
       tick: view.tick,
       sector: link?.sector?.() ?? 1,
       tickRate: view.rules.tickRate,
@@ -415,13 +451,23 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         ...[...memory.nodes.values()].filter((node) => node.stale).map((node) => ({ ...node })),
       ],
       core: {
-        state: coreState(view),
-        progress: Math.round((view.coreFraction ?? Math.max(view.core.progress.p1, view.core.progress.p2) / view.rules.coreCaptureTicks) * 100),
+        state,
+        progress: Math.round(unitRange(view.coreFraction ?? Math.max(view.core.progress.p1, view.core.progress.p2) / view.rules.coreCaptureTicks) * 100),
         opensInSeconds: Math.max(0, Math.ceil((view.rules.coreOpenTick - view.tick) / TICKS_PER_SECOND)),
+        radius: view.core.radius ?? view.rules.captureRadius,
+        captor: state === 'blue-capturing' ? 'own' : state === 'red-capturing' ? 'rival' : null,
+        fractions: { own: fractionOf(me), rival: fractionOf(rivalId) },
+        secondsLeft: view.core.remainingTicks == null ? null : Math.ceil(view.core.remainingTicks / TICKS_PER_SECOND),
+        // Only a guardian in sight counts: the view never says whether an unseen one still stands.
+        guarded: view.guardians.some((guardian) => guardian.id === view.core.guardianId && guardian.hp > 0),
       },
       production: own.production
-        ? { kind: own.production.kind, remainingSeconds: Math.ceil(own.production.remainingTicks / TICKS_PER_SECOND) }
+        ? { kind: own.production.kind, remainingSeconds: Math.ceil(own.production.remainingTicks / TICKS_PER_SECOND),
+          ...(own.production.totalTicks ? { totalSeconds: Math.ceil(own.production.totalTicks / TICKS_PER_SECOND),
+            progress: unitRange((own.production.totalTicks - own.production.remainingTicks) / own.production.totalTicks) } : {}),
+          ...(own.production.refund !== undefined ? { refund: own.production.refund } : {}) }
         : null,
+      productionQueue: (own.queue ?? []).map((order) => ({ kind: order.kind, refund: order.refund })),
       base: { upgrades: { ...(own.baseUpgrades ?? { damage: 0, capacity: 0 }) }, damage: view.base?.damage ?? 0,
         range: view.base?.range ?? BASE_DEFENSE_RANGE, position:{...own.base}, upgradeCosts: view.base?.upgradeCosts ?? {damage:null,capacity:null},
         ...(view.base?.hp !== undefined ? {
@@ -446,7 +492,8 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     const now = performance.now();
     const seconds = Math.min(0.1, Math.max(0, (now - lastFrame) / 1000));
     lastFrame = now;
-    if (!latest) return;
+    // A paused match holds every ship where it is drawn, prediction included.
+    if (!latest || latest.paused) return;
     let changed = false;
     for (const [id, trail] of trails) {
       let at = shown.get(id);
@@ -499,7 +546,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     memory.explored = null; memory.nodes.clear();
     trails.clear(); shown.clear();
     pendingOrder = null; pendingSeats = new Map();
-    snapshot = { ...snapshot, selectedSquadIds: [], selectedSquadId: null, activeAction: null, moveOrder: null };
+    snapshot = { ...snapshot, selectedSquadIds: [], selectedSquadId: null, selectedBase: null, activeAction: null, moveOrder: null };
   };
   const announceOutcome = () => {
     const final = link?.outcome?.();
@@ -551,7 +598,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         trails.set(unit.id, trail);
       }
     }
-    for (const squad of view.squads) {
+    for (const squad of view.paused ? [] : view.squads) {
       if (squad.ownerId !== view.playerId || squad.hp <= 0) continue;
       const goal = squad.target ?? squad.route?.[0] ?? null;
       const trail = trails.get(squad.id);
@@ -562,7 +609,8 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       if (!trail) { moving.authoritative = { x: squad.x, y: squad.y }; trails.set(squad.id, moving); }
       moving.predicted = next;
     }
-    if (snapshot.connection !== 'online') snapshot = { ...snapshot, connection: 'online', notice: null };
+    if (view.paused) for (const trail of trails.values()) trail.predicted = null;
+    if (snapshot.connection !== 'online') snapshot = { ...snapshot, connection: 'online', notice: null, noticeCode: null };
     rebuild();
   };
 
@@ -572,11 +620,11 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       view: (view) => { if (!destroyed) onView(view); },
       rejected: (reason) => {
         if (destroyed) return;
-        snapshot = { ...snapshot, notice: REJECTION_TEXT[reason] ?? 'Orden rechazada.' };
+        snapshot = { ...snapshot, notice: REJECTION_TEXT[reason] ?? 'Orden rechazada.', noticeCode: reason || null };
         tell({ kind: 'order-rejected', reason });
         emit();
       },
-      notice: (text) => { if (destroyed) return; snapshot = { ...snapshot, notice: text }; emit(); },
+      notice: (text, code) => { if (destroyed) return; snapshot = { ...snapshot, notice: text, noticeCode: text === null ? null : code ?? null }; emit(); },
       connection: (state) => {
         if (destroyed) return;
         if (state === 'offline' && !linkLost) { linkLost = true; tell({ kind: 'link-lost' }); }
@@ -603,7 +651,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       if (destroyed) { void joined.leave(); return; }
       start(roomTransport(joined));
     } catch {
-      snapshot = { ...snapshot, connection: 'offline', notice: 'No se pudo conectar. ¿Está corriendo el servidor (pnpm dev)?' };
+      snapshot = { ...snapshot, connection: 'offline', notice: 'No se pudo conectar con el servidor.', noticeCode: 'connect_failed' };
       emit();
     }
   })();
@@ -621,17 +669,35 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     dispatch(intent: PresentationIntent) {
       if(intent.type==='augment-pick') { link?.augmentPick(intent.choice,intent.id); return; }
       if(intent.type==='augment-reroll') { link?.augmentReroll(intent.choice); return; }
+      if (intent.type === 'set-paused') {
+        // Only a server that offers the pause may hear about it: the campaign room would drop the link.
+        if (snapshot.canPause) link?.pause?.(intent.paused);
+        return;
+      }
+      if (intent.type === 'cancel-production') {
+        send({ type: 'cancel_production', slot: intent.slot, kind: intent.kind });
+        snapshot = { ...snapshot, notice: null, noticeCode: null };
+        emit();
+        return;
+      }
+      if (intent.type === 'select-base') {
+        if (intent.base === 'enemy' && latest?.enemyBase?.visible !== true) return;
+        snapshot = { ...snapshot, selectedBase: intent.base, selectedSquadIds: [], selectedSquadId: null, activeAction: null };
+        rebuild();
+        if (!latest) emit();
+        return;
+      }
       if (intent.type === 'disband-selected') {
         const squadIds = selectedOwn().map((squad) => squad.id);
         if (!squadIds.length) return;
         send({ type: 'disband', squadIds });
-        snapshot = { ...snapshot, activeAction: null, notice: null };
+        snapshot = { ...snapshot, activeAction: null, notice: null, noticeCode: null };
         emit();
         return;
       }
       if (intent.type === 'build-module') {
         send({ type: 'build_module', module: intent.module });
-        snapshot = { ...snapshot, notice: null };
+        snapshot = { ...snapshot, notice: null, noticeCode: null };
         emit();
         return;
       }
@@ -641,7 +707,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       }
       if (intent.type === 'upgrade-base') {
         send({ type: 'upgrade_base', upgrade: intent.upgrade });
-        snapshot = { ...snapshot, notice: null };
+        snapshot = { ...snapshot, notice: null, noticeCode: null };
         emit();
         return;
       }
@@ -649,7 +715,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         const requested = intent.type === 'select-squad' ? [intent.squadId] : intent.squadIds;
         const ids = [...new Set(requested)].filter((id) => snapshot.squads.some((squad) => squad.id === id && squad.owner === 'blue'));
         if (intent.type === 'select-squad' && !ids.length) return;
-        snapshot = { ...snapshot, selectedSquadIds: ids, selectedSquadId: ids[0] ?? null, activeAction: null };
+        snapshot = { ...snapshot, selectedSquadIds: ids, selectedSquadId: ids[0] ?? null, selectedBase: null, activeAction: null };
         rebuild();
         if (!latest) emit();
         return;
@@ -671,7 +737,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       if (intent.type === 'move-selected' || intent.type === 'move-squad') {
         const cell = nearestOpenCell(intent.x, intent.y);
         if (!cell) {
-          snapshot = { ...snapshot, notice: REJECTION_TEXT.blocked_destination! };
+          snapshot = { ...snapshot, notice: REJECTION_TEXT.blocked_destination!, noticeCode: 'blocked_destination' };
           emit();
           return;
         }
@@ -685,7 +751,8 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         if (movers.length > 1) send({ type: 'move_formation', squadIds: movers.map((squad) => squad.id), x, y, formation });
         else for (const squad of movers) send({ type: 'move', squadId: squad.id, x, y });
         if (movers.length && snapshot.selectedSquadId) pendingOrder = { squadId: snapshot.selectedSquadId, destination: { x, y }, at: performance.now() };
-        for (const squad of movers) {
+        // A paused match moves nothing: no ship leads toward a cell it will not reach yet.
+        for (const squad of latest?.paused ? [] : movers) {
           const server = latest?.squads.find((candidate) => candidate.id === squad.id);
           if (!server) continue;
           const next = nextCell({ x: server.x, y: server.y }, pendingSeats.get(squad.id) ?? { x, y });
@@ -696,7 +763,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
           trail.predicted = next;
           trail.steppedAt = performance.now();
         }
-        snapshot = { ...snapshot, activeAction: null, notice: null };
+        snapshot = { ...snapshot, activeAction: null, notice: null, noticeCode: null };
         rebuild();
         emit();
         return;
@@ -705,19 +772,19 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         const attackers = selectedOwn().filter((squad) => (squad.stats?.damage ?? 0) > 0
           && (intent.type === 'attack-selected' || squad.id === intent.squadId));
         for (const squad of attackers) send({ type: 'attack', squadId: squad.id, targetId: intent.targetId });
-        snapshot = { ...snapshot, activeAction: null, notice: null };
+        snapshot = { ...snapshot, activeAction: null, notice: null, noticeCode: null };
         emit();
         return;
       }
       if (intent.type === 'station-produce') {
         send({ type: 'station_produce', kind: intent.kind, stationId: intent.stationId });
-        snapshot = { ...snapshot, notice: null };
+        snapshot = { ...snapshot, notice: null, noticeCode: null };
         emit();
         return;
       }
       if (intent.type === 'produce') {
         send({ type: 'produce', kind: intent.kind });
-        snapshot = { ...snapshot, notice: null };
+        snapshot = { ...snapshot, notice: null, noticeCode: null };
         emit();
       }
       // Development intents (forcing core state, health or resources) only exist in the local mock.

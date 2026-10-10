@@ -56,13 +56,22 @@ export interface StationProduceCommand {
   kind: ProduceCommand['kind'];
   stationId: string;
 }
+/** Hangar orders a player may hold at once: the one being built and four waiting behind it. */
+export const MAX_PRODUCTION_QUEUE = 5;
+/** Cancel one hangar order and get back what it cost. Slot 0 is the ship being built; the kind must match it. */
+export interface CancelProductionCommand {
+  seq: number;
+  type: 'cancel_production';
+  slot: number;
+  kind: ProduceCommand['kind'];
+}
 export interface DisbandCommand { seq: number; type: 'disband'; squadIds: string[] }
 export interface UpgradeBaseCommand { seq: number; type: 'upgrade_base'; upgrade: 'damage' | 'capacity' }
 /** Build one base module. Slot rules and costs are checked by the server. */
 export interface BuildModuleCommand { seq: number; type: 'build_module'; module: 'refinery' | 'refinery2' | 'shipyard' | 'bastion' | 'radar' }
 export interface SurrenderCommand { seq: number; type: 'surrender' }
 export type Command = MoveCommand | MoveFormationCommand | AttackCommand | StopCommand | EnqueueCommand | StanceCommand | ProduceCommand | DisbandCommand
-  | UpgradeBaseCommand | BuildModuleCommand | SurrenderCommand | StationProduceCommand;
+  | UpgradeBaseCommand | BuildModuleCommand | SurrenderCommand | StationProduceCommand | CancelProductionCommand;
 export type ParseResult = { ok: true; command: Command } | { ok: false; reason: 'invalid_command' };
 
 /** Strict validation at the JSON boundary. No coercion or extra properties. */
@@ -81,6 +90,7 @@ export function parseCommand(value: unknown): ParseResult {
     : type === 'stance' ? ['seq', 'type', 'squadId', 'stance']
     : type === 'produce' ? ['seq', 'type', 'kind']
     : type === 'station_produce' ? ['seq', 'type', 'kind', 'stationId']
+    : type === 'cancel_production' ? ['seq', 'type', 'slot', 'kind']
     : type === 'upgrade_base' ? ['seq', 'type', 'upgrade']
     : type === 'build_module' ? ['seq', 'type', 'module']
     : type === 'surrender' ? ['seq', 'type'] : [];
@@ -119,10 +129,15 @@ export function parseCommand(value: unknown): ParseResult {
     if (upgrade !== 'damage' && upgrade !== 'capacity') return invalid;
     return { ok: true, command: { seq, type, upgrade } };
   }
-  if (type === 'produce' || type === 'station_produce') {
+  if (type === 'produce' || type === 'station_produce' || type === 'cancel_production') {
     const kind: unknown = fields.kind!.value;
     if (kind !== 'explorer' && kind !== 'interceptor' && kind !== 'frigate' && kind !== 'bomber') return invalid;
     if (type === 'produce') return { ok: true, command: { seq, type, kind } };
+    if (type === 'cancel_production') {
+      const slot: unknown = fields.slot!.value;
+      if (typeof slot !== 'number' || !Number.isSafeInteger(slot) || slot < 0 || slot >= MAX_PRODUCTION_QUEUE) return invalid;
+      return { ok: true, command: { seq, type, slot, kind } };
+    }
     const stationId: unknown = fields.stationId!.value;
     if (typeof stationId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(stationId)) return invalid;
     return { ok: true, command: { seq, type, kind, stationId } };
@@ -151,3 +166,4 @@ export function parseCommand(value: unknown): ParseResult {
 export * from './protocol.js';
 export * from './playable-maps.js';
 export * from './battlefield.js';
+export * from './password.js';

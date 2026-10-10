@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useI18n } from '../i18n';
 import { Brand } from '../shared/Brand';
 import { LanguageToggle } from '../shared/LanguageToggle';
@@ -6,7 +6,11 @@ import { AudioToggle } from '../shared/AudioToggle';
 import { useSpaceSound } from '../../login/sound';
 import { createCommandSpaceScene } from './command-space';
 import { HangarPanel } from '../hangar/HangarScreen';
+import { MarketPanel } from '../market/MarketPanel';
+import { marketText } from '../market/market-copy';
 import { SettingsPanel } from '../settings/SettingsScreen';
+import { useSettingsLeaveGuard } from '../settings/useSettingsLeaveGuard';
+import { isReducedMotion, subscribeAccessibility } from '../settings/accessibility-store';
 import { loadVisualPreferences, saveVisualPreferences, type VisualPreferences } from '../settings/preferences';
 import { setAudioMix } from '../audio-mix';
 import type { AccountUser } from '../../auth/client';
@@ -76,11 +80,8 @@ export interface CommandCenterProps {
   onCampaign?(): void;
   onCreateMultiplayer(): void;
   onJoinRoom(): void;
-  onHangar?(): void;
-  onSettings?(): void;
   onSignOut(): void;
   onProfile?(): void;
-  onBack?(): void;
   /** The signed-in account (null for guests): the embedded Hangar needs it for the linked wallet. */
   account?: AccountUser | null;
   onAccountChange?(user: AccountUser): void;
@@ -95,18 +96,18 @@ export function CommandCenter({
   onCampaign,
   onCreateMultiplayer,
   onJoinRoom,
-  onHangar,
-  onSettings,
   onSignOut,
   onProfile,
-  onBack,
   account = null,
   onAccountChange,
 }: CommandCenterProps) {
-  const { t } = useI18n();
-  const sound = useSpaceSound();
+  const { t, locale } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [unfoldedPanel, setUnfoldedPanel] = useState<'hangar' | 'settings' | null>(null);
+  const [unfoldedPanel, setUnfoldedPanel] = useState<'hangar' | 'market' | 'settings' | null>(null);
+  /** The piece the Market opens on, when the Hangar sent the player there. */
+  const [marketFocus, setMarketFocus] = useState<string | null>(null);
+  // Every way out of an open settings panel asks first when there is something unsaved.
+  const { panelRef: settingsPanel, guard, dialog: leaveDialog } = useSettingsLeaveGuard();
   const [internalPreferences, setInternalPreferences] = useState<VisualPreferences>(
     () => preferences ?? loadVisualPreferences(),
   );
@@ -125,6 +126,8 @@ export function CommandCenter({
     onSavePreferences?.(next);
   };
 
+  // The backdrop restarts when reduced motion changes, even while it is only previewed.
+  const reducedMotion = useSyncExternalStore(subscribeAccessibility, isReducedMotion);
   useEffect(() => {
     const el = canvas.current;
     if (!el) return;
@@ -145,34 +148,28 @@ export function CommandCenter({
       window.removeEventListener('resize', onResize);
       window.removeEventListener('pointermove', onPointer);
     };
-  }, []);
+  }, [reducedMotion]);
 
   function toggleHangar() {
-    setUnfoldedPanel((current) => (current === 'hangar' ? null : 'hangar'));
+    guard(() => setUnfoldedPanel((current) => (current === 'hangar' ? null : 'hangar')));
   }
 
-  function toggleSettings() {
-    setUnfoldedPanel((current) => {
-      if (current === 'settings') {
-        setAudioMix(effectivePreferences.audio);
-        return null;
-      }
-      return 'settings';
+  function toggleMarket() {
+    guard(() => {
+      setMarketFocus(null);
+      setUnfoldedPanel((current) => (current === 'market' ? null : 'market'));
     });
   }
 
-  function handleBack() {
-    sound.playSelect();
-    if (unfoldedPanel) {
-      if (unfoldedPanel === 'settings') {
-        setAudioMix(effectivePreferences.audio);
-      }
-      setUnfoldedPanel(null);
-    } else if (onBack) {
-      onBack();
-    } else {
-      onSignOut();
-    }
+  function openMarket(itemId: string) {
+    guard(() => {
+      setMarketFocus(itemId);
+      setUnfoldedPanel('market');
+    });
+  }
+
+  function toggleSettings() {
+    guard(() => setUnfoldedPanel((current) => (current === 'settings' ? null : 'settings')));
   }
 
   return (
@@ -182,8 +179,8 @@ export function CommandCenter({
         <div className="vi-command__header-brand">
           <Brand />
           <div className="vi-command__header-tag">
-            <span className="vi-hud-badge">● SISTEMAS EN LÍNEA</span>
-            <span className="vi-command__channel">{t('sector').toUpperCase()} 01 // PUENTE</span>
+            <span className="vi-hud-badge">{t('systemsOnline')}</span>
+            <span className="vi-command__channel">{t('bridgeChannel')}</span>
           </div>
         </div>
 
@@ -193,34 +190,28 @@ export function CommandCenter({
         </div>
 
         <div className="vi-header-actions vi-command__header-actions">
-          <AudioToggle />
+          <AudioToggle
+            audio={effectivePreferences.audio}
+            onChange={(audio) => handleSavePreferences({ ...effectivePreferences, audio })}
+            disabled={unfoldedPanel === 'settings'}
+          />
           <LanguageToggle />
-          {onProfile && <button className="vi-text-button" onClick={onProfile}>{t('profile')}</button>}
-          <button className="vi-text-button" onClick={onSignOut}>{t(accountEmail ? 'accountLogout' : 'signOut')}</button>
+          {onProfile && <button className="vi-text-button" onClick={() => guard(onProfile)}>{t('profile')}</button>}
+          <button className="vi-text-button" onClick={() => guard(onSignOut)}>{t(accountEmail ? 'accountLogout' : 'signOut')}</button>
         </div>
       </header>
 
       <section className={`vi-command__content ${unfoldedPanel ? 'has-unfolded-panel' : ''}`}>
         <div className="vi-command__sidebar">
           <div className="vi-command__menu-label">
-            <button
-              type="button"
-              className="vi-command__back-btn"
-              onClick={handleBack}
-              onMouseEnter={() => sound.playHover({ pitch: 580 })}
-              title="Ir atrás"
-            >
-              <span className="vi-command__back-arrow" aria-hidden="true">◀</span>
-              <span>IR ATRÁS</span>
-            </button>
-            <span className="vi-command__menu-tag">OPERACIONES</span>
+            <span className="vi-command__menu-tag">{t('menuOperations')}</span>
           </div>
 
           <div className="vi-menu-grid">
-            <MenuCard glyph="△" title={t('deploy')} detail={t('deployDetail')} enabled onClick={onCreateRoom} />
-            {onCampaign && <MenuCard glyph="✦" title={t('campaignMode')} detail={t('campaignModeDetail')} enabled onClick={onCampaign} />}
-            <MenuCard glyph="⇄" title={t('createMultiplayer')} detail={t('createMultiplayerDetail')} enabled onClick={onCreateMultiplayer} />
-            <MenuCard glyph="⌁" title={t('joinRoom')} detail={t('joinDetail')} enabled onClick={onJoinRoom} />
+            <MenuCard glyph="△" title={t('deploy')} detail={t('deployDetail')} enabled onClick={() => guard(onCreateRoom)} />
+            {onCampaign && <MenuCard glyph="✦" title={t('campaignMode')} detail={t('campaignModeDetail')} enabled onClick={() => guard(onCampaign)} />}
+            <MenuCard glyph="⇄" title={t('createMultiplayer')} detail={t('createMultiplayerDetail')} enabled onClick={() => guard(onCreateMultiplayer)} />
+            <MenuCard glyph="⌁" title={t('joinRoom')} detail={t('joinDetail')} enabled onClick={() => guard(onJoinRoom)} />
             <MenuCard
               glyph="◇"
               title={t('hangar')}
@@ -228,6 +219,14 @@ export function CommandCenter({
               enabled
               active={unfoldedPanel === 'hangar'}
               onClick={toggleHangar}
+            />
+            <MenuCard
+              glyph="◈"
+              title={marketText(locale, 'cardTitle')}
+              detail={marketText(locale, 'cardDetail')}
+              enabled
+              active={unfoldedPanel === 'market'}
+              onClick={toggleMarket}
             />
             <MenuCard
               glyph="＋"
@@ -243,17 +242,24 @@ export function CommandCenter({
         {unfoldedPanel && (
           <div className="vi-command__workspace">
             {unfoldedPanel === 'hangar' && (
-              <HangarPanel onBack={() => setUnfoldedPanel(null)} isEmbedded account={account} onAccountChange={onAccountChange} />
+              <HangarPanel onBack={() => setUnfoldedPanel(null)} isEmbedded account={account} onAccountChange={onAccountChange} onOpenMarket={openMarket} />
+            )}
+            {unfoldedPanel === 'market' && (
+              <MarketPanel
+                isEmbedded
+                account={account}
+                onAccountChange={onAccountChange}
+                onBack={() => setUnfoldedPanel(null)}
+                focusItemId={marketFocus}
+              />
             )}
             {unfoldedPanel === 'settings' && (
               <SettingsPanel
+                ref={settingsPanel}
                 preferences={effectivePreferences}
                 onSave={handleSavePreferences}
                 onPreviewAudio={setAudioMix}
-                onBack={() => {
-                  setAudioMix(effectivePreferences.audio);
-                  setUnfoldedPanel(null);
-                }}
+                onBack={() => guard(() => setUnfoldedPanel(null))}
                 isEmbedded
               />
             )}
@@ -265,6 +271,7 @@ export function CommandCenter({
         <span>{t('commander')} // {alias.toUpperCase()}</span>
         <span>{accountEmail || t('localConnection')}</span>
       </footer>
+      {leaveDialog}
     </main>
   );
 }

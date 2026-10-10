@@ -14,7 +14,11 @@ test('builds the Refinery from the Base tab and surrenders once bases are expose
   await page.getByRole('button', { name: 'Iniciar operación' }).click();
   await chooseOpening(page);
 
+  // The Base shortcut selects the own base and brings its tab forward.
   const production = page.locator('.vi-production');
+  await page.keyboard.press('b');
+  await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-selected-base', 'own');
+  await expect(production.getByRole('tab', { name: 'Base', exact: true })).toHaveAttribute('aria-selected', 'true');
   await production.getByRole('tab', { name: 'Base', exact: true }).click();
   await expect(production.locator('.vi-base-hull')).toContainText('1500/1500');
   await expect(production.locator('.vi-base-hull')).toContainText('Escudo');

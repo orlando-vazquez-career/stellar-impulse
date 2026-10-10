@@ -29,18 +29,18 @@ describe.skipIf(!url)('accounts in Postgres', () => {
 
   it('keeps accounts and logins across a restart', async () => {
     const first = await open();
-    const { user } = await first.auth.register('ana@example.com', 'secret-1234');
+    const { user } = await first.auth.register('ana@example.com', 'Secret-1234');
     const second = await open();
-    expect(second.auth.login('ana@example.com', 'secret-1234').user).toEqual(user);
+    expect(second.auth.login('ana@example.com', 'Secret-1234').user).toEqual(user);
     const { rows } = await sql.query('SELECT email, password_hash FROM accounts');
     expect(rows).toHaveLength(1);
     expect(rows[0].email).toBe('ana@example.com');
-    expect(rows[0].password_hash).not.toContain('secret-1234');
+    expect(rows[0].password_hash).not.toContain('Secret-1234');
   });
 
   it('saves XP, the challenge, its best mark and the match row from one result', async () => {
     const { auth } = await open();
-    const { user } = await auth.register('beto@example.com', 'secret-1234');
+    const { user } = await auth.register('beto@example.com', 'Secret-1234');
     // Win 100 + core 25 at medium on a complete match, plus 50 for "scrapper" (15 kills).
     const reward = await auth.awardMatch(user.id, 'room-1', won(), 'p1', 'medium');
     expect(reward.xpGained).toBe(175);
@@ -54,7 +54,7 @@ describe.skipIf(!url)('accounts in Postgres', () => {
 
   it('stores campaign emblems as merit achievements', async () => {
     const { auth } = await open();
-    const { user } = await auth.register('caro@example.com', 'secret-1234');
+    const { user } = await auth.register('caro@example.com', 'Secret-1234');
     await auth.awardCampaign(user.id, 'campaign:ROOM', { winner: 'p1', reason: 'core' }, 3, 'p1');
     const { rows } = await sql.query("SELECT key FROM achievements WHERE kind = 'merit' ORDER BY key");
     expect(rows.map((row) => row.key)).toEqual(['exploracion', 'primera-victoria']);
@@ -63,7 +63,7 @@ describe.skipIf(!url)('accounts in Postgres', () => {
 
   it('never counts a repeated result twice, even from a server with stale memory', async () => {
     const a = await open();
-    const { user } = await a.auth.register('dani@example.com', 'secret-1234');
+    const { user } = await a.auth.register('dani@example.com', 'Secret-1234');
     const stale = await open();
     await a.auth.awardCampaign(user.id, 'campaign:SAME', { winner: 'p1', reason: 'core' }, 3, 'p1');
     await stale.auth.awardCampaign(user.id, 'campaign:SAME', { winner: 'p1', reason: 'core' }, 3, 'p1');
@@ -73,45 +73,45 @@ describe.skipIf(!url)('accounts in Postgres', () => {
 
   it('keeps the commander alias across a restart and saves a change without touching progress', async () => {
     const first = await open();
-    const { user } = await first.auth.register('hugo@example.com', 'secret-1234', 'Hugo');
+    const { user } = await first.auth.register('hugo@example.com', 'Secret-1234', 'Hugo');
     expect((await sql.query('SELECT display_name FROM accounts')).rows).toEqual([{ display_name: 'Hugo' }]);
-    expect((await open()).auth.login('hugo@example.com', 'secret-1234').user).toEqual(user);
+    expect((await open()).auth.login('hugo@example.com', 'Secret-1234').user).toEqual(user);
     await first.auth.awardMatch(user.id, 'room-1', won(), 'p1', 'medium');
     await first.auth.updateDisplayName(user.id, 'Nova');
     expect((await sql.query('SELECT display_name, xp FROM accounts')).rows).toEqual([{ display_name: 'Nova', xp: 175 }]);
     const restarted = await open();
-    expect(restarted.auth.login('hugo@example.com', 'secret-1234').user).toEqual({ ...user, displayName: 'Nova' });
+    expect(restarted.auth.login('hugo@example.com', 'Secret-1234').user).toEqual({ ...user, displayName: 'Nova' });
     expect(restarted.auth.profile(user.id).xp).toBe(175);
   });
 
   it('keeps the linked wallet and refuses one already linked by another server', async () => {
     const first = await open();
-    const ana = (await first.auth.register('ana-wallet@example.com', 'secret-1234')).user;
+    const ana = (await first.auth.register('ana-wallet@example.com', 'Secret-1234')).user;
     const wallet = Keypair.random();
     const link = async (auth: AuthService, userId: string) => auth.linkWallet(userId,
       await signWalletChallenge(auth.walletChallenge(userId, wallet.publicKey()), wallet.publicKey(), keypairSigner(wallet)));
     await link(first.auth, ana.id);
     const second = await open();
-    expect(second.auth.login('ana-wallet@example.com', 'secret-1234').user.walletAddress).toBe(wallet.publicKey());
+    expect(second.auth.login('ana-wallet@example.com', 'Secret-1234').user.walletAddress).toBe(wallet.publicKey());
     // A server that has not seen the link yet still cannot give the wallet to another account.
     const third = await open();
     await first.auth.unlinkWallet(ana.id);
     await link(first.auth, ana.id);
-    const beto = (await third.auth.register('beto-wallet@example.com', 'secret-1234')).user;
+    const beto = (await third.auth.register('beto-wallet@example.com', 'Secret-1234')).user;
     await expect(link(third.auth, beto.id)).rejects.toMatchObject({ code: 'wallet_in_use' });
   });
 
   it('refuses an email another server registered first', async () => {
     const a = await open();
     const b = await open();
-    await a.auth.register('eva@example.com', 'secret-1234');
-    await expect(b.auth.register('eva@example.com', 'secret-1234')).rejects.toMatchObject({ status: 409, code: 'email_in_use' });
-    expect(() => b.auth.login('eva@example.com', 'secret-1234')).toThrow();
+    await a.auth.register('eva@example.com', 'Secret-1234');
+    await expect(b.auth.register('eva@example.com', 'Secret-1234')).rejects.toMatchObject({ status: 409, code: 'email_in_use' });
+    expect(() => b.auth.login('eva@example.com', 'Secret-1234')).toThrow();
   });
 
   it('adds up two results that finish at the same time', async () => {
     const { auth } = await open();
-    const { user } = await auth.register('fede@example.com', 'secret-1234');
+    const { user } = await auth.register('fede@example.com', 'Secret-1234');
     await Promise.all([
       auth.awardCampaign(user.id, 'campaign:A', { winner: 'p1', reason: 'core' }, 3, 'p1'),
       auth.awardCampaign(user.id, 'campaign:B', { winner: 'p2', reason: 'core' }, 3, 'p1'),
@@ -125,11 +125,11 @@ describe.skipIf(!url)('accounts in Postgres', () => {
     try {
       const file = join(dir, 'users.json');
       const legacy = new AuthService(file);
-      const { user } = await legacy.register('gabi@example.com', 'secret-1234', 'Gabi');
+      const { user } = await legacy.register('gabi@example.com', 'Secret-1234', 'Gabi');
       await legacy.awardMatch(user.id, 'old-room', won(), 'p1', 'medium');
       const store = new PostgresAccountStore(url!); stores.push(store);
       const imported = await openPostgresAuth(store, file);
-      expect(imported.login('gabi@example.com', 'secret-1234').user).toEqual(user);
+      expect(imported.login('gabi@example.com', 'Secret-1234').user).toEqual(user);
       expect(imported.profile(user.id)).toEqual(legacy.profile(user.id));
       expect((await sql.query('SELECT display_name FROM accounts')).rows).toEqual([{ display_name: 'Gabi' }]);
       const again = new PostgresAccountStore(url!); stores.push(again);

@@ -14,6 +14,10 @@ const MAX_BARRIER_CELLS = 64;
 const FLIP_MASK = 0x1fffffff;
 const MAX_SIDE = 128;
 const MAX_CAPTURE_RADIUS = 8;
+/** Capture area of the pillar (the Core) when its marker sets no `radio`. */
+export const CORE_CAPTURE_RADIUS = 2;
+/** Capture area of each `recurso` (Metal node) when its marker sets no `radio`. */
+export const METAL_CAPTURE_RADIUS = 2;
 const MAX_DROP_GROUPS = 8;
 const MAX_CLOUD_ROUTES = 4;
 
@@ -38,9 +42,9 @@ export function leerEspiral(source: unknown): SectorLeido {
     p1: cellOf(only(marks.filter((mark) => mark.kind === 'spawn' && mark.props.owner === 1), 'spawn 1')),
     p2: cellOf(only(marks.filter((mark) => mark.kind === 'spawn' && mark.props.owner === 2), 'spawn 2')),
   };
-  const core = cellOf(pilar);
-  const metals = marks.filter((mark) => mark.kind === 'recurso').sort(byMark).map(cellOf);
-  const captures = marks.filter((mark) => mark.kind === 'pronexo').sort(byMark).map(captureOf);
+  const core = captureOf(pilar, CORE_CAPTURE_RADIUS);
+  const metals = marks.filter((mark) => mark.kind === 'recurso').sort(byMark).map((mark) => captureOf(mark, METAL_CAPTURE_RADIUS));
+  const captures = marks.filter((mark) => mark.kind === 'pronexo').sort(byMark).map((mark) => captureOf(mark));
   if (metals.length === 0 || captures.length === 0) throw new Error('Missing map objectives');
   const turrets = marks.filter((mark) => mark.kind === 'torreta').sort(byMark).map(turretOf);
   const stations = marks.filter((mark) => mark.kind === 'estacion').sort(byMark).map(stationOf);
@@ -85,9 +89,12 @@ export function leerEspiral(source: unknown): SectorLeido {
 
 export const ESPIRAL = leerEspiral(mapa);
 
-/** A pronexo may carry `radio`: the cells around it that count as its capture area. */
-function captureOf(mark: Mark): { x: number; y: number; radius?: number } {
-  const radius = mark.props.radio;
+/**
+ * A pronexo, pillar or resource may carry `radio`: the cells around it that count as its capture area.
+ * Without it the pillar and resources take their default; a pronexo falls back to the rules.
+ */
+function captureOf(mark: Mark, fallback?: number): { x: number; y: number; radius?: number } {
+  const radius = mark.props.radio ?? fallback;
   if (radius === undefined) return cellOf(mark);
   if (typeof radius !== 'number' || !Number.isSafeInteger(radius) || radius < 1 || radius > MAX_CAPTURE_RADIUS) throw new Error('Invalid map marker');
   return { ...cellOf(mark), radius };

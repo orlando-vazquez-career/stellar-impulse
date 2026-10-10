@@ -1,10 +1,10 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
-import { parseDisplayName } from '@impulso/input';
+import { parseDisplayName, passwordIssues } from '@impulso/input';
 import { emptyProgress, profileFor, rewardForCampaign, rewardForMatch, type AccountProgress, type CampaignOutcome, type ChallengeId, type MatchReward, type PlayerId, type ProgressProfile, type RivalDifficulty, type World } from '@impulso/sim';
 import { Keypair, Transaction } from '@stellar/stellar-sdk';
 import { createWalletChallenge, STELLAR_TESTNET, validatePublicAddress, verifyWalletChallenge, type WalletChallenge } from '@impulso/chain';
 import { FileAccountStore, type AccountStore, type StoredUser } from './account-store';
-import { ChainRewards } from './chain-rewards';
+import { ChainRewards, type GrantOutcome } from './chain-rewards';
 
 const SESSION_MS = 24 * 60 * 60_000;
 /** A wallet challenge must be signed within this window (it also expires inside the transaction). */
@@ -28,6 +28,14 @@ export class AuthError extends Error {
   constructor(public readonly status: number, public readonly code: string) {
     super(code);
   }
+}
+
+/** The account email, trimmed and lowercased; anything else is `400 invalid_credentials`. */
+export function normalizeEmail(email: unknown): string {
+  if (typeof email !== 'string') throw new AuthError(400, 'invalid_credentials');
+  const normalized = email.trim().toLowerCase();
+  if (normalized.length > 254 || !EMAIL.test(normalized)) throw new AuthError(400, 'invalid_credentials');
+  return normalized;
 }
 
 /**
@@ -66,9 +74,13 @@ export class AuthService {
 
   get storage(): AccountStore['kind'] { return this.store.kind; }
 
-  /** The alias is optional; when sent it must be a valid commander name. */
+  /**
+   * The alias is optional; when sent it must be a valid commander name. A new password must meet
+   * the rule (`passwordIssues`), checked before the alias and before telling whether the email is taken.
+   */
   async register(email: unknown, password: unknown, displayName?: unknown) {
-    const normalized = this.validate(email, password);
+    const normalized = normalizeEmail(email);
+    if (passwordIssues(password).length > 0) throw new AuthError(400, 'weak_password');
     const alias = displayName === undefined ? undefined : this.validateDisplayName(displayName);
     if (this.users.has(normalized)) throw new AuthError(409, 'email_in_use');
     const salt = randomBytes(16).toString('hex');
@@ -198,6 +210,20 @@ export class AuthService {
     return this.rewards.sync({ id: user.id, walletAddress: user.walletAddress, merits: user.progress?.merits ?? [] });
   }
 
+  /**
+   * Mints, for every account with a linked wallet, the merits it earned while the server had no
+   * minter key. Safe to repeat: each emblem is checked on chain before it is granted.
+   */
+  async backfillMerits(): Promise<GrantOutcome[]> {
+    if (!this.rewards.enabled) return [];
+    const outcomes: GrantOutcome[] = [];
+    for (const user of [...this.users.values()]) {
+      if (!user.walletAddress || !user.progress?.merits?.length) continue;
+      outcomes.push(...await this.syncMerits(user.id));
+    }
+    return outcomes;
+  }
+
   private setWallet(userId: string, address: string | undefined): Promise<PublicUser> {
     return this.inQueue(userId, async () => {
       const user = this.byId(userId);
@@ -260,10 +286,10 @@ export class AuthService {
     return [...this.users.values()].find((user) => user.id === userId);
   }
 
+  /** Login only: accounts created before the password rule keep signing in with their password. */
   private validate(email: unknown, password: unknown): string {
-    if (typeof email !== 'string' || typeof password !== 'string') throw new AuthError(400, 'invalid_credentials');
-    const normalized = email.trim().toLowerCase();
-    if (normalized.length > 254 || !EMAIL.test(normalized) || password.length < 8 || password.length > 128) {
+    const normalized = normalizeEmail(email);
+    if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
       throw new AuthError(400, 'invalid_credentials');
     }
     return normalized;

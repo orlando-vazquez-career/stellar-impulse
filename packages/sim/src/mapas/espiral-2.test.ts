@@ -19,7 +19,7 @@ describe('espiral estelar II', () => {
     expect(TRAINING_MAPS['espiral-2']).toBe(ESPIRAL_2);
     expect([ESPIRAL_2.width, ESPIRAL_2.height]).toEqual([96, 96]);
     expect(ESPIRAL_2.bases).toEqual({ p1: { x: 11, y: 83 }, p2: { x: 83, y: 11 } });
-    expect(ESPIRAL_2.core).toEqual({ x: 48, y: 48 });
+    expect(ESPIRAL_2.core).toEqual({ x: 48, y: 48, radius: 2 });
     expect(ESPIRAL_2.captures).toHaveLength(4);
     expect(ESPIRAL_2.captures.map((cell) => cell.radius)).toEqual([3, 3, 3, 3]);
     expect(ESPIRAL_2.metals).toHaveLength(10);

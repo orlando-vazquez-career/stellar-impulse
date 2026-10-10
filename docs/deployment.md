@@ -78,7 +78,11 @@ does not acknowledge a forwarded signal within 30 ms.
 ## Accounts
 
 The account identifier is an email address. Provision demo accounts through
-`POST /auth/register` with a JSON body containing `email` and `password`. Keep
+`POST /auth/register` with a JSON body containing `email` and `password`. A new
+password needs 8 to 128 characters, a lowercase letter, an uppercase letter and
+a symbol (any character that is not a letter, accent mark or digit); otherwise
+registration answers `400 { "error": "weak_password" }`. Login does not apply
+the rule, so accounts created before it keep signing in. Keep
 credentials outside the repository and deployment bundle. The browser signs in
 through `/auth/login`, restores sessions through `/auth/me`, and revokes them
 through `/auth/logout`.

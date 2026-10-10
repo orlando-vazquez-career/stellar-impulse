@@ -101,7 +101,8 @@ describe('sector economy', () => {
     const ordered = applyCommand(world, 'p1', produce(1, 'interceptor'));
     expect(ordered.accepted).toBe(true);
     expect(ordered.world.players.p1.metal).toBe(STARTING_METAL - UNIT_COSTS.interceptor);
-    expect(applyCommand(ordered.world, 'p1', produce(2, 'explorer'))).toMatchObject({ accepted: false, reason: 'production_busy' });
+    // A busy hangar still queues the next order, but charges it at once.
+    expect(applyCommand(ordered.world, 'p1', produce(2, 'explorer'))).toMatchObject({ accepted: false, reason: 'insufficient_metal' });
     const before = run(ordered.world, BUILD_TICKS.interceptor - 1);
     expect(before.squads.filter((squad) => squad.ownerId === 'p1')).toHaveLength(2);
     const launched = stepWorld(before);
@@ -196,7 +197,8 @@ describe('rival difficulty', () => {
 
   it('lets harder rivals build more and expand faster', () => {
     expect(rivalShips(play('medium', 600))).toBeGreaterThan(rivalShips(play('easy', 600)));
-    // The sector now travels at 6 ticks/cell instead of 4: allow the same travel budget.
-    expect(rivalNodes(play('hard', 300))).toBeGreaterThan(rivalNodes(play('medium', 300)));
+    // The sector travels at 6 ticks/cell. Ships start on the base's first ring, a cell closer to the
+    // nodes, so medium takes its second node at ~28 s: compare at 25 s, when hard already holds two.
+    expect(rivalNodes(play('hard', 250))).toBeGreaterThan(rivalNodes(play('medium', 250)));
   });
 });

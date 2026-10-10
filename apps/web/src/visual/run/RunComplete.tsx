@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { AugmentChips, LetterRow } from './RunOutcome';
-import { formatTime, totalSeconds, type RunState } from './run-state';
+import { clearedSectorName, formatTime, totalSeconds, type RunState } from './run-state';
 import type { RunSfx } from './run-sfx';
 import './run.css';
 
@@ -22,7 +22,7 @@ export function RunComplete({ run, locale, sfx, onNewRun, onLeave }: { run: RunS
     <LetterRow word={word} delayMs={TITLE_DELAY_MS} staggerMs={LETTER_STAGGER_MS} />
     <ol className="vi-run-history">
       {run.history.map((entry, index) => <li key={entry.sector} style={{ animationDelay: `${titleEndsAt + index * 160}ms` }}>
-        <span>SECTOR {entry.sector}</span><strong>{entry.name.toUpperCase()}</strong><em>{formatTime(entry.seconds)}</em>
+        <span>SECTOR {entry.sector}</span><strong>{clearedSectorName(entry, locale).toUpperCase()}</strong><em>{formatTime(entry.seconds)}</em>
       </li>)}
     </ol>
     <p className="vi-run-line vi-run-fade" style={{ animationDelay: `${titleEndsAt + 600}ms` }}>

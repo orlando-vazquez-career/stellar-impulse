@@ -9,8 +9,8 @@ import { AuthService } from './auth.js';
 const PORT = 31_000 + Math.floor(Math.random() * 900);
 const URL = `http://127.0.0.1:${PORT}`;
 const auth = new AuthService();
-const ana = await auth.register('ana-rewards@example.com', 'secret-1234');
-const beto = await auth.register('beto-rewards@example.com', 'secret-1234');
+const ana = await auth.register('ana-rewards@example.com', 'Secret-1234');
+const beto = await auth.register('beto-rewards@example.com', 'Secret-1234');
 const envelope = (body: unknown) => ({ protocolVersion: CAMPAIGN_PROTOCOL_VERSION, body });
 
 // One sector already won by p1: the campaign ends on its first tick.

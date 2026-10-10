@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { cloudAt, createNebula, type NebulaCloudState, type NebulaField } from '@impulso/sim';
 import { sectorMap, sectorSurface } from '../../map/sector-map';
 import { cellToIso } from './isometric';
+import { gameText } from '../game-copy';
+import type { Locale } from '../../i18n';
 
 /** Above the ships (the fog hides them) but below routes, selection and the satellites' sky. */
 const DEPTH = { route: 90003, cloud: 150000, sign: 290000 } as const;
@@ -28,6 +30,7 @@ interface CloudVisual {
 export class NebulaEffects {
   private readonly field?: NebulaField;
   private readonly visuals = new Map<string, CloudVisual>();
+  private locale: Locale = 'es';
 
   constructor(private readonly scene: Phaser.Scene, tickRate: number) {
     const spec = sectorSurface.nebula;
@@ -44,6 +47,12 @@ export class NebulaEffects {
         countdown: -1,
       });
     }
+  }
+
+  /** Language of the countdown signs; a sign up now is rewritten on the next update. */
+  setLocale(locale: Locale): void {
+    this.locale = locale;
+    for (const visual of this.visuals.values()) visual.countdown = -1;
   }
 
   /** `tick` is the server tick plus the fraction elapsed since it arrived. */
@@ -103,7 +112,7 @@ export class NebulaEffects {
     if (!warning) { sign.setVisible(false); visual.countdown = -1; return; }
     const home = cellToIso(state.path[0]!.x - 0.5, state.path[0]!.y - 0.5);
     const left = Math.max(0, Math.ceil((state.phaseEndsAt - tick) / tickRate));
-    if (left !== visual.countdown) { visual.countdown = left; sign.setText(`⚠ NIEBLA ${left}`); }
+    if (left !== visual.countdown) { visual.countdown = left; sign.setText(gameText(this.locale, 'nebulaWarning', { seconds: left })); }
     sign.setPosition(home.x, home.y - 40).setVisible(true).setAlpha(0.65 + 0.35 * pulse);
   }
 

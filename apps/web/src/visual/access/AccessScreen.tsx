@@ -22,8 +22,6 @@ export function AccessScreen({ onContinue, onCreateTraining, onJoinRoom, onSigne
   const [alias, setAlias] = useState(readPilotAlias);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
-  const [chainStatus, setChainStatus] = useState('Stellar Testnet');
-  const [chainBusy, setChainBusy] = useState(false);
 
   /** Login and registration end alike: the account's alias (or the one typed here) becomes the pilot's. */
   async function signIn(action: 'login' | 'register', request: () => Promise<AccountUser>) {
@@ -52,19 +50,6 @@ export function AccessScreen({ onContinue, onCreateTraining, onJoinRoom, onSigne
   const handleRegister = (email: string, password: string) =>
     signIn('register', () => registerAccount(email, password, alias));
 
-  async function handleConnectWallet() {
-    setChainBusy(true);
-    try {
-      const chain = await import('@impulso/chain');
-      const result = await chain.connectFreighterTestnet();
-      setChainStatus(`Wallet conectada · ${result.address.slice(0, 8)}…${result.address.slice(-8)}`);
-    } catch (error) {
-      setChainStatus(error instanceof Error ? error.message : 'No se pudo consultar la red.');
-    } finally {
-      setChainBusy(false);
-    }
-  }
-
   return (
     <LoginScreen
       alias={alias}
@@ -76,9 +61,6 @@ export function AccessScreen({ onContinue, onCreateTraining, onJoinRoom, onSigne
       onContinueGuest={onContinue}
       onCreateTraining={onCreateTraining ?? onContinue}
       onJoinRoom={onJoinRoom}
-      onConnectWallet={() => void handleConnectWallet()}
-      chainStatus={chainStatus}
-      chainBusy={chainBusy}
       onOpenAtlas={() => onContinue(alias.trim() || 'Vega')}
       musicVolume={musicVolume}
       musicMuted={musicMuted}

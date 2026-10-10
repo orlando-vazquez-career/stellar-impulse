@@ -1,4 +1,6 @@
 import type { MatchTransport } from '../visual/game/server-adapter';
+import { getActiveLocale, type Locale } from '../visual/i18n';
+import { isMultiplayerErrorReason, multiplayerErrorText, multiplayerText, type MultiplayerKey } from './multiplayer-copy';
 import type { CampaignView, CommandIntent, MultiplayerSession, MultiplayerSnapshot } from './session';
 
 type Connection = 'online' | 'connecting' | 'offline';
@@ -8,22 +10,29 @@ function connectionOf(session: MultiplayerSnapshot): Connection {
   return session.connection === 'connecting' || session.connection === 'reconnecting' ? 'connecting' : 'offline';
 }
 
-/** What the HUD says about the room: errors first, then connection, pauses and campaign phases. */
-function phaseNotice(session: MultiplayerSnapshot): string | null {
-  if (session.error) return session.error;
-  if (session.connection === 'reconnecting') return 'Reconectando con la sala…';
-  if (session.connection === 'connecting') return 'Conectando con la sala…';
-  if (session.connection !== 'online') return 'Se perdió la conexión con la sala.';
+/**
+ * What the HUD says about the room, in the language the player chose: errors first, then connection, pauses
+ * and campaign phases. An error the client has no reason for is shown as the session wrote it.
+ */
+function phaseNotice(session: MultiplayerSnapshot, locale: Locale): string | null {
+  const text = (key: MultiplayerKey, values?: Record<string, string | number>) => multiplayerText(locale, key, values);
+  if (session.error) {
+    return session.errorReason && isMultiplayerErrorReason(session.errorReason)
+      ? multiplayerErrorText(locale, session.errorReason) : session.error;
+  }
+  if (session.connection === 'reconnecting') return text('noticeReconnecting');
+  if (session.connection === 'connecting') return text('noticeConnecting');
+  if (session.connection !== 'online') return text('noticeConnectionLost');
   const phase = session.phase;
-  if (!phase) return 'Sincronizando la partida…';
-  if (phase.pause) return `Partida pausada: esperando la reconexión de ${phase.seats[phase.pause.by]?.name ?? 'un jugador'}.`;
-  if (phase.resumeInMs !== null) return `La partida continúa en ${Math.ceil(phase.resumeInMs / 1000)} s…`;
-  if (phase.phase === 'countdown') return `La partida comienza en ${Math.ceil((phase.remainingMs ?? 0) / 1000)} s…`;
-  if (phase.phase === 'transition') return `Sector ${phase.sector} completado. Preparando el siguiente sector…`;
+  if (!phase) return text('noticeSyncing');
+  if (phase.pause) return text('noticePaused', { name: phase.seats[phase.pause.by]?.name ?? text('noticeSomePlayer') });
+  if (phase.resumeInMs !== null) return text('noticeResume', { seconds: Math.ceil(phase.resumeInMs / 1000) });
+  if (phase.phase === 'countdown') return text('noticeCountdown', { seconds: Math.ceil((phase.remainingMs ?? 0) / 1000) });
+  if (phase.phase === 'transition') return text('noticeTransition', { sector: phase.sector });
   if (phase.phase === 'results' || phase.phase === 'closed') {
-    if (phase.result?.reason === 'annulled') return 'La partida fue anulada.';
-    if (phase.result?.winner === null) return 'La campaña terminó en empate.';
-    if (phase.result?.reason === 'forfeit') return 'La campaña terminó por abandono de un jugador.';
+    if (phase.result?.reason === 'annulled') return text('noticeAnnulled');
+    if (phase.result?.winner === null) return text('noticeDraw');
+    if (phase.result?.reason === 'forfeit') return text('noticeForfeit');
   }
   return null;
 }
@@ -38,13 +47,17 @@ export function campaignTransport(session: MultiplayerSession): MatchTransport {
       let view: CampaignView | null = null;
       let notice: string | null | undefined;
       let connection: Connection | undefined;
+      // Refusals from before the adapter opened were already shown, or belong to an earlier screen.
+      let refused = session.getSnapshot().rejection?.id ?? 0;
       const sync = () => {
         const snapshot = session.getSnapshot();
         const state = connectionOf(snapshot);
         if (state !== connection) { connection = state; events.connection(state); }
-        const text = phaseNotice(snapshot);
+        // Read on every change, so a language switched mid-match applies to the next notice.
+        const text = phaseNotice(snapshot, getActiveLocale());
         if (text !== notice) { notice = text; events.notice(text); }
         if (snapshot.view && snapshot.view !== view) { view = snapshot.view; events.view(snapshot.view); }
+        if (snapshot.rejection && snapshot.rejection.id !== refused) { refused = snapshot.rejection.id; events.rejected(snapshot.rejection.reason); }
         events.refresh();
       };
       const stop = session.subscribe(sync);

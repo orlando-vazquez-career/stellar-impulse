@@ -2,6 +2,7 @@ import { Client, type Room } from '@colyseus/sdk';
 import { DEFAULT_CAMPAIGN_MAP } from '@impulso/input';
 import type { MatchReward } from '@impulso/sim';
 import type { CampaignPhaseView, PlayerView } from '@impulso/state';
+import { isMultiplayerErrorReason, multiplayerErrorText, type MultiplayerErrorReason } from './multiplayer-copy';
 
 const PROTOCOL_VERSION = 3;
 const STORAGE_KEY = 'impulso.multiplayer-room';
@@ -19,7 +20,19 @@ export interface MultiplayerSnapshot {
   view: CampaignView | null;
   /** This player's campaign reward, once the campaign ends. */
   reward: MatchReward | null;
+  /** Always Spanish: the multiplayer lobby reads its text. Translate through `errorReason`. */
   error: string | null;
+  /**
+   * Why `error` is set, stable across languages: a server code the client knows (authentication_required,
+   * rate_limit…) or the kind of failure (full, started, not_found, network, expired, room_code,
+   * connection_lost). Absent while there is no error. See multiplayer-copy.ts for every reason.
+   */
+  errorReason?: string;
+  /**
+   * The last order the match refused (insufficient_metal, fleet_full…), numbered so the same reason twice is two
+   * refusals. Match refusals are not room failures: the gameplay adapter explains them.
+   */
+  rejection?: { reason: string; id: number } | null;
   acknowledgedSequence: number;
 }
 export interface MultiplayerSession {
@@ -36,30 +49,28 @@ export interface MultiplayerSession {
   destroy(): void;
 }
 type SessionStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+const NO_ERROR = { error: null, errorReason: undefined } as const satisfies Partial<MultiplayerSnapshot>;
 const blank = (): MultiplayerSnapshot => ({
-  connection: 'idle', roomId: null, phase: null, view: null, reward: null, error: null, acknowledgedSequence: 0,
+  connection: 'idle', roomId: null, phase: null, view: null, reward: null, ...NO_ERROR, acknowledgedSequence: 0,
 });
 
-const REJECTION_TEXT: Record<string, string> = {
-  authentication_required: 'Inicia sesión de nuevo para entrar a la sala.',
-  already_in_room: 'Esta cuenta ya está en la sala. Usa otra cuenta para el segundo jugador.',
-  unsupported_version: 'El cliente y el servidor usan versiones distintas. Recarga la página.',
-  invalid_join: 'Revisa el nombre del jugador y el código de la sala.',
-  stale_sequence: 'La conexión se está sincronizando. Intenta la orden de nuevo.',
-  paused: 'La partida está pausada mientras un jugador se reconecta.',
-  not_in_sector: 'Espera a que comience el sector para dar órdenes.',
-  opening_selection: 'Elige tu aumento para empezar el sector.',
-  rate_limit: 'Demasiadas órdenes seguidas.',
-  invalid_augment_pick: 'Esa carta ya no está disponible.',
-  augment_reroll_used_or_expired: 'No quedan renovaciones para esta oferta.',
-};
-function errorText(error: unknown): string {
+/** Rejection codes the server sends that the client explains as they are. */
+const SERVER_REASONS: ReadonlySet<MultiplayerErrorReason> = new Set([
+  'authentication_required', 'already_in_room', 'unsupported_version', 'invalid_join', 'stale_sequence', 'paused',
+  'not_in_sector', 'opening_selection', 'rate_limit', 'invalid_augment_pick', 'augment_reroll_used_or_expired',
+]);
+/** The snapshot fields of a failure: its reason and the Spanish text the lobby reads. */
+function failure(errorReason: MultiplayerErrorReason) {
+  return { error: multiplayerErrorText('es', errorReason), errorReason };
+}
+/** Classifies a failed room operation or a server rejection. */
+export function roomFailure(error: unknown): { error: string; errorReason: MultiplayerErrorReason } {
   const message = error instanceof Error ? error.message : String(error);
-  if (REJECTION_TEXT[message]) return REJECTION_TEXT[message];
-  if (/full|maxClients|capacity/i.test(message)) return 'La sala está completa.';
-  if (/locked|started|in_progress/i.test(message)) return 'La partida ya comenzó.';
-  if (/not found|not_found|room.*unavailable/i.test(message)) return 'No se encontró la sala. Revisa el código.';
-  return 'No se pudo conectar con la sala. Comprueba la conexión e intenta de nuevo.';
+  if (isMultiplayerErrorReason(message) && SERVER_REASONS.has(message)) return failure(message);
+  if (/full|maxClients|capacity/i.test(message)) return failure('full');
+  if (/locked|started|in_progress/i.test(message)) return failure('started');
+  if (/not found|not_found|room.*unavailable/i.test(message)) return failure('not_found');
+  return failure('network');
 }
 
 /** Owns the room for the whole app; screens only subscribe to its retained snapshots. */
@@ -145,10 +156,13 @@ export function createMultiplayerSession(serverUrl: string, storage?: SessionSto
     cleanups.push(active.onMessage('ack', (ack: { protocolVersion: number; seq: number }) => {
       if (!current() || ack.protocolVersion !== PROTOCOL_VERSION || !Number.isSafeInteger(ack.seq)) return;
       sequence = Math.max(sequence, ack.seq);
-      update({ acknowledgedSequence: Math.max(snapshot.acknowledgedSequence, ack.seq), error: null });
+      update({ acknowledgedSequence: Math.max(snapshot.acknowledgedSequence, ack.seq), ...NO_ERROR });
     }));
     cleanups.push(active.onMessage('rejected', (message: { protocolVersion: number; reason: string }) => {
-      if (current() && message.protocolVersion === PROTOCOL_VERSION) update({ error: errorText(new Error(message.reason)) });
+      if (!current() || message.protocolVersion !== PROTOCOL_VERSION) return;
+      // Session reasons the lobby explains stay errors; anything else is an order the match refused.
+      if (isMultiplayerErrorReason(message.reason) && SERVER_REASONS.has(message.reason)) update(failure(message.reason));
+      else update({ rejection: { reason: message.reason, id: (snapshot.rejection?.id ?? 0) + 1 } });
     }));
     // Block orders as soon as the pause arrives; the following phase refresh remains authoritative.
     cleanups.push(active.onMessage('paused', (message: {
@@ -164,7 +178,7 @@ export function createMultiplayerSession(serverUrl: string, storage?: SessionSto
     const drop = () => {
       if (!current()) return;
       phaseFresh = false; viewFresh = false;
-      update({ connection: 'reconnecting', error: null });
+      update({ connection: 'reconnecting', ...NO_ERROR });
     };
     const reconnect = () => {
       if (!current()) { closeWithoutLeaving(active); return; }
@@ -175,8 +189,7 @@ export function createMultiplayerSession(serverUrl: string, storage?: SessionSto
     const leave = () => {
       if (!current()) return;
       room = null;
-      update({ connection: 'offline', error: snapshot.phase?.phase === 'closed'
-        ? null : 'Se perdió la conexión con la sala. Intenta reconectar.' });
+      update({ connection: 'offline', ...(snapshot.phase?.phase === 'closed' ? NO_ERROR : failure('connection_lost')) });
     };
     active.onDrop(drop); active.onReconnect(reconnect); active.onLeave(leave);
     cleanups.push(() => active.onDrop.remove(drop), () => active.onReconnect.remove(reconnect), () => active.onLeave.remove(leave));
@@ -204,8 +217,7 @@ export function createMultiplayerSession(serverUrl: string, storage?: SessionSto
       return true;
     } catch (error) {
       if (destroyed || operation !== generation) return false;
-      update({ connection: 'offline', error: restoring
-        ? 'La sesión de la sala caducó. Crea una sala o entra con su código.' : errorText(error) });
+      update({ connection: 'offline', ...(restoring ? failure('expired') : roomFailure(error)) });
       if (restoring) { forget(); return false; }
       throw error;
     } finally {
@@ -231,9 +243,9 @@ export function createMultiplayerSession(serverUrl: string, storage?: SessionSto
     async join(code, name, token) {
       const normalized = code.trim();
       if (!/^[A-Fa-f0-9]{12}$/.test(normalized)) {
-        const error = new Error('El código de sala debe tener 12 caracteres (0–9, A–F).');
-        update({ error: error.message });
-        throw error;
+        const invalid = failure('room_code');
+        update(invalid);
+        throw new Error(invalid.error);
       }
       await connect(() => client.joinById(normalized.toUpperCase(), { protocolVersion: PROTOCOL_VERSION, name, token }));
     },

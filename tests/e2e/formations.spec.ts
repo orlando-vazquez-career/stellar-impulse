@@ -83,6 +83,6 @@ test('action shortcuts and live audio settings work during a match', async ({ pa
   await page.getByRole('button', { name: 'Sonido', exact: true }).click();
   await page.locator('#audio-effects-range').fill('17');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences')!).audio.effects)).toBe(17);
-  await page.locator('.vi-sound-panel input[type=checkbox]').check();
+  await page.locator('.vi-sound-panel').getByLabel('Silenciar todo').check();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences')!).audio.muted)).toBe(true);
 });

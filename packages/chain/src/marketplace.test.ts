@@ -89,7 +89,7 @@ describe("market actions", () => {
   it("explains contract refusals in the player's language", async () => {
     const refused = fakeServer([], { prepareTransaction: async () => { throw new Error("HostError: Error(Contract, #102)"); } });
     await expect(buyListing(BUYER, 3, 1n, signer, { server: refused.server }))
-      .rejects.toMatchObject({ code: "CONTRACT_REJECTED", contractCode: 102, message: "El anuncio ya no esta disponible." });
+      .rejects.toMatchObject({ code: "CONTRACT_REJECTED", contractCode: 102, message: "El anuncio ya no está disponible." });
     const unfunded = fakeServer([], { getAccount: async () => { throw new Error("Account not found: G..."); } });
     await expect(buyCosmetic(BUYER, 1, signer, { server: unfunded.server })).rejects.toMatchObject({ code: "UNFUNDED_ACCOUNT" });
     expect(contractErrorMessage(105)).toBe("El vendedor ya no tiene esta pieza.");

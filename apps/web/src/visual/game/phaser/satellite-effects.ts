@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import satelliteSheet from '../../../../../../packages/sim/src/tiled-maps/espiral-estelar/assets-juego/satelite_caida.png?url';
 import type { SatelliteViewModel } from '../model';
+import { isReducedMotion } from '../../settings/accessibility-store';
 import { cellToIso } from './isometric';
 
 const TEXTURE = 'satellite-fall';
@@ -124,7 +125,7 @@ export class SatelliteEffects {
     const center = cellToIso(fall.x, fall.y);
     const reach = (fall.radius + 0.5) * 64;
     const camera = this.scene.cameras.main;
-    if (camera.worldView.contains(center.x, center.y)) camera.shake(220, 0.006);
+    if (!isReducedMotion() && camera.worldView.contains(center.x, center.y)) camera.shake(220, 0.006);
     const blast = this.scene.add.graphics().setDepth(DEPTH.blast);
     this.blasts.add(blast);
     const debris = Array.from({ length: 10 }, (_, index) => {

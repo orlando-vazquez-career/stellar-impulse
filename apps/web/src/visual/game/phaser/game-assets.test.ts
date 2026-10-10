@@ -1,29 +1,66 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { OBSTACLE_MODELS, type TrainingMapId } from '@impulso/sim';
 import {
   GAME_ASSET_MANIFEST,
   GAME_FACTIONS,
   GAME_SHIP_TYPES,
+  SCENE_DEPTH,
   SHIP_DISPLAY_SIZE,
   STRUCTURE_DISPLAY_SIZE,
+  TURRET_DISPLAY_SIZE,
   coreFactionForState,
+  drawsCoreDisc,
+  obstacleAnchor,
+  obstacleDisplaySize,
+  platformDepth,
+  shipIconSrc,
   shipTextureKey,
   structureTextureKey,
 } from './game-assets';
+import { captureEllipse } from './capture-geometry';
+import { cellToIso, projectedWorldBounds, TILE_HALF_HEIGHT } from './isometric';
+import { selectMap, sectorMap, sectorSurface } from '../../map/sector-map';
+import { drawableMapObjects } from '../../map/map-objects';
 
 describe('runtime game art manifest', () => {
   it('covers the four playable ship classes and only the approved structures', () => {
     expect(GAME_SHIP_TYPES).toEqual(['interceptor', 'explorer', 'frigate', 'bomber']);
     expect(GAME_ASSET_MANIFEST.filter((asset) => asset.kind === 'ship')).toHaveLength(12);
-    expect(GAME_ASSET_MANIFEST.filter((asset) => asset.kind === 'structure')).toHaveLength(6);
+    expect(GAME_ASSET_MANIFEST.filter((asset) => asset.kind === 'structure')).toHaveLength(8);
     expect(GAME_ASSET_MANIFEST.some((asset) => asset.src.includes('refinery'))).toBe(false);
-    expect(GAME_ASSET_MANIFEST.filter((asset) => asset.kind === 'structure').map((asset) => asset.src)).toEqual(
-      ['command-base', 'nexus-core'].flatMap((structure) => GAME_FACTIONS.map((faction) =>
+    expect(GAME_ASSET_MANIFEST.filter((asset) => asset.kind === 'structure').map((asset) => asset.src)).toEqual([
+      ...['command-base', 'nexus-core'].flatMap((structure) => GAME_FACTIONS.map((faction) =>
         `/assets/game/structures/${structure}-top-${faction}.png`)),
-    );
+      '/assets/game/structures/turret-base-neutral.png',
+      '/assets/game/structures/turret-head-neutral.png',
+    ]);
     expect(shipTextureKey('blue', 'interceptor')).toBe('ship-ax7-blue');
     expect(structureTextureKey('nexus-core', 'red')).toBe('structure-nexus-core-red');
+  });
+
+  it('adds the neutral turret as a base plate and a head, sized apart from the other structures', () => {
+    expect(structureTextureKey('turret-head', 'neutral')).toBe('structure-turret-head-neutral');
+    expect(structureTextureKey('turret-base', 'neutral')).toBe('structure-turret-base-neutral');
+    expect(TURRET_DISPLAY_SIZE).toEqual({ base: 64, head: 42 });
+    const turret = GAME_ASSET_MANIFEST.filter((asset) => asset.structure === 'turret-base' || asset.structure === 'turret-head');
+    expect(turret.map(({ key, faction, displaySize }) => ({ key, faction, displaySize }))).toEqual([
+      { key: 'structure-turret-base-neutral', faction: 'neutral', displaySize: 64 },
+      { key: 'structure-turret-head-neutral', faction: 'neutral', displaySize: 42 },
+    ]);
+  });
+
+  it('points every ship class at its blue hull for the hangar queue icons', () => {
+    expect(GAME_SHIP_TYPES.map(shipIconSrc)).toEqual([
+      '/assets/game/ships/ax7-blue.png',
+      '/assets/game/ships/explorer-blue.png',
+      '/assets/game/ships/frigate-blue.png',
+      '/assets/game/ships/bomber-blue.png',
+    ]);
+    for (const kind of GAME_SHIP_TYPES) {
+      expect(existsSync(join(process.cwd(), 'apps/web/public', shipIconSrc(kind).slice(1)))).toBe(true);
+    }
   });
 
   it('maps objective control states onto blue, red, or neutral nexus art', () => {
@@ -39,9 +76,136 @@ describe('runtime game art manifest', () => {
   it('uses intentional display sizes and verifies every manifest image exists in public assets', () => {
     expect(SHIP_DISPLAY_SIZE).toEqual({ interceptor: 40, explorer: 40, frigate: 44, bomber: 40 });
     expect(STRUCTURE_DISPLAY_SIZE).toEqual({ commandBase: 96, nexusCore: 88 });
+    expect(GAME_ASSET_MANIFEST).toHaveLength(20);
     for (const asset of GAME_ASSET_MANIFEST) {
       expect(GAME_FACTIONS).toContain(asset.faction);
       expect(existsSync(join(process.cwd(), 'apps/web/public', asset.src.slice(1)))).toBe(true);
     }
+  });
+});
+
+describe('flat platforms', () => {
+  it('draw under every ship on every map and never share the attack range layer', () => {
+    for (const map of ['sector-01', 'espiral', 'espiral-2', 'trascendencia'] as TrainingMapId[]) {
+      selectMap(map);
+      // A ship sorts at DEPTH.units plus its screen y, and no cell of the map projects above the top of the world box.
+      expect(platformDepth()).toBeLessThan(SCENE_DEPTH.units + Math.floor(projectedWorldBounds().y));
+    }
+    expect(platformDepth()).not.toBe(SCENE_DEPTH.nodes + 1);
+    expect(platformDepth()).toBeGreaterThan(SCENE_DEPTH.emblems);
+    expect(platformDepth()).toBeLessThan(SCENE_DEPTH.nodes);
+  });
+});
+
+describe('OBSTACLE_RING art', () => {
+  it('anchors on the cell the Tiled point marks: Tiled points sit on cell corners, scene cells on their centres', () => {
+    expect(obstacleAnchor({ x: 12, y: 30 })).toEqual({ x: 11.5, y: 29.5 });
+    expect(obstacleAnchor({ x: 7.25, y: 4.75 })).toEqual({ x: 6.75, y: 4.25 });
+    selectMap('espiral');
+    // Without the view yaw both anchors would agree; with it, the old one drifted half a tile sideways.
+    const anchor = obstacleAnchor({ x: 40, y: 40 });
+    const drawn = cellToIso(anchor.x, anchor.y);
+    const legacy = cellToIso(40, 40);
+    expect(Math.abs(drawn.x - legacy.x)).toBeGreaterThan(8);
+    expect(Math.abs(drawn.y - (legacy.y - TILE_HALF_HEIGHT))).toBeLessThan(4);
+  });
+
+  /** Every obstacle of the map with the cells the simulation closed for it, and where those cells centre. */
+  const obstaclesOf = (map: TrainingMapId) => {
+    selectMap(map);
+    return (sectorSurface.obstaculos ?? []).map((obstacle) => ({
+      obstacle,
+      centroid: {
+        x: obstacle.cells.reduce((sum, cell) => sum + cell.x, 0) / obstacle.cells.length,
+        y: obstacle.cells.reduce((sum, cell) => sum + cell.y, 0) / obstacle.cells.length,
+      },
+    }));
+  };
+  const OBSTACLE_MAPS = ['espiral', 'espiral-2', 'trascendencia'] as TrainingMapId[];
+  const onClosedCell = (point: { x: number; y: number }, cells: readonly { x: number; y: number }[]) =>
+    cells.some((cell) => cell.x === Math.round(point.x) && cell.y === Math.round(point.y));
+  const screenDistance = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+    const from = cellToIso(a.x, a.y), to = cellToIso(b.x, b.y);
+    return Math.hypot(from.x - to.x, from.y - to.y);
+  };
+
+  it('stands the art on a cell the obstacle closes, on every map', () => {
+    let legacyMisses = 0;
+    for (const map of OBSTACLE_MAPS) {
+      const obstacles = obstaclesOf(map);
+      expect(obstacles.length, map).toBeGreaterThan(0);
+      for (const { obstacle } of obstacles) {
+        expect(onClosedCell(obstacleAnchor(obstacle), obstacle.cells), `${map} #${obstacle.id}`).toBe(true);
+        if (!onClosedCell(obstacle, obstacle.cells)) legacyMisses += 1;
+      }
+    }
+    // Reading the Tiled point as a scene cell put the art on open floor next to the obstacle.
+    expect(legacyMisses).toBeGreaterThan(0);
+  });
+
+  it('draws the art within half a cell of the centre of the cells the obstacle closes', () => {
+    // Half a cell on both axes, projected: the farthest the art may sit from the closed cells' centre.
+    const halfCell = Math.max(screenDistance({ x: 0.5, y: 0.5 }, { x: 0, y: 0 }), screenDistance({ x: 0.5, y: -0.5 }, { x: 0, y: 0 }));
+    let anchorTotal = 0, legacyTotal = 0, count = 0;
+    for (const map of OBSTACLE_MAPS) {
+      for (const { obstacle, centroid } of obstaclesOf(map)) {
+        const anchor = obstacleAnchor(obstacle);
+        expect(Math.abs(anchor.x - centroid.x), `${map} #${obstacle.id}`).toBeLessThanOrEqual(0.5 + 1e-9);
+        expect(Math.abs(anchor.y - centroid.y), `${map} #${obstacle.id}`).toBeLessThanOrEqual(0.5 + 1e-9);
+        expect(screenDistance(anchor, centroid), `${map} #${obstacle.id}`).toBeLessThanOrEqual(halfCell + 1e-9);
+        anchorTotal += screenDistance(anchor, centroid);
+        legacyTotal += screenDistance(obstacle, centroid);
+        count += 1;
+      }
+    }
+    // On average the art now sits a third as far from its cells as the corner reading put it.
+    expect(anchorTotal / count).toBeLessThan(legacyTotal / count / 2);
+  });
+
+  it('centres the art exactly on a whole ring of cells: a point on a cell centre closes a symmetric ring', () => {
+    for (const { obstacle, centroid } of obstaclesOf('trascendencia')) {
+      expect(screenDistance(obstacleAnchor(obstacle), centroid), `#${obstacle.id}`).toBeLessThan(1e-6);
+      expect(screenDistance(obstacle, centroid), `#${obstacle.id}`).toBeGreaterThan(TILE_HALF_HEIGHT);
+    }
+  });
+
+  it('keeps the art proportions and never draws it wider than the ground the obstacle closes', () => {
+    for (const radius of Object.values(OBSTACLE_MODELS)) {
+      const widest = captureEllipse(radius).width;
+      const big = obstacleDisplaySize({ width: 512, height: 256 }, radius);
+      expect(big.width).toBeCloseTo(widest);
+      expect(big.height).toBeCloseTo(widest / 2);
+    }
+    expect(obstacleDisplaySize({ width: 60, height: 90 }, 2)).toEqual({ width: 60, height: 90 });
+    expect(obstacleDisplaySize({ width: 0, height: 0 }, 1)).toEqual({ width: 0, height: 0 });
+  });
+});
+
+describe('nexus art', () => {
+  const drawnOn = (map: TrainingMapId, nexusStyle: 'pillar' | 'disc') => {
+    selectMap(map);
+    return drawableMapObjects(sectorMap, sectorSurface, { nexusStyle });
+  };
+
+  it('leaves the nexus to the map pillar where the map has one at the Core', () => {
+    for (const map of ['espiral', 'espiral-2', 'trascendencia'] as TrainingMapId[]) {
+      expect(drawsCoreDisc('pillar', drawnOn(map, 'pillar'), sectorSurface.core), map).toBe(false);
+    }
+  });
+
+  it('falls back to the disc on a map without a pillar, so the Core never stands without art', () => {
+    // Sector 01 (the offline sandbox and the visual tests) only marks the Core cell.
+    expect(drawsCoreDisc('pillar', drawnOn('sector-01', 'pillar'), sectorSurface.core)).toBe(true);
+  });
+
+  it('always draws the disc for the disc style', () => {
+    for (const map of ['sector-01', 'espiral', 'espiral-2', 'trascendencia'] as TrainingMapId[]) {
+      expect(drawsCoreDisc('disc', drawnOn(map, 'disc'), sectorSurface.core), map).toBe(true);
+    }
+  });
+
+  it('only counts a pillar that stands at the Core', () => {
+    const entries = drawnOn('espiral', 'pillar');
+    expect(drawsCoreDisc('pillar', entries, { x: sectorSurface.core.x + 30, y: sectorSurface.core.y })).toBe(true);
   });
 });

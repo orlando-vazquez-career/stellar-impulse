@@ -73,7 +73,7 @@ flowchart LR
 - **Práctica contra IA:** admite invitados; dificultad Fácil, Media o Difícil y duración Escaramuza o Partida completa. Incluye tutorial para seleccionar, mover, producir, capturar Metal y construir la Refinería.
 - **Run contra IA — «Modo campaña»:** recorrido por Espiral Estelar, Caos Estelar y Trascendencia Estelar. Ganar permite saltar al siguiente mapa conservando aumentos; perder reinicia la run. Incluye transiciones de salto, resumen de sectores y pantalla final. [Estado de la run](apps/web/src/visual/run/run-state.ts), [orquestación](apps/web/src/visual/run/RunScreen.tsx).
 - **Campaña privada 1v1:** dos cuentas distintas crean o se unen a una sala por código y confirman que están listas. Cada uno de sus tres sectores reinicia economía, flota, base y nodos; conserva y reaplica aumentos. Las elecciones progresan por plata, oro y prismático. Ganar el sector final decide la campaña: no es una serie al mejor de tres.
-- **Inspector Tiled:** permite revisar Sector 01, su terreno y rutas desde la preparación.
+- **Vista previa del mapa:** la preparación de la práctica y la sala multijugador muestran un esquema del mapa elegido, con bases, Núcleo y objetivos.
 
 La campaña **multijugador** actual reutiliza **Espiral Estelar en los tres sectores**; la run contra IA recorre tres mapas distintos. La reserva de reconexión de la campaña multijugador dura hasta 60 segundos, con hasta dos pausas por jugador. Una recarga puede recuperar el asiento mientras la reserva siga vigente. La run se orquesta en memoria del cliente y no ofrece esa recuperación entre mapas. No existe todavía un bot que sustituya a un jugador desconectado.
 

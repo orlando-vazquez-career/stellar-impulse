@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { PRACTICE_MAPS } from '@impulso/input';
 import { createSectorWorld } from '@impulso/sim';
 import { sectorMap, sectorSurface, cellAtPixel, cellToPixel, routeAcrossSector, planSectorMove, selectMap } from './sector-map';
 
@@ -88,5 +89,13 @@ describe('map selection', () => {
     expect(map.activeMapSourceFile()).toBe('espiral-estelar_2.json');
     map.selectMap('sector-01');
     expect(map.sectorMap.width).toBe(29);
+  });
+
+  it('labels a map in the player language, Spanish unless told otherwise', async () => {
+    const map = await import('./sector-map');
+    const trascendencia = PRACTICE_MAPS.find((option) => option.id === 'trascendencia')!;
+    expect(map.playableMapLabel('trascendencia', 'en')).toBe(trascendencia.name.en);
+    expect(map.playableMapLabel('trascendencia', 'es')).toBe(trascendencia.name.es);
+    expect(map.playableMapLabel('espiral-2', 'en')).toBe('Stellar Chaos');
   });
 });

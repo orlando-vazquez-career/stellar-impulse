@@ -28,10 +28,11 @@ const es = {
   accountCreate: 'Crear cuenta',
   accountModes: 'Acceso con cuenta',
   accountAlias: 'Alias de comandante',
-  accountCreateHint: 'La contraseña necesita al menos 8 caracteres. Tu alias queda guardado en la cuenta y te acompaña en cualquier dispositivo.',
+  accountCreateHint: 'Tu alias queda guardado en la cuenta y te acompaña en cualquier dispositivo.',
   accountConnecting: 'Conectando…',
   accountInvalid: 'Correo o contraseña incorrectos.',
-  accountRegisterInvalid: 'Revisa el correo y usa una contraseña de 8 a 128 caracteres.',
+  accountRegisterInvalid: 'Revisa el correo electrónico.',
+  accountPasswordWeak: 'La contraseña necesita de 8 a 128 caracteres, una minúscula, una mayúscula y un símbolo.',
   accountEmailInUse: 'Ese correo ya tiene una cuenta. Inicia sesión con él.',
   accountAliasInvalid: 'El alias admite de 1 a 24 letras, números, espacios, guion, punto o guion bajo.',
   accountUnavailable: 'No se pudo conectar con el servidor. Inténtalo de nuevo.',
@@ -41,12 +42,16 @@ const es = {
   callsign: 'Identificador de comandante',
   callsignPlaceholder: 'Escribe un alias',
   continueGuest: 'Continuar como invitado',
-  privacyNote: 'El alias se conserva solo en este dispositivo durante el prototipo.',
   language: 'Idioma',
   spanish: 'ES',
   english: 'EN',
-  prototype: 'Prototipo visual',
-  commandCenter: 'Centro de mando',
+  documentTitle: 'Stellar Impulse · Interfaz visual',
+  systemsOnline: '● SISTEMAS EN LÍNEA',
+  bridgeChannel: 'SECTOR 01 // PUENTE',
+  menuOperations: 'OPERACIONES',
+  musicToggleLabel: 'MÚSICA',
+  musicToggleMute: 'Silenciar música',
+  musicToggleUnmute: 'Activar música',
   welcome: 'Comandante {name}, el sector espera.',
   menuBody: 'Elige una operación. Las funciones en desarrollo están claramente señaladas.',
   deploy: 'Preparar operación',
@@ -79,11 +84,9 @@ const es = {
   joinInstructions: 'Introduce un código de al menos cuatro caracteres. Durante esta fase se validará localmente.',
   operationBrief: 'Resumen de operación',
   map: 'Mapa',
-  mapValue: 'Umbral Helios',
   objective: 'Objetivo',
   objectiveValue: 'Capturar y mantener el Núcleo',
   duration: 'Duración estimada',
-  durationValue: '12 minutos',
   fleetFormat: 'Formato',
   fleetFormatValue: '1 contra 1 · Flota estándar',
   participants: 'Comandantes',
@@ -120,11 +123,16 @@ const es = {
   testSound: 'Probar',
   soundPanel: 'Sonido',
   soundPanelHelp: 'Ajusta el volumen sin salir de la partida. Se guarda en este dispositivo.',
-  unsavedAudio: 'Si sales sin guardar, el sonido vuelve a como estaba.',
+  unsavedAudio: 'Lo que oyes es una vista previa. Guarda los ajustes para conservarla; si sales antes, te preguntaremos si guardarla o descartarla.',
+  unsavedTitle: 'Tienes cambios sin guardar',
+  unsavedBody: 'Guarda los ajustes para conservarlos o descártalos para volver a como estaban.',
+  saveAndLeave: 'Guardar y salir',
+  discardChanges: 'Descartar cambios',
+  keepEditing: 'Seguir editando',
   controlsDescription: 'Reasigna todas las teclas de juego. Pulsa una tecla o combínala con Ctrl, Alt, Shift o Meta.',
   action: 'Acción',
-  assignedKey: 'Tecla asignada',
   resetCamera: 'Centrar cámara',
+  selectBase: 'Seleccionar base',
   controlSectionOrders: 'Órdenes',
   controlSectionCamera: 'Cámara',
   controlSectionProduction: 'Producción',
@@ -142,9 +150,7 @@ const es = {
   disbandSelected: 'Desbandar selección',
   assignGroup: 'Asignar grupo',
   recallGroup: 'Recuperar grupo',
-  changeKey: 'Cambiar',
   changeKeyFor: 'Cambiar tecla {key} de {action}',
-  removeKey: 'Quitar',
   removeKeyFor: 'Quitar tecla {key} de {action}',
   addKeyFor: 'Asignar tecla a',
   addKey: 'Añadir tecla',
@@ -153,16 +159,17 @@ const es = {
   stopRecording: 'Cancelar',
   bindingConflict: 'Esa combinación ya está asignada a {action}.',
   languageDescription: 'El cambio de idioma se aplica inmediatamente a toda la interfaz.',
+  languageInstantNote: 'El idioma se aplica al instante: no hace falta pulsar «Guardar ajustes».',
   interfaceLanguage: 'Idioma de la interfaz',
   spanishName: 'Español',
   englishName: 'English',
   accessibilityDescription: 'Ajusta la lectura y el movimiento visual sin alterar la simulación.',
   highContrast: 'Contraste reforzado',
-  highContrastDetail: 'Aumenta la separación entre paneles, texto y fondo.',
+  highContrastDetail: 'Bordes más claros y texto secundario más legible en las tarjetas del menú, los ajustes y el HUD de partida.',
   reducedMotion: 'Reducir movimiento',
-  reducedMotionDetail: 'Elimina transiciones y animaciones no esenciales.',
+  reducedMotionDetail: 'Detiene los fondos animados del acceso, el menú y el lobby, quita las transiciones y el temblor de cámara en partida.',
   largeInterfaceText: 'Texto de interfaz ampliado',
-  largeInterfaceTextDetail: 'Aumenta ligeramente el tamaño del texto secundario.',
+  largeInterfaceTextDetail: 'Agranda un 15 % el texto de las tarjetas del menú, los ajustes y el HUD de partida.',
   colorProfile: 'Perfil de color',
   colorDefault: 'Predeterminado',
   colorDeuteranopia: 'Deuteranopia',
@@ -232,10 +239,9 @@ const es = {
   chainSellHelp: 'Comisión del mercado: 5 %. Recibirás {net}.',
   chainListedFor: 'En venta por {price}',
   chainCancel: 'Cancelar anuncio',
-  chainCopies: 'Tienes {count}',
   chainDismiss: 'Cerrar',
   viewMarket: 'Mercado',
-  marketEmpty: 'No hay anuncios activos. Publica una pieza desde tu colección.',
+  marketEmpty: 'No hay anuncios activos. Publica una pieza desde «Mis piezas».',
   marketSeller: 'Vende {seller}',
   marketYours: 'Tu anuncio',
   marketBuy: 'Comprar',
@@ -307,7 +313,6 @@ const es = {
   surrender: 'Rendirse',
   surrenderConfirm: 'Confirmar rendición',
   surrenderIn: 'Podrás rendirte en {time}',
-  nodeStabilizing: 'Estabilizando · {seconds} s',
   attacking: 'Atacando',
   totalHealth: 'Salud total',
   moving: 'En movimiento',
@@ -325,14 +330,10 @@ const es = {
   capture: 'Capturar',
   cancel: 'Cancelar',
   cameraReset: 'Restablecer cámara',
-  preferences: 'Preferencias',
   leaveSimulation: 'Salir de simulación',
   battlefieldReady: 'Campo táctico Phaser',
-  battlefieldStatus: 'SECTOR 01 // UMBRAL HELIOS',
   cameraHint: 'Izquierdo: seleccionar/arrastrar · derecho: ordenar · paneo y enfoque configurables en Ajustes',
   controlGroupsHint: 'Grupos y atajos configurables en Ajustes → Controles',
-  moveTargetHint: 'Mover activo · Elige una celda del campo · {key} para cancelar',
-  moveOrderHint: 'Ruta simulada hacia {x}, {y}',
   developmentControls: 'Development Controls',
   developmentOnly: 'Herramienta temporal · no forma parte de la interfaz final',
   coreState: 'Estado del Núcleo',
@@ -347,7 +348,7 @@ const es = {
   resolutionWarningBody: 'Stellar Impulse está diseñado para pantallas de escritorio de al menos 1024 px.',
 } as const;
 
-type MessageKey = keyof typeof es;
+export type MessageKey = keyof typeof es;
 
 const en: Record<MessageKey, string> = {
   tutorialLabel: 'First practice',
@@ -375,10 +376,11 @@ const en: Record<MessageKey, string> = {
   accountCreate: 'Create account',
   accountModes: 'Account access',
   accountAlias: 'Commander alias',
-  accountCreateHint: 'The password needs at least 8 characters. Your alias is saved to the account and follows you on any device.',
+  accountCreateHint: 'Your alias is saved to the account and follows you on any device.',
   accountConnecting: 'Connecting…',
   accountInvalid: 'Incorrect email or password.',
-  accountRegisterInvalid: 'Check the email and use a password of 8 to 128 characters.',
+  accountRegisterInvalid: 'Check the email address.',
+  accountPasswordWeak: 'The password needs 8 to 128 characters, a lowercase letter, an uppercase letter and a symbol.',
   accountEmailInUse: 'That email already has an account. Sign in with it.',
   accountAliasInvalid: 'The alias takes 1 to 24 letters, numbers, spaces, hyphens, dots or underscores.',
   accountUnavailable: 'Could not connect to the server. Please try again.',
@@ -388,12 +390,16 @@ const en: Record<MessageKey, string> = {
   callsign: 'Commander identifier',
   callsignPlaceholder: 'Enter an alias',
   continueGuest: 'Continue as guest',
-  privacyNote: 'The alias stays on this device only during the prototype.',
   language: 'Language',
   spanish: 'ES',
   english: 'EN',
-  prototype: 'Visual prototype',
-  commandCenter: 'Command center',
+  documentTitle: 'Stellar Impulse · Visual interface',
+  systemsOnline: '● SYSTEMS ONLINE',
+  bridgeChannel: 'SECTOR 01 // BRIDGE',
+  menuOperations: 'OPERATIONS',
+  musicToggleLabel: 'MUSIC',
+  musicToggleMute: 'Mute music',
+  musicToggleUnmute: 'Unmute music',
   welcome: 'Commander {name}, the sector awaits.',
   menuBody: 'Choose an operation. Features still in development are clearly marked.',
   deploy: 'Prepare operation',
@@ -426,11 +432,9 @@ const en: Record<MessageKey, string> = {
   joinInstructions: 'Enter a code with at least four characters. During this phase it is validated locally.',
   operationBrief: 'Operation brief',
   map: 'Map',
-  mapValue: 'Helios Threshold',
   objective: 'Objective',
   objectiveValue: 'Capture and hold the Core',
   duration: 'Estimated duration',
-  durationValue: '12 minutes',
   fleetFormat: 'Format',
   fleetFormatValue: '1 versus 1 · Standard fleet',
   participants: 'Commanders',
@@ -467,11 +471,16 @@ const en: Record<MessageKey, string> = {
   testSound: 'Test',
   soundPanel: 'Sound',
   soundPanelHelp: 'Change the volume without leaving the match. Saved on this device.',
-  unsavedAudio: 'Leave without saving and the sound goes back to how it was.',
+  unsavedAudio: 'What you hear is a preview. Save the settings to keep it; if you leave first, you will be asked to save or discard it.',
+  unsavedTitle: 'You have unsaved changes',
+  unsavedBody: 'Save the settings to keep them or discard them to go back to how they were.',
+  saveAndLeave: 'Save and leave',
+  discardChanges: 'Discard changes',
+  keepEditing: 'Keep editing',
   controlsDescription: 'Rebind every game shortcut. Press any key or combine it with Ctrl, Alt, Shift or Meta.',
   action: 'Action',
-  assignedKey: 'Assigned key',
   resetCamera: 'Center camera',
+  selectBase: 'Select base',
   controlSectionOrders: 'Orders',
   controlSectionCamera: 'Camera',
   controlSectionProduction: 'Production',
@@ -489,9 +498,7 @@ const en: Record<MessageKey, string> = {
   disbandSelected: 'Disband selection',
   assignGroup: 'Assign group',
   recallGroup: 'Recall group',
-  changeKey: 'Change',
   changeKeyFor: 'Change {key} for {action}',
-  removeKey: 'Remove',
   removeKeyFor: 'Remove {key} from {action}',
   addKeyFor: 'Assign key to',
   addKey: 'Add key',
@@ -500,16 +507,17 @@ const en: Record<MessageKey, string> = {
   stopRecording: 'Cancel',
   bindingConflict: 'That combination is already assigned to {action}.',
   languageDescription: 'Language changes apply immediately across the interface.',
+  languageInstantNote: 'Language applies instantly: there is no need to press Save settings.',
   interfaceLanguage: 'Interface language',
   spanishName: 'Español',
   englishName: 'English',
   accessibilityDescription: 'Adjust readability and visual motion without changing the simulation.',
   highContrast: 'Enhanced contrast',
-  highContrastDetail: 'Increases separation between panels, text and background.',
+  highContrastDetail: 'Brighter borders and easier-to-read secondary text on the menu cards, the settings and the match HUD.',
   reducedMotion: 'Reduce motion',
-  reducedMotionDetail: 'Removes non-essential transitions and animations.',
+  reducedMotionDetail: 'Stops the animated backdrops of sign-in, the menu and the lobby, and removes transitions and camera shake in matches.',
   largeInterfaceText: 'Larger interface text',
-  largeInterfaceTextDetail: 'Slightly increases secondary text size.',
+  largeInterfaceTextDetail: 'Makes the text of the menu cards, the settings and the match HUD 15% larger.',
   colorProfile: 'Color profile',
   colorDefault: 'Default',
   colorDeuteranopia: 'Deuteranopia',
@@ -579,10 +587,9 @@ const en: Record<MessageKey, string> = {
   chainSellHelp: 'Market fee: 5%. You will receive {net}.',
   chainListedFor: 'Listed for {price}',
   chainCancel: 'Cancel listing',
-  chainCopies: 'You own {count}',
   chainDismiss: 'Dismiss',
   viewMarket: 'Market',
-  marketEmpty: 'No open listings. List a piece from your collection.',
+  marketEmpty: 'No open listings. List a piece from My pieces.',
   marketSeller: 'Sold by {seller}',
   marketYours: 'Your listing',
   marketBuy: 'Buy',
@@ -654,7 +661,6 @@ const en: Record<MessageKey, string> = {
   surrender: 'Surrender',
   surrenderConfirm: 'Confirm surrender',
   surrenderIn: 'Surrender available in {time}',
-  nodeStabilizing: 'Stabilizing · {seconds} s',
   attacking: 'Attacking',
   totalHealth: 'Total health',
   moving: 'Moving',
@@ -672,14 +678,10 @@ const en: Record<MessageKey, string> = {
   capture: 'Capture',
   cancel: 'Cancel',
   cameraReset: 'Reset camera',
-  preferences: 'Preferences',
   leaveSimulation: 'Leave simulation',
   battlefieldReady: 'Phaser tactical field',
-  battlefieldStatus: 'SECTOR 01 // HELIOS THRESHOLD',
   cameraHint: 'Left: select/drag · right: order · pan and focus are configurable in Settings',
   controlGroupsHint: 'Groups and shortcuts are configurable in Settings → Controls',
-  moveTargetHint: 'Move active · Choose a field cell · {key} to cancel',
-  moveOrderHint: 'Simulated route to {x}, {y}',
   developmentControls: 'Development Controls',
   developmentOnly: 'Temporary tool · not part of the final interface',
   coreState: 'Core state',
@@ -694,23 +696,48 @@ const en: Record<MessageKey, string> = {
   resolutionWarningBody: 'Stellar Impulse is designed for desktop displays at least 1024 px wide.',
 };
 
-type Translate = (key: MessageKey, values?: Record<string, string | number>) => string;
+export type MessageValues = Record<string, string | number>;
+type Translate = (key: MessageKey, values?: MessageValues) => string;
+
+/** Every message key, in declaration order. */
+export const MESSAGE_KEYS = Object.keys(es) as MessageKey[];
+
+/** Replaces every `{name}` in the template; placeholders without a value stay as they are. */
+export function formatMessage(template: string, values: MessageValues = {}): string {
+  return Object.entries(values).reduce(
+    (message, [name, replacement]) => message.replaceAll(`{${name}}`, String(replacement)),
+    template,
+  );
+}
+
+/** The message for `key` in `locale`, outside React (Phaser scenes, plain modules). */
+export function translate(locale: Locale, key: MessageKey, values?: MessageValues): string {
+  return formatMessage((locale === 'es' ? es : en)[key], values);
+}
+
+const LOCALE_KEY = 'impulso.locale';
+
+/** The language the player chose, read straight from storage: English when saved so, Spanish otherwise. */
+export function getActiveLocale(): Locale {
+  try {
+    return localStorage.getItem(LOCALE_KEY) === 'en' ? 'en' : 'es';
+  } catch {
+    return 'es';
+  }
+}
 
 const I18nContext = createContext<{ locale: Locale; setLocale(locale: Locale): void; t: Translate } | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale] = useState<Locale>(() => localStorage.getItem('impulso.locale') === 'en' ? 'en' : 'es');
+  const [locale, setLocale] = useState<Locale>(getActiveLocale);
   useEffect(() => {
-    localStorage.setItem('impulso.locale', locale);
+    try { localStorage.setItem(LOCALE_KEY, locale); } catch { /* Blocked storage: the choice lasts until the page reloads. */ }
     document.documentElement.lang = locale;
   }, [locale]);
   const value = useMemo(() => ({
     locale,
     setLocale,
-    t: ((key, values = {}) => Object.entries(values).reduce(
-      (message, [name, replacement]) => message.replace(`{${name}}`, String(replacement)),
-      (locale === 'es' ? es : en)[key],
-    )) as Translate,
+    t: ((key, values) => translate(locale, key, values)) as Translate,
   }), [locale]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

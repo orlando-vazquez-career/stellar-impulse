@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createSquad, createWorld, type PlayerId, type ResourceNode, type World } from '../index.js';
 import { advanceCapture } from './mechanics.js';
+import { capturePresence } from '../index.js';
 
 const REQUIRED = 30;
 /** A cleared node at (10, 10) with the given capture area and ships placed by hand. */
@@ -78,5 +79,18 @@ describe('capture pace', () => {
     world.squads.push(createSquad('rival', 'p2', 'interceptor', { x: 11, y: 10 }));
     advanceCapture(world, world.core, REQUIRED);
     expect(world.core.progress).toEqual({ p1: 1, p2: 0 });
+  });
+});
+
+describe('capture presence', () => {
+  it('counts each side inside the disc and leaves out scouts, decoys and ships beyond the radius', () => {
+    const { world, node } = scene(2, [['p1', 10, 10], ['p1', 12, 10], ['p2', 11, 11], ['p2', 12, 12], ['p1', 13, 10]]);
+    world.squads.push(createSquad('p1-scout', 'p1', 'explorer', { x: 9, y: 10 }));
+    const decoy = createSquad('p2-decoy', 'p2', 'bomber', { x: 10, y: 9 });
+    decoy.isDecoy = true;
+    world.squads.push(decoy);
+    expect(capturePresence(world, node)).toEqual({ p1: 2, p2: 1 });
+    // The count only looks: it never moves the progress.
+    expect(node.progress).toEqual({ p1: 0, p2: 0 });
   });
 });
