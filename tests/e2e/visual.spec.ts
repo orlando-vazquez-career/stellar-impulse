@@ -207,6 +207,53 @@ test.describe('visual interface foundation', () => {
     expect(stored.accessibility.highContrast).toBe(true);
   });
 
+  test('leaves key recording to the leave dialog and stops it when the changes are discarded', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openApp(page, '/visual?adapter=mock');
+    await page.getByLabel('Identificador de comandante').fill('Vega');
+    await page.getByRole('button', { name: 'Continuar como invitado' }).click();
+    const storedBefore = await page.evaluate(() => localStorage.getItem('impulso.visual-preferences'));
+    const settings = page.locator('.vi-settings-panel');
+    const dialog = page.getByRole('alertdialog');
+    const recording = page.locator('.vi-control-settings__recording');
+    const move = page.getByRole('group', { name: 'Mover' });
+    const attack = page.getByRole('group', { name: 'Atacar' });
+    const openControls = async () => {
+      await page.getByRole('button', { name: /Ajustes/ }).click();
+      await page.getByRole('button', { name: /Controles/ }).click();
+    };
+
+    // Something to save, then a key recording still waiting for its key.
+    await openControls();
+    await attack.getByRole('button', { name: 'Quitar tecla G de Atacar' }).click();
+    await expect(attack.locator('kbd')).toHaveCount(0);
+    await move.getByRole('button', { name: 'Cambiar tecla M de Mover' }).click();
+    await expect(recording).toBeVisible();
+
+    // Escape belongs to the dialog: it keeps editing and is not recorded as the new key.
+    await page.getByRole('button', { name: 'Volver al centro de mando' }).click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(settings).toBeVisible();
+    await expect(move.locator('kbd')).toHaveText(['M']);
+    await expect(recording).toBeVisible();
+
+    // Discarding drops the change and the recording with it.
+    await page.getByRole('button', { name: 'Volver al centro de mando' }).click();
+    await dialog.getByRole('button', { name: 'Descartar cambios' }).click();
+    await expect(settings).toHaveCount(0);
+    await page.keyboard.press('z');
+    expect(await page.evaluate(() => localStorage.getItem('impulso.visual-preferences'))).toBe(storedBefore);
+    await openControls();
+    await expect(recording).toHaveCount(0);
+    await expect(move.locator('kbd')).toHaveText(['M']);
+    await expect(attack.locator('kbd')).toHaveText(['G']);
+    await page.keyboard.press('x');
+    await expect(move.locator('kbd')).toHaveText(['M']);
+    await expect(recording).toHaveCount(0);
+  });
+
   test('mutes only the music from the command center and keeps it muted', async ({ page }) => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await openApp(page, '/visual?adapter=mock');
