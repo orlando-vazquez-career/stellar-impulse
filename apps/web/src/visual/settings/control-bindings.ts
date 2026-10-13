@@ -48,6 +48,30 @@ export const CONTROL_SECTIONS: ReadonlyArray<{ id: 'orders' | 'camera' | 'produc
 
 export const CONTROL_ACTIONS: readonly ControlAction[] = CONTROL_SECTIONS.flatMap((section) => [...section.actions]);
 
+export type ControlLayoutId = 'standard' | 'wasd' | 'arrows';
+
+/** Built-in layouts reuse the current map; only camera movement changes in the alternatives. */
+const CONTROL_LAYOUTS: Record<ControlLayoutId, ControlBindings> = {
+  standard: DEFAULT_CONTROL_BINDINGS,
+  wasd: { ...DEFAULT_CONTROL_BINDINGS, panUp: ['KeyW'], panDown: ['KeyS'], panLeft: ['KeyA'], panRight: ['KeyD'] },
+  arrows: { ...DEFAULT_CONTROL_BINDINGS, panUp: ['ArrowUp'], panDown: ['ArrowDown'], panLeft: ['ArrowLeft'], panRight: ['ArrowRight'] },
+};
+
+/** Return an independent copy so editing a preset cannot mutate the defaults. */
+export function controlBindingsForLayout(layout: ControlLayoutId): ControlBindings {
+  return Object.fromEntries(CONTROL_ACTIONS.map((action) => [action, [...CONTROL_LAYOUTS[layout][action]]])) as ControlBindings;
+}
+
+/** `null` means the user has a custom layout rather than an exact built-in preset. */
+export function controlLayoutForBindings(bindings: ControlBindings): ControlLayoutId | null {
+  return (Object.keys(CONTROL_LAYOUTS) as ControlLayoutId[]).find((layout) =>
+    CONTROL_ACTIONS.every((action) => {
+      const candidate = CONTROL_LAYOUTS[layout][action];
+      const actual = bindings[action] ?? [];
+      return candidate.length === actual.length && candidate.every((binding, index) => binding === actual[index]);
+    })) ?? null;
+}
+
 const modifierOrder = ['Ctrl', 'Alt', 'Shift', 'Meta'] as const;
 type Modifier = typeof modifierOrder[number];
 

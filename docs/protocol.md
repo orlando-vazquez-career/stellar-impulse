@@ -6,7 +6,7 @@ Contrato de red para `campaign`, con mensajes versionados por `CAMPAIGN_PROTOCOL
 
 La sala admite dos asientos (`p1` al crear y `p2` al unirse), y no admite participantes nuevos una vez iniciada la campaña. Cada jugador necesita un token de cuenta obtenido por `/auth/register` o `/auth/login`; ver [autenticación y salas](auth-multiplayer.md). La misma cuenta no puede ocupar los dos asientos (`already_in_room`). `name` es opcional: admite de 1 a 24 letras, números, espacios, `_`, `.` o `-`; si se omite, el servidor usa `Comandante`. Una versión de campaña incorrecta falla con `unsupported_version`; opciones inválidas fallan con `invalid_join`. El `roomId` generado es el código de invitación de 12 caracteres hexadecimales. `phase.playerId` identifica el asiento propio desde el lobby; los alias pueden coincidir. Si alguien sale antes de empezar, su plaza vuelve a estar disponible y el asiento de quien permanece no cambia.
 
-El creador elige uno de los mapas de `PLAYABLE_MAPS`, la misma lista que muestran campaña/práctica y multijugador. Actualmente se admite `map: 'espiral'` (predeterminado); `sector-01` y `battlefield` quedan fuera del catálogo jugable y se rechazan en la admisión. El invitado hereda esa elección sin enviar `map`; `phase.renderMap` la anuncia a ambos desde el lobby y los tres sectores se juegan en ese mapa. No se aceptan otros nombres ni terreno arbitrario. Al unirse, el servidor carga los aumentos desbloqueados de cada cuenta: son el pool de sus ofertas.
+El creador elige uno de los mapas de `PLAYABLE_MAPS`, la misma lista que muestran campaña/práctica y multijugador. Actualmente se admite `map: 'espiral'` (predeterminado); `sector-01` y `battlefield` quedan fuera del catálogo jugable y se rechazan en la admisión. También puede elegir `campaignMode: 'skirmish' | 'campaign'`: la escaramuza dura un sector y la campaña completa dura tres; si se omite, se conserva el valor predeterminado `skirmish`. El invitado no envía estas opciones: `phase.renderMap` y `phase.sectors` anuncian el mapa y la duración elegidos desde el lobby. Todos los sectores usan el mapa seleccionado. No se aceptan otros nombres ni terreno arbitrario. Al unirse, el servidor carga los aumentos desbloqueados de cada cuenta: son el pool de sus ofertas.
 
 ## Flujo del cliente
 
@@ -33,8 +33,11 @@ function bindRoom(nextRoom: Room): void {
   room.onMessage('campaign_end', ({ result, reward }) => showResult(result, reward));
 }
 
-async function createCampaign(name = 'Ana'): Promise<Room> {
-  const nextRoom = await client.create('campaign', { protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: accessToken, map: 'espiral' });
+async function createCampaign(name = 'Ana', campaignMode: 'skirmish' | 'campaign' = 'skirmish'): Promise<Room> {
+  const nextRoom = await client.create('campaign', {
+    protocolVersion: CAMPAIGN_PROTOCOL_VERSION, name, token: accessToken, map: 'espiral',
+    ...(campaignMode === 'campaign' ? { campaignMode } : {}),
+  });
   bindRoom(nextRoom);
   return nextRoom;
 }
@@ -116,4 +119,4 @@ Cada vista de `training` trae `pausable` y `paused`. `pausable` dice si la pausa
 - Sala y máquina de campaña: [`apps/server/src/campaign-room.ts`](../apps/server/src/campaign-room.ts) y [`apps/server/src/campaign/machine.ts`](../apps/server/src/campaign/machine.ts).
 - Aumentos de campaña: `prepareCampaignSector` en [`packages/sim/src/augments/runtime.ts`](../packages/sim/src/augments/runtime.ts).
 - Contrato compartido de fase: `CampaignPhaseView` exportado por `@impulso/state`, en [`packages/state/src/campaign.ts`](../packages/state/src/campaign.ts).
-- Pruebas de contrato: [`apps/server/src/campaign-room.test.ts`](../apps/server/src/campaign-room.test.ts), [`apps/server/src/campaign-flow.test.ts`](../apps/server/src/campaign-flow.test.ts), [`apps/server/src/campaign/machine.test.ts`](../apps/server/src/campaign/machine.test.ts) y [`packages/input/src/protocol.test.ts`](../packages/input/src/protocol.test.ts).
+- Pruebas de contrato: [`apps/server/tests/unit/campaign-room.test.ts`](../apps/server/tests/unit/campaign-room.test.ts), [`apps/server/tests/unit/campaign-flow.test.ts`](../apps/server/tests/unit/campaign-flow.test.ts), [`apps/server/tests/unit/campaign/machine.test.ts`](../apps/server/tests/unit/campaign/machine.test.ts) y [`packages/input/tests/unit/protocol.test.ts`](../packages/input/tests/unit/protocol.test.ts).

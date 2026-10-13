@@ -23,6 +23,13 @@ export const PRACTICE_MAPS = [...PLAYABLE_MAPS, {
     es: '115×115. Archipiélago en el vacío: estaciones capturables, barreras que se rompen y una señal que no debería estar ahí.',
     en: '115×115. An archipelago in the void: capturable stations, breakable barriers and a signal that should not be there.',
   },
+}, {
+  id: 'movement-lab',
+  name: { es: 'Laboratorio de movimiento', en: 'Movement Lab' },
+  description: {
+    es: '31×31. Pruebas de rutas, desvíos, pasillos estrechos y formaciones; sin IA, combate ni economía.',
+    en: '31×31. Test routes, detours, narrow gates and formations; no AI, combat or economy.',
+  },
 }] as const;
 
 export type PlayableMapId = typeof PLAYABLE_MAPS[number]['id'];

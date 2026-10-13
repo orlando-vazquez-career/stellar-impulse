@@ -7,6 +7,7 @@ export type ClickSelection =
   /** A double click on a ship: every own ship of its class on screen. */
   | { kind: 'class'; shipId: string }
   | { kind: 'ship'; shipId: string }
+  | { kind: 'station'; stationId: string }
   | { kind: 'base'; base: PickedBase }
   | { kind: 'clear' };
 
@@ -14,9 +15,11 @@ export type ClickSelection =
  * On pointer up: a drag selects ships in its box and never a base; a ship under the cursor wins over a base under
  * it; otherwise the base under the cursor (`baseAt`, only asked then) is selected, and open ground clears.
  */
-export function clickSelection(input: { dragged: boolean; clickedId: string | null; doubleClick: boolean; baseAt(): PickedBase | null }): ClickSelection {
+export function clickSelection(input: { dragged: boolean; clickedId: string | null; doubleClick: boolean; stationAt?(): string | null; baseAt(): PickedBase | null }): ClickSelection {
   if (input.dragged) return { kind: 'box' };
   if (input.clickedId) return input.doubleClick ? { kind: 'class', shipId: input.clickedId } : { kind: 'ship', shipId: input.clickedId };
+  const stationId = input.stationAt?.();
+  if (stationId) return { kind: 'station', stationId };
   const base = input.baseAt();
   return base ? { kind: 'base', base } : { kind: 'clear' };
 }

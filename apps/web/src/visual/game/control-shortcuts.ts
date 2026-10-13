@@ -26,7 +26,9 @@ export function controlGroupForAction(action: ControlAction): ControlGroupShortc
 
 export type ControlGroupNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 export type ControlGroupMode = 'assign' | 'recall';
-export type ControlGroupAssignments = Partial<Record<ControlGroupNumber, string[]>>;
+export type ControlGroupStructure = { kind: 'base'; side: 'own' | 'enemy' } | { kind: 'station'; id: string };
+export type ControlGroupAssignment = string[] | { kind: 'structure'; target: ControlGroupStructure };
+export type ControlGroupAssignments = Partial<Record<ControlGroupNumber, ControlGroupAssignment>>;
 
 export interface ControlGroupShortcut {
   group: ControlGroupNumber;
@@ -65,7 +67,9 @@ export function assignControlGroup(
   group: ControlGroupNumber,
   selectedIds: readonly string[],
   squads: readonly ControlGroupSquad[],
+  selectedStructure?: ControlGroupStructure,
 ): ControlGroupAssignments {
+  if (selectedStructure) return { ...assignments, [group]: { kind: 'structure', target: selectedStructure } };
   const selected = new Set(selectedIds);
   const ids = squads.filter((squad) => selected.has(squad.id) && isAvailableFriendly(squad)).map((squad) => squad.id);
   return ids.length ? { ...assignments, [group]: ids } : assignments;
@@ -75,9 +79,15 @@ export function recallControlGroup(
   assignments: ControlGroupAssignments,
   group: ControlGroupNumber,
   squads: readonly ControlGroupSquad[],
-): string[] {
+  structures: readonly ControlGroupStructure[] = [],
+): string[] | ControlGroupStructure | null {
+  const assignment = assignments[group];
+  if (assignment && !Array.isArray(assignment)) {
+    const key = (structure: ControlGroupStructure) => structure.kind === 'base' ? `base:${structure.side}` : `station:${structure.id}`;
+    return structures.some((structure) => key(structure) === key(assignment.target)) ? assignment.target : null;
+  }
   const available = new Set(squads.filter(isAvailableFriendly).map((squad) => squad.id));
-  return (assignments[group] ?? []).filter((id) => available.has(id));
+  return (assignment ?? []).filter((id) => available.has(id));
 }
 
 export function focusSelectedSquads(

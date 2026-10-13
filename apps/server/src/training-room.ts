@@ -4,11 +4,15 @@ import type { AuthService } from './auth';
 import { savedReward } from './rewards';
 import { setAugmentPool, carryAugments, emptyProgress, profileFor, type MatchReward } from '@impulso/sim';
 import { parseCommand } from '@impulso/input';
-import { createSectorWorld, createMatchWorld, initializeAugments, applyCommand, runTrainingRival, stepWorld, effectiveFleetCap, pickAugment, rerollAugments, chooseAiAugment, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId, type World } from '@impulso/sim';
+import { createSectorWorld, createMatchWorld, createMovementSandboxWorld, initializeAugments, applyCommand, runTrainingRival, stepWorld, effectiveFleetCap, pickAugment, rerollAugments, chooseAiAugment, type AiMemory, type PlayerId, type RivalDifficulty, type TrainingMapId, type World } from '@impulso/sim';
 import { viewFor, type MatchLobbyView, type PlayerView } from '@impulso/state';
 
 /** Diego's Espiral Estelar is the training map unless the creator asks for Sector 01. */
-const DEFAULT_MAP: TrainingMapId = 'espiral';
+const DEFAULT_MAP = 'espiral' satisfies TrainingMapId;
+
+export function usesAiRival(map: TrainingMapId, lobby: boolean, opponent: unknown): boolean {
+  return map !== 'movement-lab' && !lobby && opponent !== 'human';
+}
 
 export class TrainingRoom extends Room {
   protected auth!: AuthService;
@@ -71,23 +75,31 @@ export class TrainingRoom extends Room {
   onCreate(options?: unknown) {
     const fields = typeof options === 'object' && options !== null ? options as { difficulty?: unknown; map?: unknown; duration?: unknown; opponent?:unknown; lobby?:unknown; testTimeScale?: unknown; testSeed?: unknown; testPaused?: unknown } : {};
     this.lobby=fields.lobby===true;
-    this.aiRival=!this.lobby && fields.opponent!=='human';
-    this.map=fields.map==='sector-01'||fields.map==='espiral-2'||fields.map==='trascendencia'?fields.map:DEFAULT_MAP;
+    this.map=fields.map==='sector-01'||fields.map==='espiral-2'||fields.map==='trascendencia'
+      ||(fields.map==='movement-lab'&&!this.lobby)?fields.map:DEFAULT_MAP;
+    this.aiRival=usesAiRival(this.map,this.lobby,fields.opponent);
     const carried = (options as { carried?: unknown } | undefined)?.carried;
     if (this.aiRival && Array.isArray(carried)) this.carried = [...new Set(carried.filter((id): id is string => typeof id === 'string'))].slice(0, 9);
     const requested = fields.difficulty;
     if (requested === 'easy' || requested === 'medium' || requested === 'hard') this.difficulty = requested;
-    this.world = createMatchWorld(this.map, fields.duration === 'complete' ? 'complete' : 'skirmish', randomInt(0x100000000));
+    const movementSandbox = this.map === 'movement-lab';
+    this.world = movementSandbox ? createMovementSandboxWorld()
+      : createMatchWorld(this.map, fields.duration === 'complete' ? 'complete' : 'skirmish', randomInt(0x100000000));
     if (process.env.GAME_TEST_MODE === '1' && process.env.NODE_ENV !== 'production') {
       if (Number.isSafeInteger(fields.testTimeScale) && Number(fields.testTimeScale) >= 1 && Number(fields.testTimeScale) <= 30) this.timeScale = Number(fields.testTimeScale);
       if (Number.isSafeInteger(fields.testSeed)) this.world.seed = Number(fields.testSeed) >>> 0;
       // Opens already paused, before the AI takes its opening card, so a test can seat a second human without racing the clock.
       if (fields.testPaused === true && this.aiRival) this.paused = true;
-      initializeAugments(this.world);
+      if (!movementSandbox) initializeAugments(this.world);
     }
     this.setPrivate(true);
     this.onMessage('ready',client=>{
-      const player=this.seats.get(client.sessionId);if(!this.lobby||this.deployed||!player)return;
+      const player=this.seats.get(client.sessionId);if(!player)return;
+      if(this.map==='movement-lab'&&!this.lobby){
+        if(!this.readyPlayers.has(player)){this.readyPlayers.add(player);this.sendView(client,player);}
+        return;
+      }
+      if(!this.lobby||this.deployed)return;
       this.readyPlayers.add(player);
       this.deployed=this.usedSeats.size===2 && this.readyPlayers.size===2;
       this.sendLobby();
@@ -127,6 +139,7 @@ export class TrainingRoom extends Room {
       if(result.accepted) this.world=result.world;else this.reject(client,result.reason);
     });
     this.setSimulationInterval(() => {
+      if(this.map==='movement-lab'&&!this.readyPlayers.has('p1'))return;
       if(this.lobby&&!this.deployed){this.sendLobby();return;}
       // A pause skips the rival and the simulation; views keep flowing so the client stays in step.
       for (let tick=0;!this.paused && tick<this.timeScale && this.world.winner===null;tick++) {
@@ -185,7 +198,7 @@ export class TrainingRoom extends Room {
     this.usedSeats.add(player);
     this.seats.set(client.sessionId, player);
     this.names.set(player,typeof options?.name==='string'?options.name.trim().slice(0,24):'Comandante');
-    if(!this.lobby)this.sendView(client,player);
+    if(!this.lobby&&this.map!=='movement-lab')this.sendView(client,player);
     this.sendLobby();
     if (this.usedSeats.size === 2) void this.lock();
   }
@@ -204,7 +217,9 @@ export class TrainingRoom extends Room {
     if(!this.lobby)return;
     const seat=(p:PlayerId)=>this.usedSeats.has(p)?{name:this.names.get(p)??'Comandante',ready:this.readyPlayers.has(p)}:null;
     for(const client of this.clients){const playerId=this.seats.get(client.sessionId);if(!playerId)continue;
-      const view:MatchLobbyView={roomId:this.roomId,phase:this.world.winner?'results':this.deployed?'sector':'lobby',playerId,map:this.map,duration:this.world.duration!,seats:{p1:seat('p1'),p2:seat('p2')}};
+      const currentMap = this.map;
+      const map = currentMap === 'movement-lab' ? DEFAULT_MAP : currentMap;
+      const view:MatchLobbyView={roomId:this.roomId,phase:this.world.winner?'results':this.deployed?'sector':'lobby',playerId,map,duration:this.world.duration!,seats:{p1:seat('p1'),p2:seat('p2')}};
       client.send('matchLobby',view);
     }
   }

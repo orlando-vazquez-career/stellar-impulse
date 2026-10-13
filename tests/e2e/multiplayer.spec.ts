@@ -39,6 +39,7 @@ test('two accounts play the campaign on Espiral and recover the same match after
     await host.getByRole('button', { name: /Crear sala multijugador/ }).click();
     await expect(host.getByRole('button', { name: /Espiral Estelar.*96×96/ })).toBeVisible();
     await expect(host.locator('.vi-briefing')).not.toContainText('Sector 01');
+    await expect(host.locator('.vi-briefing')).toContainText('Escaramuza · 1 sector');
     await expect(host.locator('.vi-briefing').getByRole('img', { name: /Vista previa/ })).toHaveAttribute('data-map-id', 'espiral');
     await host.getByRole('button', { name: 'Crear sala', exact: true }).click();
     const code = host.getByTestId('multiplayer-room-code');
@@ -54,6 +55,7 @@ test('two accounts play the campaign on Espiral and recover the same match after
     await expect(guest.getByTestId('multiplayer-room-code')).toHaveText(roomId);
     await expect(guest.locator('.vi-briefing')).toContainText('Espiral Estelar');
     await expect(guest.locator('.vi-briefing')).not.toContainText('Sector 01');
+    await expect(guest.locator('.vi-briefing')).toContainText('Escaramuza · 1 sector');
     await expect(guest.locator('.vi-briefing').getByRole('img', { name: /Vista previa/ })).toHaveAttribute('data-map-id', 'espiral');
     // Each commander sees their own base blue in the preview, as in the match: the guest sits in p2.
     await expect(host.locator('.vi-briefing').getByRole('img', { name: /Vista previa/ })).toHaveAttribute('data-self', 'p1');
@@ -128,6 +130,35 @@ test('lets a commander correct an invalid room name before creating a room', asy
   }));
   expect(outside).toBe(false);
   await page.getByRole('button', { name: /Volver al mando/ }).click();
+});
+
+test('lets the host choose a three-sector campaign and shows it to the guest', async ({ browser, request }) => {
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  const host = await hostContext.newPage();
+  const guest = await guestContext.newPage();
+  try {
+    await signIn(host, request, 'Vega');
+    await signIn(guest, request, 'Nova');
+    await host.getByRole('button', { name: /Crear sala multijugador/ }).click();
+    const campaignChoice = host.getByRole('button', { name: /Campaña completa.*3 sectores/ });
+    await expect(campaignChoice).toBeVisible();
+    await campaignChoice.click();
+    await expect(campaignChoice).toHaveAttribute('aria-pressed', 'true');
+    await expect(host.locator('.vi-briefing')).toContainText('Campaña completa · 3 sectores');
+    await host.screenshot({ path: 'test-results/multiplayer-campaign-mode-selection.png' });
+    await host.getByRole('button', { name: 'Crear sala', exact: true }).click();
+    const roomId = (await host.getByTestId('multiplayer-room-code').innerText()).trim();
+
+    await guest.getByRole('button', { name: /Unirse a sala/ }).click();
+    await guest.getByLabel('Código de sala').fill(roomId);
+    await guest.getByRole('button', { name: 'Unirse a sala', exact: true }).click();
+    await expect(host.locator('.vi-briefing')).toContainText('Campaña completa · 3 sectores');
+    await expect(guest.locator('.vi-briefing')).toContainText('Campaña completa · 3 sectores');
+    await expect(guest.locator('.vi-briefing')).toContainText('Espiral Estelar');
+  } finally {
+    await Promise.allSettled([hostContext.close(), guestContext.close()]);
+  }
 });
 
 test('shows an invalid code error and allows leaving a room before the match', async ({ page, request }) => {

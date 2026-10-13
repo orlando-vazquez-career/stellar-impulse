@@ -1,6 +1,6 @@
 import { BASE_INCOME_TICKS, baseDamage, fleetCapacity } from '../economia.js';
 import { distance, type PlayerId, type Squad, type World } from '../index.js';
-import { statsFor, type ShipStats, type StatsContext } from '../stats.js';
+import { statsFor, type ShipStats, type StatsContext } from '../naves/index.js';
 import { hasModule, nodeRate, RADAR, rivalOf, SHIPYARD } from '../base.js';
 import { AUGMENTS_BY_ID, type Effect } from './catalog.js';
 import { nebulaHides, nebulaVision } from '../mecanicas/nebulosas.js';

@@ -13,6 +13,10 @@ pnpm contracts:fmt
 pnpm contracts:build
 ```
 
+Los tests unitarios viven en `apps/<app>/tests/unit` y `packages/<paquete>/tests/unit`,
+manteniendo subcarpetas por dominio. Playwright permanece en `tests/e2e`; las suites
+propias de mapas Tiled se quedan junto a cada mapa en `src/tiled-maps/.../logica/test`.
+
 Unitarios: parser, propiedad, repetición de secuencias, determinismo, daño simultáneo,
 captura después de PvE y vistas sin enemigos ocultos. Chain: validación RPC, red incorrecta,
 errores y adapter de wallet con test double. Rust: versión del contrato de arranque.
@@ -31,16 +35,16 @@ La suite mantiene login, entrenamiento, mapa, cámara, hangar y ajustes.
 entrar con el campo de alias vacío y desde otro contexto de navegador, y recupera el alias
 de la cuenta; también comprueba los mensajes de alias no válido y correo ya registrado.
 Los tres sectores con aumentos arrastrados se prueban en el servidor
-(`apps/server/src/campaign-flow.test.ts`), no en el navegador.
+(`apps/server/tests/unit/campaign-flow.test.ts`), no en el navegador.
 Estas pruebas no certifican accesibilidad completa ni balance.
 
 Ejecutar solo la aceptación de salas con `pnpm test:e2e tests/e2e/multiplayer.spec.ts`.
 
-Cuentas en Postgres: `apps/server/src/postgres-store.test.ts` corre solo con
+Cuentas en Postgres: `apps/server/tests/unit/postgres-store.test.ts` corre solo con
 `DATABASE_URL_TEST` apuntando a una base descartable (vacía las tablas en cada caso).
 En CI lo ejecuta el job `database` contra un servicio Postgres 17. En local, con el
 contenedor de [desarrollo](development.md):
-`DATABASE_URL_TEST=postgresql://impulso:impulso@127.0.0.1:55432/impulso pnpm exec vitest run apps/server/src/postgres-store.test.ts`.
+`DATABASE_URL_TEST=postgresql://impulso:***@127.0.0.1:55432/impulso pnpm exec vitest run apps/server/tests/unit/postgres-store.test.ts`.
 Cubre reinicio y login, XP, desafíos y mejores marcas de una partida, emblemas de campaña,
 resultados repetidos desde otro proceso, correo duplicado entre procesos, dos resultados
 simultáneos, alias de comandante (registro, cambio y reinicio) e importación del archivo

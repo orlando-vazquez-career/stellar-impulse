@@ -185,6 +185,8 @@ export interface GameplayViewModel {
   stations?: { id: string; x: number; y: number; prices: Record<SquadType, number> }[];
   /** The campaign battlefield currently provides a fixed starting fleet. */
   canProduce?: boolean;
+  /** Movement lab is a practice sandbox without combat, economy, capture or match objectives. */
+  movementSandbox?: boolean;
   unitStats?: Record<SquadType, ShipStats>;
   augments?: AugmentView;
   chart?: {nodes:{x:number;y:number}[];guardians:{x:number;y:number}[]};
@@ -216,6 +218,8 @@ export interface GameplayViewModel {
   canPause: boolean;
   /** A base selected on the map: the player's own or the rival's (only while in sight). Ships and bases are never selected together. */
   selectedBase: 'own' | 'enemy' | null;
+  /** A currently visible or remembered station selected on the map. */
+  selectedStationId?: string | null;
   /** Row-major cells inside the player's vision; null when there is no fog (local mock). */
   visibleCells: boolean[] | null;
   /** Row-major cells seen at least once this match (always includes visibleCells); null without fog memory. */
@@ -261,7 +265,8 @@ export type PresentationIntent =
   /** Ask to stop or restart the match clock. Ignored unless `canPause`. */
   | { type: 'set-paused'; paused: boolean }
   /** Select a base on the map (null clears it); it clears the ship selection and the pending action. */
-  | { type: 'select-base'; base: 'own' | 'enemy' | null };
+  | { type: 'select-base'; base: 'own' | 'enemy' | null }
+  | { type: 'select-station'; stationId: string | null };
 
 export interface GameplayPresentationAdapter {
   getSnapshot(): GameplayViewModel;

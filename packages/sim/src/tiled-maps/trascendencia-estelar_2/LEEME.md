@@ -62,7 +62,7 @@ Los sprites nuevos se generan con IA de imágenes (Codex) anclados a referencias
 (`tilesets/img/base_jugador.png` y la torre de vigilancia aprobada, `tilesets/img/torre_vigilancia.png`) y se ajustan
 al lienzo y al ancla de su tileset; no se dibujan con scripts procedurales nuevos. Cada uno se anota en `CREDITOS.md`.
 La torre de vigilancia es la misma imagen en este kit, `espiral-estelar` y `espiral-estelar_2`;
-`packages/sim/src/tiled-maps/estructuras-arte.test.ts` lo comprueba junto con su lienzo.
+`packages/sim/tests/unit/tiled-maps/estructuras-arte.test.ts` lo comprueba junto con su lienzo.
 
 ## Estaciones capturables
 
@@ -104,7 +104,7 @@ Regenerar pisa lo que se haya pintado a mano en Tiled sobre el `.tmx`. Requiere 
 Desde la raíz del repositorio:
 
 ```sh
-npx vitest run packages/sim/src/tiled-maps/trascendencia-estelar_2 packages/sim/src/mapas/trascendencia.test.ts packages/sim/src/tiled-maps/estructuras-arte.test.ts
+npx vitest run packages/sim/src/tiled-maps/trascendencia-estelar_2 packages/sim/tests/unit/mapas/trascendencia.test.ts packages/sim/tests/unit/tiled-maps/estructuras-arte.test.ts
 ```
 
 ## Lo que falta

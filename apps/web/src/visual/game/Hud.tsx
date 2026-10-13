@@ -11,6 +11,7 @@ import { activeMapId, sectorMap, sectorSurface } from '../map/sector-map';
 import { cellToIso, isoToPoint, ISO_ORIGIN_X, ISO_ORIGIN_Y, ISO_WORLD_HEIGHT, ISO_WORLD_WIDTH, projectedWorldBounds, TILE_HALF_HEIGHT, TILE_HALF_WIDTH, VIEW_YAW_RADIANS } from './phaser/isometric';
 import { PRODUCTION_ORDER } from './control-shortcuts';
 import { formatKeyBinding } from '../settings/control-bindings';
+import { canUseFormation } from './formation';
 import { baseFactions, coreHud, productionBlock, type ProductionBlock } from './hud-logic';
 import { coreHint, gameText, noticeText, type GameTextKey } from './game-copy';
 import { CANCEL_HOLD_MS, createHangarCancel, hangarQueueView } from './hangar-queue';
@@ -68,7 +69,7 @@ function SurrenderButton({ view, adapter }: { view: GameplayViewModel; adapter: 
   const [armed, setArmed] = useState(false);
   useEffect(() => { if (!armed) return; const timer = setTimeout(() => setArmed(false), 4000); return () => clearTimeout(timer); }, [armed]);
   const wait = view.base?.vulnerableInSeconds;
-  if (wait === undefined || view.result || view.connection !== 'online') return null;
+  if (wait === undefined || view.result || view.connection !== 'online' || view.movementSandbox) return null;
   return <button className={`vi-surrender${armed ? ' is-armed' : ''}`} disabled={wait > 0}
     title={wait > 0 ? t('surrenderIn', { time: formatTime(wait) }) : undefined}
     onClick={() => { if (armed) adapter.dispatch({ type: 'surrender' }); else setArmed(true); }}>
@@ -211,7 +212,10 @@ function Minimap({ view, cameraView, onPanMap }: { view: GameplayViewModel; came
       {[...(view.chart?.nodes??[]),...(view.chart?.guardians??[])].map((cell,index)=>{
         const point=miniPoint(cell.x,cell.y);return <circle key={`chart-${index}`} className="map-chart-marker" cx={point.x} cy={point.y} r="2.4" fill="none" stroke="#b5c4d1" opacity=".65"/>;
       })}
-      {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); const half = node.station ? 3.4 : 2.2; return <rect key={node.id} x={point.x - half} y={point.y - half} width={half * 2} height={half * 2}
+      {view.nodes.map((node) => { const point = miniPoint(node.x, node.y); const half = node.station ? 3.4 : 2.2; return <rect key={node.id}
+        className={`map-node${node.station ? ' map-node--station' : ''}`} data-node-id={node.id} data-station={node.station ? 'true' : undefined}
+        data-stale={node.stale ? 'true' : 'false'} data-cell-x={node.x} data-cell-y={node.y}
+        x={point.x - half} y={point.y - half} width={half * 2} height={half * 2}
         transform={`rotate(45 ${point.x} ${point.y})`} fill={node.owner ? OWNER_FILL[node.owner] : '#8aa0b8'} opacity={node.stale ? 0.45 : 1} />; })}
       <circle className={`map-core map-core--${view.core.state}`} cx={miniPoint(core.x, core.y).x} cy={miniPoint(core.x, core.y).y} r="4" />
       {(['p1', 'p2'] as const).map((slot) => { const cell = sectorSurface.bases[slot]; const point = miniPoint(cell.x, cell.y); return <rect key={slot}
@@ -261,7 +265,9 @@ function FormationIcon({ kind }: { kind: FormationKind }) {
 
 function FormationPicker({ view, adapter, controls }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls'] }) {
   const { t, locale } = useI18n();
-  if (!view.formation) return null;
+  const selectedTypes = view.squads.filter((squad) => view.selectedSquadIds.includes(squad.id) && squad.visible && squad.healthPercent > 0)
+    .map((squad) => squad.unitType);
+  if (!view.formation || !canUseFormation(selectedTypes)) return null;
   const binding = controls.cycleFormation[0];
   const hint = binding ? t('formationHint', { key: formatKeyBinding(binding, locale === 'es' ? 'Espacio' : 'Space') }) : t('shortcutUnassigned');
   return <div className="vi-formation" role="radiogroup" aria-label={t('formation')}>
@@ -283,10 +289,11 @@ function SquadHud({ view, adapter, controls }: { view: GameplayViewModel; adapte
   const stats = squad.stats ?? view.unitStats?.[squad.unitType];
   const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
   const group = selected.length > 1;
-  return <Panel className={`vi-squad ${collapsed ? 'is-collapsed' : ''} ${group && view.formation ? 'has-formation' : ''}`}>
+  const formationAllowed = canUseFormation(selected.map((candidate) => candidate.unitType));
+  return <Panel className={`vi-squad ${collapsed ? 'is-collapsed' : ''} ${formationAllowed && view.formation ? 'has-formation' : ''}`}>
     <header><span>{group ? t('selectedUnits', { count: selected.length }) : t('selectedSquad')}</span>
-      <div className="vi-squad__tools"><button className="vi-retire" disabled={!!view.result}
-        title={t('retireShipsHelp')} onClick={() => adapter.dispatch({ type: 'disband-selected' })}>{t('retireShips')}{controls.disband[0] && <> <kbd>{formatKeyBinding(controls.disband[0], locale === 'es' ? 'Espacio' : 'Space')}</kbd></>}</button>
+      <div className="vi-squad__tools">{!view.movementSandbox && <button className="vi-retire" disabled={!!view.result}
+        title={t('retireShipsHelp')} onClick={() => adapter.dispatch({ type: 'disband-selected' })}>{t('retireShips')}{controls.disband[0] && <> <kbd>{formatKeyBinding(controls.disband[0], locale === 'es' ? 'Espacio' : 'Space')}</kbd></>}</button>}
         <button onClick={() => setCollapsed(!collapsed)}>{collapsed ? t('expand') : t('collapse')}</button></div></header>
     {!collapsed && group && <FormationPicker view={view} adapter={adapter} controls={controls} />}
     {!collapsed && selected.length > 1 ? <div className="vi-squad__group">{(['explorer','interceptor','frigate','bomber'] as const).map(kind=>{
@@ -304,6 +311,18 @@ function SquadHud({ view, adapter, controls }: { view: GameplayViewModel; adapte
       </div>
       <div className="vi-health"><div><span>{t('totalHealth')}</span><strong>{squad.hp?.toFixed(0) ?? '—'}/{squad.maxHp ?? '—'}</strong></div><progress value={squad.healthPercent} max="100" /></div>
     </div>}
+  </Panel>;
+}
+
+function StructureHud({ view }: { view: GameplayViewModel }) {
+  const { locale } = useI18n();
+  const station = view.nodes.find((node) => node.id === view.selectedStationId && node.station);
+  if (!station) return null;
+  const ownerKey = station.owner === 'blue' ? 'stationOwnerOwn' : station.owner === 'red' ? 'stationOwnerRival' : 'stationOwnerNeutral';
+  return <Panel className={`vi-structure${station.stale ? ' is-stale' : ''}`} data-testid="selected-structure" data-structure-id={station.id}>
+    <header><strong>{gameText(locale, 'stationSelection')}</strong></header>
+    <p>{gameText(locale, ownerKey)}</p>
+    {station.stale && <small>{gameText(locale, 'stationLastSeen')}</small>}
   </Panel>;
 }
 
@@ -352,13 +371,15 @@ function ProductionHud({ view, adapter, controls, onBaseRange }: { view: Gamepla
   const { t,locale } = useI18n();
   const [tab, setTab] = useState<'hangar' | 'modules' | 'base'>('hangar');
   const [hovered,setHovered]=useState<keyof typeof UNIT_COSTS|null>(null);
+  const selectedStationOwned = !!view.selectedStationId && !!view.stations?.some((station) => station.id === view.selectedStationId);
   useEffect(()=>{onBaseRange?.(tab==='base');return ()=>onBaseRange?.(false);},[tab,onBaseRange]);
   // Selecting the own base (a click on it or its shortcut) brings its tab forward; the player may still switch away.
   useEffect(() => { if (view.selectedBase === 'own') setTab('base'); }, [view.selectedBase]);
+  useEffect(() => { if (selectedStationOwned) setTab('hangar'); }, [view.selectedStationId, selectedStationOwned]);
   if (view.connection === 'local' || view.canProduce === false) return null;
   const unitNames = { explorer: t('unitExplorer'), interceptor: t('unitInterceptor'), frigate: t('unitFrigate'), bomber: t('unitBomber') };
   const full = view.resources.fleet >= view.resources.fleetCap;
-  return <Panel className={`vi-production${view.selectedBase === 'own' ? ' is-focused' : ''}`}><div className="vi-production__tabs" role="tablist" aria-label={t('baseTab')}>
+  return <Panel className={`vi-production${view.selectedBase === 'own' || selectedStationOwned ? ' is-focused' : ''}`}><div className="vi-production__tabs" role="tablist" aria-label={t('baseTab')}>
     <button id="hangar-tab" role="tab" aria-selected={tab === 'hangar'} aria-controls="hangar-panel" onClick={() => setTab('hangar')}>{t('hangar')}</button>
     {view.base?.modules && <button id="modules-tab" role="tab" aria-selected={tab === 'modules'} aria-controls="modules-panel" onClick={() => setTab('modules')}>{t('modules')}</button>}
     <button id="base-tab" role="tab" aria-selected={tab === 'base'} aria-controls="base-panel" disabled={!view.base} onClick={() => setTab('base')}>{t('baseTab')}</button>
@@ -410,7 +431,8 @@ function ProductionHud({ view, adapter, controls, onBaseRange }: { view: Gamepla
         </div>;
       })}
     </div>
-    {(view.stations ?? []).map((station, index) => <div className="vi-production__station" key={station.id}>
+    {(view.stations ?? []).map((station, index) => <div className={`vi-production__station${view.selectedStationId === station.id ? ' is-selected' : ''}`}
+      data-station-id={station.id} key={station.id}>
       <p className="vi-production__queue">{gameText(locale, 'stationHeader', { n: index + 1 })}</p>
       <div className="vi-production__list">{PRODUCTION_ORDER.map(({ kind }) => {
         const cost = station.prices[kind];
@@ -502,11 +524,16 @@ function NoticeHud({ view }: { view: GameplayViewModel }) {
 export function Hud({ view, adapter, controls, cameraView, onPanMap, match, onBaseRange, multiplayer, audio, onAudioChange }: { view: GameplayViewModel; adapter: GameplayPresentationAdapter; controls: VisualPreferences['controls']; cameraView: CameraView | null; onPanMap(x: number, y: number): void; match: MatchControls; onBaseRange?:(show:boolean)=>void; multiplayer?:boolean; audio?: VisualPreferences['audio']; onAudioChange?(audio: VisualPreferences['audio']): void }) {
   const { t } = useI18n();
   return <div className="vi-hud" aria-label={t('hud')}>
-    <ResourceHud view={view} />
-    <SectorHud view={view} />
+    {view.movementSandbox ? <div className="vi-movement-lab-banner" role="status">
+      <strong>{t('movementLabTitle')}</strong><span>{t('movementLabHint')}</span>
+    </div> : <>
+      <ResourceHud view={view} />
+      <SectorHud view={view} />
+    </>}
     <TopControls view={view} adapter={adapter} controls={match} multiplayer={multiplayer} audio={audio} onAudioChange={onAudioChange} />
     <Minimap view={view} cameraView={cameraView} onPanMap={onPanMap} />
     <SquadHud view={view} adapter={adapter} controls={controls} />
+    <StructureHud view={view} />
     <ProductionHud view={view} adapter={adapter} controls={controls} onBaseRange={onBaseRange}/>
     <NoticeHud view={view} />
   </div>;

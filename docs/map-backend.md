@@ -39,8 +39,8 @@ La transformación isométrica, capas decorativas, sprites, cámara y escalado p
 ## Referencias del repositorio
 
 - Catálogo y construcción: [`packages/sim/src/maps/battlefield.ts`](../packages/sim/src/maps/battlefield.ts), [`packages/sim/src/maps/types.ts`](../packages/sim/src/maps/types.ts) y [`packages/sim/src/index.ts`](../packages/sim/src/index.ts).
-- Importador: [`packages/sim/src/maps/tiled.ts`](../packages/sim/src/maps/tiled.ts) y [`packages/sim/src/maps/tiled.test.ts`](../packages/sim/src/maps/tiled.test.ts).
+- Importador: [`packages/sim/src/maps/tiled.ts`](../packages/sim/src/maps/tiled.ts) y [`packages/sim/tests/unit/maps/tiled.test.ts`](../packages/sim/tests/unit/maps/tiled.test.ts).
 - Rutas y visión: [`packages/sim/src/maps/pathfinding.ts`](../packages/sim/src/maps/pathfinding.ts) y [`packages/sim/src/maps/visibility.ts`](../packages/sim/src/maps/visibility.ts).
-- Vista pública y máscaras: [`packages/state/src/battlefield.ts`](../packages/state/src/battlefield.ts) y [`packages/state/src/battlefield.test.ts`](../packages/state/src/battlefield.test.ts).
+- Vista pública y máscaras: [`packages/state/src/battlefield.ts`](../packages/state/src/battlefield.ts) y [`packages/state/tests/unit/battlefield.test.ts`](../packages/state/tests/unit/battlefield.test.ts).
 - Metadata enviada por sala: [`apps/server/src/map-catalog.ts`](../apps/server/src/map-catalog.ts) y [`apps/server/src/battlefield-room.ts`](../apps/server/src/battlefield-room.ts).
 - Arte visual de terreno actual: [`apps/web/public/visual/maps/terrain.svg`](../apps/web/public/visual/maps/terrain.svg).

@@ -1,5 +1,5 @@
 import { Client, type Room } from '@colyseus/sdk';
-import { DEFAULT_CAMPAIGN_MAP } from '@impulso/input';
+import { DEFAULT_CAMPAIGN_MAP, type MultiplayerCampaignMode } from '@impulso/input';
 import type { MatchReward } from '@impulso/sim';
 import type { CampaignPhaseView, PlayerView } from '@impulso/state';
 import { isMultiplayerErrorReason, multiplayerErrorText, type MultiplayerErrorReason } from './multiplayer-copy';
@@ -38,7 +38,7 @@ export interface MultiplayerSnapshot {
 export interface MultiplayerSession {
   getSnapshot(): MultiplayerSnapshot;
   subscribe(listener: () => void): () => void;
-  create(name: string, token: string, map?: CampaignMap): Promise<void>;
+  create(name: string, token: string, map?: CampaignMap, campaignMode?: MultiplayerCampaignMode): Promise<void>;
   join(code: string, name: string, token: string): Promise<void>;
   restore(): Promise<boolean>;
   ready(): void;
@@ -237,8 +237,11 @@ export function createMultiplayerSession(serverUrl: string, storage?: SessionSto
   return {
     getSnapshot: () => snapshot,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    async create(name, token, map = DEFAULT_CAMPAIGN_MAP) {
-      await connect(() => client.create('campaign', { protocolVersion: PROTOCOL_VERSION, name, token, map }));
+    async create(name, token, map = DEFAULT_CAMPAIGN_MAP, campaignMode = 'skirmish') {
+      await connect(() => client.create('campaign', {
+        protocolVersion: PROTOCOL_VERSION, name, token, map,
+        ...(campaignMode === 'campaign' ? { campaignMode } : {}),
+      }));
     },
     async join(code, name, token) {
       const normalized = code.trim();

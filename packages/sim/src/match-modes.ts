@@ -24,3 +24,14 @@ export function createMatchWorld(map: TrainingMapId = 'espiral', duration: Durat
   world.knowledge=emptyKnowledge(world);observeKnowledge(world);
   return world;
 }
+
+export function createMovementSandboxWorld(): World {
+  const world = createSectorWorld('movement-lab');
+  world.economy = false;
+  world.guardians = [];
+  world.nodes = [];
+  world.movementSandbox = true;
+  world.players.p1.metal = 0;
+  world.players.p2.metal = 0;
+  return world;
+}

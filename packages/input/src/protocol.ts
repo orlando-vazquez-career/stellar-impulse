@@ -8,6 +8,7 @@ export const PROTOCOL_VERSION = 1;
 export const BATTLEFIELD_PROTOCOL_VERSION = 2;
 export const CAMPAIGN_PROTOCOL_VERSION = 3;
 export type CampaignMap = PlayableMapId | 'sector-01';
+export type MultiplayerCampaignMode = 'skirmish' | 'campaign';
 
 export type EnvelopeResult =
   | { ok: true; body: unknown }
@@ -16,7 +17,7 @@ export type JoinResult =
   | { ok: true; name: string }
   | { ok: false; reason: 'invalid_join' | 'unsupported_version' };
 export type CampaignJoinResult =
-  | { ok: true; name: string; token?: string; map?: CampaignMap }
+  | { ok: true; name: string; token?: string; map?: CampaignMap; campaignMode?: MultiplayerCampaignMode }
   | { ok: false; reason: 'invalid_join' | 'unsupported_version' };
 export type AugmentPickResult = { ok: true; choice: number; id: string } | { ok: false; reason: 'invalid_augment_pick' };
 export type AugmentRerollResult = { ok: true; choice: number } | { ok: false; reason: 'invalid_augment_reroll' };
@@ -109,12 +110,15 @@ export function parseJoinOptions(value: unknown): JoinResult {
 }
 
 /** Room admission: version, optional name, session token and one of the room's maps. */
-function parseRoomJoinOptions(value: unknown, version: number, maps: readonly CampaignMap[]): CampaignJoinResult {
+function parseRoomJoinOptions(value: unknown, version: number, maps: readonly CampaignMap[], allowCampaignMode = false): CampaignJoinResult {
   const fields = plainFields(value);
   if (!fields) return { ok: false, reason: 'invalid_join' };
   if (fields.protocolVersion !== version) return { ok: false, reason: 'unsupported_version' };
-  if (!onlyKeys(fields, ['protocolVersion', 'name', 'token', 'map'])) return { ok: false, reason: 'invalid_join' };
+  if (!onlyKeys(fields, ['protocolVersion', 'name', 'token', 'map', ...(allowCampaignMode ? ['campaignMode'] : [])])) return { ok: false, reason: 'invalid_join' };
   if (fields.map !== undefined && !maps.includes(fields.map as CampaignMap)) return { ok: false, reason: 'invalid_join' };
+  if (fields.campaignMode !== undefined && (!allowCampaignMode || !['skirmish', 'campaign'].includes(fields.campaignMode as string))) {
+    return { ok: false, reason: 'invalid_join' };
+  }
   const parsed = parseVersionedJoinOptions({ protocolVersion: fields.protocolVersion, name: fields.name }, version);
   if (!parsed.ok) return parsed;
   if (fields.token !== undefined && (typeof fields.token !== 'string' || fields.token.length > 256)) {
@@ -124,11 +128,12 @@ function parseRoomJoinOptions(value: unknown, version: number, maps: readonly Ca
     ...parsed,
     ...(typeof fields.token === 'string' ? { token: fields.token } : {}),
     ...(fields.map !== undefined ? { map: fields.map as CampaignMap } : {}),
+    ...(fields.campaignMode !== undefined ? { campaignMode: fields.campaignMode as MultiplayerCampaignMode } : {}),
   };
 }
 
 export function parseCampaignJoinOptions(value: unknown): CampaignJoinResult {
-  return parseRoomJoinOptions(value, CAMPAIGN_PROTOCOL_VERSION, MAPS);
+  return parseRoomJoinOptions(value, CAMPAIGN_PROTOCOL_VERSION, MAPS, true);
 }
 
 export function parseBattlefieldJoinOptions(value: unknown): CampaignJoinResult {

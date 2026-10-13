@@ -8,8 +8,9 @@ import { MatchProgress } from '../profile/MatchProgress';
 import { createMockGameplayAdapter } from './mock-adapter';
 import { createServerGameplayAdapter } from './server-adapter';
 import { campaignTransport } from '../../multiplayer/campaign-transport';
-import { nextFormation } from './formation';
-import { assignControlGroup, controlGroupForAction, focusSelectedSquads, productionKindForControl, recallControlGroup, type ControlGroupAssignments } from './control-shortcuts';
+import { canUseFormation, nextFormation } from './formation';
+import { assignControlGroup, controlGroupForAction, focusSelectedSquads, productionKindForControl, recallControlGroup,
+  type ControlGroupAssignments, type ControlGroupStructure } from './control-shortcuts';
 import type { MultiplayerSession } from '../../multiplayer/session';
 import { MatchAudio, playEvent, type Announcement } from './audio';
 import { useI18n } from '../i18n';
@@ -171,14 +172,36 @@ function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, 
       const groupShortcut = controlGroupForAction(action);
       if (groupShortcut) {
         if (groupShortcut.mode === 'assign') {
+          const selectedStation = current.nodes.find((node) => node.id === current.selectedStationId && node.station && !node.stale);
+          const selectedStructure: ControlGroupStructure | undefined = selectedStation
+            ? { kind: 'station', id: selectedStation.id }
+            : current.selectedBase ? { kind: 'base', side: current.selectedBase } : undefined;
           controlGroupsRef.current = assignControlGroup(controlGroupsRef.current, groupShortcut.group,
-            current.selectedSquadIds, current.squads);
+            current.selectedSquadIds, current.squads, selectedStructure);
         } else if (controlGroupsRef.current[groupShortcut.group]) {
-          adapter.dispatch({ type: 'select-squads', squadIds: recallControlGroup(controlGroupsRef.current,
-            groupShortcut.group, current.squads) });
+          const availableStructures: ControlGroupStructure[] = [
+            ...(current.base?.position ? [{ kind: 'base' as const, side: 'own' as const }] : []),
+            ...(current.enemyBase?.visible ? [{ kind: 'base' as const, side: 'enemy' as const }] : []),
+            ...current.nodes.filter((node) => node.station && !node.stale).map((node) => ({ kind: 'station' as const, id: node.id })),
+          ];
+          const recalled = recallControlGroup(controlGroupsRef.current, groupShortcut.group, current.squads, availableStructures);
+          if (Array.isArray(recalled)) adapter.dispatch({ type: 'select-squads', squadIds: recalled });
+          else if (recalled) {
+            let focus: { x: number; y: number } | undefined;
+            if (recalled.kind === 'base') {
+              adapter.dispatch({ type: 'select-base', base: recalled.side });
+              focus = recalled.side === 'own' ? current.base?.position : current.enemyBase;
+            } else {
+              adapter.dispatch({ type: 'select-station', stationId: recalled.id });
+              const station = current.nodes.find((node) => node.id === recalled.id && node.station && !node.stale);
+              if (station) focus = { x: station.x, y: station.y };
+            }
+            if (focus) battlefieldRef.current?.centerOnCell(focus.x, focus.y);
+          }
         }
         return;
       }
+      if (current.movementSandbox && (action === 'attack' || action === 'hold' || action === 'capture')) return;
       if (action === 'move' || action === 'attack' || action === 'hold' || action === 'capture') {
         adapter.dispatch({ type: 'set-action', action });
         return;
@@ -198,10 +221,11 @@ function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, 
         return;
       }
       if (action === 'cycleFormation') {
-        if (current.formation && current.selectedSquadIds.length > 1) adapter.dispatch({ type: 'set-formation', formation: nextFormation(current.formation) });
+        const selectedTypes = current.squads.filter((squad) => current.selectedSquadIds.includes(squad.id)).map((squad) => squad.unitType);
+        if (current.formation && canUseFormation(selectedTypes)) adapter.dispatch({ type: 'set-formation', formation: nextFormation(current.formation) });
         return;
       }
-      if (action === 'disband') {
+      if (action === 'disband' && !current.movementSandbox) {
         adapter.dispatch({ type: 'disband-selected' });
         return;
       }
@@ -238,29 +262,30 @@ function GameplayView({ adapter, preferences, multiplayerSession, run, onLeave, 
     };
   }, [adapter, preferences.controls, openMenu, closeMenu, selectOwnBase]);
   const text = (key: GameTextKey, values?: Record<string, string | number>) => gameText(locale, key, values);
-  return <main className="vi-gameplay vi-screen" data-room-id={roomState?.roomId} data-player-id={roomState?.phase?.playerId} data-connection={roomState?.connection} data-sequence={roomState?.acknowledgedSequence} data-tick={view.tick} data-active-action={view.activeAction ?? ''} data-selected-base={view.selectedBase ?? ''}>
+  return <main className="vi-gameplay vi-screen" data-room-id={roomState?.roomId} data-player-id={roomState?.phase?.playerId} data-connection={roomState?.connection} data-sequence={roomState?.acknowledgedSequence} data-tick={view.tick} data-active-action={view.activeAction ?? ''} data-selected-base={view.selectedBase ?? ''} data-selected-station={view.selectedStationId ?? ''}>
     <Suspense fallback={<div className="vi-phaser" aria-busy="true" data-map-source={activeMapSourceFile()} />}>
       <PhaserBattlefield ref={battlefieldRef} view={view}
         onSelectSquads={(squadIds) => adapter.dispatch({ type: 'select-squads', squadIds })}
         onSelectBase={(base) => adapter.dispatch({ type: 'select-base', base })}
+        onSelectStation={(stationId) => adapter.dispatch({ type: 'select-station', stationId })}
         onMoveSelected={(x, y) => adapter.dispatch({ type: 'move-selected', x, y })}
-        onAttackSelected={(targetId) => adapter.dispatch({ type: 'attack-selected', targetId })}
+        onAttackSelected={(targetId) => { if (!view.movementSandbox) adapter.dispatch({ type: 'attack-selected', targetId }); }}
         onCameraChange={setCameraView} />
     </Suspense>
     <Hud view={view} adapter={adapter} controls={preferences.controls} cameraView={cameraView} onBaseRange={previewBaseRange} onPanMap={(x, y) => battlefieldRef.current?.centerOnCell(x, y)}
       match={{
         onResetCamera: () => battlefieldRef.current?.resetCamera(),
         onMenu: () => (menuOpen ? closeMenu() : openMenu()),
-        onDevelopment: developmentAvailable(Boolean(multiplayerSession)) ? () => setDevelopmentOpen(!developmentOpen) : undefined,
+        onDevelopment: !view.movementSandbox && developmentAvailable(Boolean(multiplayerSession)) ? () => setDevelopmentOpen(!developmentOpen) : undefined,
         developmentOpen,
         onLeave,
         soundOpen,
         onSoundOpenChange: setSoundOpen,
       }}
       multiplayer={Boolean(multiplayerSession)} audio={preferences.audio} onAudioChange={onAudioChange} />
-    {developmentOpen && developmentAvailable(Boolean(multiplayerSession)) && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}
-    <AugmentHud view={view} adapter={adapter} sound={!preferences.audio.muted && preferences.audio.effects > 0 && preferences.audio.master > 0} />
-    {!multiplayerSession && <FirstMatchTutorial view={view} />}
+    {developmentOpen && !view.movementSandbox && developmentAvailable(Boolean(multiplayerSession)) && <DevelopmentControls view={view} adapter={adapter} onClose={() => setDevelopmentOpen(false)} />}
+    {!view.movementSandbox && <AugmentHud view={view} adapter={adapter} sound={!preferences.audio.muted && preferences.audio.effects > 0 && preferences.audio.master > 0} />}
+    {!multiplayerSession && !view.movementSandbox && <FirstMatchTutorial view={view} />}
     {announcement && !view.result && <div key={announcement.id} className={`vi-announcement vi-announcement--${announcement.tone}`} role="status">{announcement.text}</div>}
     {menuOpen && !view.result && <GameMenu ref={menuRef} canPause={view.canPause} onResume={closeMenu} onLeave={onLeave} />}
     {roomState?.phase?.phase === 'transition' && <div className="vi-result" role="dialog" aria-label={text('nextSector')}><div className="vi-result__card">

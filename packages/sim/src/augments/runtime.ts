@@ -1,6 +1,6 @@
 import { canSee, cloneWorld, createSquad, type PlayerId, type UnitKind, type World } from '../index.js';
 import { launchCell } from '../economia.js';
-import { statsFor } from '../stats.js';
+import { statsFor } from '../naves/index.js';
 import { DURATION_MODES } from '../match-modes.js';
 import { AUGMENT_CATALOG, AUGMENTS_BY_ID, INITIAL_AUGMENTS, type AugmentTier } from './catalog.js';
 import { effectsFor, statsForUnit } from './effects.js';

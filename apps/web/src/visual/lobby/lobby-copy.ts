@@ -9,6 +9,8 @@ const es = {
   difficultyMediumHint: 'Se expande rápido y pelea por todo.',
   difficultyHard: 'Difícil',
   difficultyHardHint: 'Toma dos nodos a la vez y asalta los tuyos.',
+  movementObjective: 'Practicar rutas y formaciones',
+  movementFormatValue: 'Movimiento libre · Sin IA rival',
   mapPreview: 'Vista previa de {map}',
 } as const;
 
@@ -20,6 +22,8 @@ const en: Record<keyof typeof es, string> = {
   difficultyMediumHint: 'Expands fast and fights for everything.',
   difficultyHard: 'Hard',
   difficultyHardHint: 'Takes two nodes at once and raids yours.',
+  movementObjective: 'Practice routes and formations',
+  movementFormatValue: 'Free movement · No rival AI',
   mapPreview: 'Preview of {map}',
 };
 

@@ -56,6 +56,16 @@ export async function gamePoint(page: Page, x: number, y: number) {
   return { x: rect.x + (isoX - view.worldX) * view.zoom, y: rect.y + (isoY - view.worldY) * view.zoom };
 }
 
+/** Grid cell to minimap SVG coordinates, matching the battlefield's yawed isometric projection. */
+export async function minimapPoint(page: Page, x: number, y: number) {
+  const view = await readBattlefieldCamera(page);
+  const offset = minimapOffset(view);
+  const viewed = yawCell(x, y, view.mapWidth, view.mapHeight, view.yaw);
+  const isoX = view.tileOriginX + (viewed.x - viewed.y) * 32;
+  const isoY = view.tileOriginY + (viewed.x + viewed.y) * 16;
+  return { x: offset.x + isoX * offset.scale, y: offset.y + isoY * offset.scale };
+}
+
 export async function canvasPointFromMinimap(page: Page, cx: number, cy: number) {
   const view = await readBattlefieldCamera(page);
   const offset = minimapOffset(view);

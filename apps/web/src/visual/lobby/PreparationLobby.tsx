@@ -45,6 +45,7 @@ export function PreparationLobby({
   const [difficulty, setDifficulty] = useState<RivalDifficulty>('medium');
   const [map, setMap] = useState<TrainingMapId>(DEFAULT_CAMPAIGN_MAP);
   const selectedMap = PRACTICE_MAPS.find((option) => option.id === map) ?? PRACTICE_MAPS[0];
+  const movementLab = map === 'movement-lab';
   const [side, setSide] = useState<FleetSide>('blue');
   const [ready, setReady] = useState(false);
   const [joinCode, setJoinCode] = useState(initialJoinCode.toUpperCase());
@@ -171,15 +172,15 @@ export function PreparationLobby({
               </div>
               <div>
                 <dt>{t('objective')}</dt>
-                <dd>{t('objectiveValue')}</dd>
+                <dd>{movementLab ? lobbyText(locale, 'movementObjective') : t('objectiveValue')}</dd>
               </div>
-              <div>
+              {!movementLab && <div>
                 <dt>{t('duration')}</dt>
                 <dd>{duration==='complete'?'~20 min':'~8 min'}</dd>
-              </div>
+              </div>}
               <div>
                 <dt>{t('fleetFormat')}</dt>
-                <dd>{t('fleetFormatValue')}</dd>
+                <dd>{movementLab ? lobbyText(locale, 'movementFormatValue') : t('fleetFormatValue')}</dd>
               </div>
             </dl>
             {mode === 'create' && (
@@ -301,7 +302,7 @@ export function PreparationLobby({
                   </button>
                 </fieldset>
 
-                {mode === 'create' && (
+                {mode === 'create' && !movementLab && (
                   <fieldset className="vi-difficulty">
                     <legend>{lobbyText(locale, 'difficultyLegend')}</legend>
                     {DIFFICULTIES.map((option) => (
@@ -323,10 +324,10 @@ export function PreparationLobby({
                   </fieldset>
                 )}
 
-                <fieldset className="vi-duration"><legend>{t('durationMode')}</legend>
+                {!movementLab && <fieldset className="vi-duration"><legend>{t('durationMode')}</legend>
                   <select aria-label={t('durationMode')} value={duration} onChange={(event) => setDuration(event.target.value as DurationMode)}>
                     <option value="skirmish">{t('skirmishMode')}</option><option value="complete">{t('completeMode')}</option>
-                  </select></fieldset>
+                  </select></fieldset>}
                 <div className="vi-ready-controls">
                   <label>
                     <input

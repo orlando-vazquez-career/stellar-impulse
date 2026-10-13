@@ -39,6 +39,8 @@ export class CampaignRoom extends Room {
     this.campaign = campaigns.createCampaign({
       createSector: (_sector, seed) => createMatchWorld(map, 'skirmish', seed),
       ...this.overrides,
+      // Older clients omit campaignMode and keep the one-sector default.
+      sectors: parsed.ok && parsed.campaignMode === 'campaign' ? 3 : 1,
     }, randomInt(0x100000000));
     void this.setPrivate(true);
     this.onMessage('ready', (client, message) => this.withEnvelope(client, message, (player, body) => {

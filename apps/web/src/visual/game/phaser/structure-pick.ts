@@ -4,6 +4,10 @@ import type { GridPoint } from './grid';
 /** Half axes, in world pixels, of the clickable ellipse over a command base's hull. */
 export const BASE_PICK_HALF_WIDTH = 52;
 export const BASE_PICK_HALF_HEIGHT = 30;
+/** Half axes of a station's clickable dock, matching the six-sided hull drawn on the map. */
+export const STATION_PICK_HALF_WIDTH = 42;
+export const STATION_PICK_HALF_HEIGHT = 22;
+export const STATION_PICK_Y_OFFSET = 9;
 
 export type PickedBase = 'own' | 'enemy';
 
@@ -31,6 +35,23 @@ export function pickBase(
     const center = project(cell.x, cell.y);
     const distance = ((worldPoint.x - center.x) / BASE_PICK_HALF_WIDTH) ** 2 + ((worldPoint.y - center.y) / BASE_PICK_HALF_HEIGHT) ** 2;
     if (distance <= nearest) { picked = side; nearest = distance; }
+  }
+  return picked;
+}
+
+/** Pick the nearest visible station dock under a world point; stale fog-memory entries are excluded by the caller. */
+export function pickStation(
+  worldPoint: { x: number; y: number },
+  stations: readonly { id: string; x: number; y: number }[],
+  project: (x: number, y: number) => { x: number; y: number } = cellToIso,
+): string | null {
+  let picked: string | null = null;
+  let nearest = 1;
+  for (const station of stations) {
+    const center = project(station.x, station.y);
+    const distance = ((worldPoint.x - center.x) / STATION_PICK_HALF_WIDTH) ** 2
+      + ((worldPoint.y - center.y - STATION_PICK_Y_OFFSET) / STATION_PICK_HALF_HEIGHT) ** 2;
+    if (distance <= nearest) { picked = station.id; nearest = distance; }
   }
   return picked;
 }
