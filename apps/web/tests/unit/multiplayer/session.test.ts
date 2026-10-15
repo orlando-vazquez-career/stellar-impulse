@@ -100,6 +100,16 @@ describe('shared multiplayer session over real transport', () => {
     expect(host.getSnapshot()).toBe(host.getSnapshot());
   });
 
+  it('accepts and acknowledges a production order from the p2 guest', async () => {
+    const { guest } = await pair();
+    guest.command({ type: 'produce', kind: 'explorer' });
+    const accepted = await waitFor(guest, (snapshot) => snapshot.acknowledgedSequence === 1
+      && snapshot.view?.players.p2.lastSequence === 1
+      && snapshot.view.players.p2.production?.kind === 'explorer');
+    expect(accepted.view?.playerId).toBe('p2');
+    expect(accepted.view?.players.p2.production).toMatchObject({ kind: 'explorer' });
+  });
+
   it('passes the host-selected full campaign mode when creating the room', async () => {
     const host = session();
     await host.create('Ana', tokens[0]!, 'espiral', 'campaign');

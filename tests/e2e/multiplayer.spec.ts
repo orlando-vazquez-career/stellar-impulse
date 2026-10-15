@@ -21,9 +21,22 @@ async function signIn(page: Page, request: APIRequestContext, name: string) {
 
 /** A real server order on the new engine: the base builds an Explorador and the fleet grows. */
 async function produceExplorer(page: Page, fleet: string) {
-  await page.locator('.vi-production').getByRole('button', { name: /Explorador/ }).click();
+  const button = page.locator('.vi-production').getByRole('button', { name: /Explorador/ });
+  await expect(button).toBeEnabled();
+  await button.click();
   // Two software-rendered pages share the CI runner: the ack can take several seconds to paint.
-  await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-sequence', '1', { timeout: 20000 });
+  await expect.poll(() => page.locator('.vi-gameplay').evaluate((gameplay) => {
+    const production = [...document.querySelectorAll('.vi-production__unit button')]
+      .find((candidate) => candidate.textContent?.includes('Explorador'));
+    return {
+      sequence: gameplay.getAttribute('data-sequence'),
+      player: gameplay.getAttribute('data-player-id'),
+      connection: gameplay.getAttribute('data-connection'),
+      tick: gameplay.getAttribute('data-tick'),
+      notice: document.querySelector('.vi-notice')?.textContent?.trim() ?? null,
+      productionDisabled: production instanceof HTMLButtonElement ? production.disabled : null,
+    };
+  }), { timeout: 20000 }).toMatchObject({ sequence: '1' });
   await expect(page.locator('.vi-resources')).toContainText(fleet, { timeout: 20000 });
 }
 
