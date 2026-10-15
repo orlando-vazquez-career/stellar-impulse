@@ -80,9 +80,20 @@ test.describe('visual lobby', () => {
 
     // Center the battlefield over the far station, then order the selected scout there to reveal it.
     const minimapTarget = await minimapPoint(page, 18, 18);
+    const cameraBeforePan = await readBattlefieldCamera(page);
     const minimap = await page.locator('.vi-minimap__pan').boundingBox();
     if (!minimap) throw new Error('No minimap');
     await page.mouse.click(minimap.x + minimapTarget.x / 180 * minimap.width, minimap.y + minimapTarget.y / 180 * minimap.height);
+    // centerOnCell updates Phaser synchronously, but React publishes the new camera attributes on its next render.
+    // Wait until the target is actually inside the canvas before calculating the click point from those attributes.
+    await expect.poll(async () => {
+      const camera = await readBattlefieldCamera(page);
+      if (camera.worldX === cameraBeforePan.worldX && camera.worldY === cameraBeforePan.worldY) return false;
+      const point = await gamePoint(page, 18, 18);
+      const canvas = await page.locator('.vi-phaser canvas').boundingBox();
+      return !!canvas && point.x >= canvas.x && point.x <= canvas.x + canvas.width
+        && point.y >= canvas.y && point.y <= canvas.y + canvas.height;
+    }, { timeout: 10000 }).toBe(true);
     const destination = await gamePoint(page, 18, 18);
     await page.mouse.click(destination.x, destination.y, { button: 'right' });
     await expect(page.locator('.map-move-route')).toHaveCount(1, { timeout: 10000 });

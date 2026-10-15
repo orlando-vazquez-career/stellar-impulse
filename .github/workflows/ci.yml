@@ -68,7 +68,7 @@ jobs:
         with:
           version: 11.25.0
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec vitest run apps/server/src/postgres-store.test.ts
+      - run: pnpm exec vitest run apps/server/tests/unit/postgres-store.test.ts
   contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 25
