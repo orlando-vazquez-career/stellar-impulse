@@ -11,6 +11,20 @@ type MinimapClickEvidence = {
   cameraRect: Record<string, string> | null;
 };
 type WindowWithMinimapEvidence = Window & { __e2eMinimapClick?: MinimapClickEvidence };
+type StationRevealSample = {
+  at: string;
+  tick: string | null;
+  sequence: string | null;
+  stations: string | null;
+  explorers: string | null;
+  moveOrder: string | null;
+  noticeCode: string | null;
+  rejectionReason: string | null;
+};
+type WindowWithStationRevealEvidence = Window & {
+  __e2eStationRevealSamples?: StationRevealSample[];
+  __e2eStationRevealTimer?: number;
+};
 
 function serializableCamera(camera: Awaited<ReturnType<typeof readBattlefieldCamera>>) {
   return {
@@ -119,6 +133,80 @@ async function attachMinimapFailure(page: Page, testInfo: TestInfo, cameraBefore
   const body = JSON.stringify(diagnostic, null, 2);
   await testInfo.attach('minimap-pan-diagnostics.json', { body: Buffer.from(body), contentType: 'application/json' });
   console.error(`[e2e minimap pan diagnostics] ${body}`);
+}
+
+async function beginStationRevealSampling(page: Page) {
+  return page.evaluate(() => {
+    const root = document.querySelector('.vi-gameplay');
+    if (!root) return null;
+    const browserWindow = window as WindowWithStationRevealEvidence;
+    const samples: StationRevealSample[] = [];
+    const capture = () => {
+      samples.push({
+        at: new Date().toISOString(),
+        tick: root.getAttribute('data-tick'),
+        sequence: root.getAttribute('data-sequence'),
+        stations: root.getAttribute('data-e2e-stations'),
+        explorers: root.getAttribute('data-e2e-explorers'),
+        moveOrder: root.getAttribute('data-e2e-move-order'),
+        noticeCode: root.getAttribute('data-notice-code'),
+        rejectionReason: root.getAttribute('data-rejection-reason'),
+      });
+      if (samples.length > 50) samples.shift();
+    };
+    capture();
+    browserWindow.__e2eStationRevealSamples = samples;
+    browserWindow.__e2eStationRevealTimer = window.setInterval(capture, 1000);
+    return {
+      tick: root.getAttribute('data-tick'),
+      sequence: root.getAttribute('data-sequence'),
+      stations: root.getAttribute('data-e2e-stations'),
+      explorers: root.getAttribute('data-e2e-explorers'),
+      moveOrder: root.getAttribute('data-e2e-move-order'),
+    };
+  });
+}
+
+async function stopStationRevealSampling(page: Page) {
+  await page.evaluate(() => {
+    const browserWindow = window as WindowWithStationRevealEvidence;
+    if (browserWindow.__e2eStationRevealTimer !== undefined) window.clearInterval(browserWindow.__e2eStationRevealTimer);
+    delete browserWindow.__e2eStationRevealTimer;
+  });
+}
+
+async function attachStationRevealFailure(page: Page, testInfo: TestInfo, baseline: unknown) {
+  const diagnostic = await page.evaluate((baselineState) => {
+    const gameplay = document.querySelector('.vi-gameplay');
+    const route = document.querySelector('.map-move-route');
+    const destination = document.querySelector('.map-destination');
+    const mapCamera = document.querySelector('.map-camera');
+    const browserWindow = window as WindowWithStationRevealEvidence;
+    if (browserWindow.__e2eStationRevealTimer !== undefined) window.clearInterval(browserWindow.__e2eStationRevealTimer);
+    const dataAttributes = (element: Element | null) => element
+      ? Object.fromEntries(Array.from(element.attributes).filter((attribute) => attribute.name.startsWith('data-'))
+        .map((attribute) => [attribute.name, attribute.value]))
+      : null;
+    return {
+      at: new Date().toISOString(),
+      baseline: baselineState,
+      samples: browserWindow.__e2eStationRevealSamples ?? [],
+      gameplay: dataAttributes(gameplay),
+      stationMarkers: Array.from(document.querySelectorAll('.map-node--station')).map((element) => ({
+        id: element.getAttribute('data-node-id'), stale: element.getAttribute('data-stale'),
+        x: element.getAttribute('data-cell-x'), y: element.getAttribute('data-cell-y'),
+      })),
+      moveRoute: route?.getAttribute('points') ?? null,
+      minimapDestination: destination ? { x: destination.getAttribute('cx'), y: destination.getAttribute('cy') } : null,
+      camera: dataAttributes(mapCamera),
+      minimapClick: (window as WindowWithMinimapEvidence).__e2eMinimapClick ?? null,
+      phaser: dataAttributes(document.querySelector('.vi-phaser')),
+    };
+  }, baseline);
+  const body = JSON.stringify(diagnostic, null, 2);
+  await testInfo.attach('station-reveal-diagnostics.json', { body: Buffer.from(body), contentType: 'application/json' });
+  await testInfo.attach('station-reveal-screenshot.png', { body: await page.screenshot(), contentType: 'image/png' });
+  console.error(`[e2e station reveal diagnostics] ${body}`);
 }
 
 test.describe('visual lobby', () => {
@@ -246,11 +334,18 @@ test.describe('visual lobby', () => {
       throw error;
     }
     const destination = await gamePoint(page, 18, 18);
+    const movementBaseline = await beginStationRevealSampling(page);
     await page.mouse.click(destination.x, destination.y, { button: 'right' });
     await expect(page.locator('.map-move-route')).toHaveCount(1, { timeout: 10000 });
 
     const stationMarker = page.locator('.map-node--station[data-node-id="station-1"]');
-    await expect(stationMarker).toHaveAttribute('data-stale', 'false', { timeout: 45000 });
+    try {
+      await expect(stationMarker).toHaveAttribute('data-stale', 'false', { timeout: 45000 });
+    } catch (error) {
+      await attachStationRevealFailure(page, testInfo, movementBaseline);
+      throw error;
+    }
+    await stopStationRevealSampling(page);
     const camera = await readBattlefieldCamera(page);
     const stationPoint = await gamePoint(page, Number(await stationMarker.getAttribute('data-cell-x')), Number(await stationMarker.getAttribute('data-cell-y')));
     // The dock is offset below its cell; this exposed rim avoids the scout near the centre.
