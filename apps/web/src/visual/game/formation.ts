@@ -20,6 +20,11 @@ export function nextFormation(formation: FormationKind): FormationKind {
   return FORMATIONS[(FORMATIONS.indexOf(formation) + 1) % FORMATIONS.length]!;
 }
 
+/** Formation orders are only available when a group contains multiple ships of one type. */
+export function canUseFormation(types: readonly string[]): boolean {
+  return types.length > 1 && types.every((type) => type === types[0]);
+}
+
 /** The same seats the server will assign (minus its reachability check), for previews and prediction. */
 export function formationSeats(ships: readonly { id: string; x: number; y: number }[], center: { x: number; y: number }, formation: FormationKind) {
   const cells = ships.map((ship) => ({ id: ship.id, x: Math.round(ship.x), y: Math.round(ship.y) }));

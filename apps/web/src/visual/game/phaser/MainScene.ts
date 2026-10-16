@@ -18,7 +18,7 @@ import {
 import { drawableMapObjects, NEXUS_STYLE, objectCell } from '../../map/map-objects';
 import { baseFactions, coreHud } from '../hud-logic';
 import { captureEllipse, ellipseSweep } from './capture-geometry';
-import { pickBase, type PickedBase } from './structure-pick';
+import { pickBase, pickStation, type PickedBase } from './structure-pick';
 import { clickSelection } from './click-selection';
 import { coreTag, gameText, guardianLabel } from '../game-copy';
 import { isReducedMotion } from '../../settings/accessibility-store';
@@ -202,6 +202,8 @@ export class MainScene extends Phaser.Scene {
     private readonly onError: (message: string) => void,
     /** A click on a command base, never together with ships. */
     private readonly onSelectBase: (base: PickedBase) => void = () => {},
+    /** A click on a visible station dock, never together with ships. */
+    private readonly onSelectStation: (stationId: string) => void = () => {},
   ) {
     super({ key: 'MainScene' });
     this.snapshot = snapshot;
@@ -730,6 +732,9 @@ export class MainScene extends Phaser.Scene {
           const angle = side / 6 * Math.PI * 2;
           return { x: center.x + Math.cos(angle) * 40, y: center.y + 9 + Math.sin(angle) * 20 };
         })), true);
+        if (node.id === this.snapshot.selectedStationId) {
+          graphics.lineStyle(2, color.blueLight, 0.95).strokeEllipse(center.x, center.y + 9, 106, 56);
+        }
       }
       if (node.kind === 'metal') {
         graphics.fillStyle(hue, node.stale ? 0.4 : 0.95);
@@ -1140,6 +1145,12 @@ export class MainScene extends Phaser.Scene {
     return pickBase(world, { own: this.snapshot.base?.position, enemy: rival?.visible ? rival : undefined });
   }
 
+  /** A visible station dock under a screen point; remembered stations in fog cannot be picked. */
+  private stationAt(position: { x: number; y: number }): string | null {
+    const world = this.cameras.main.getWorldPoint(position.x, position.y);
+    return pickStation(world, this.snapshot.nodes.filter((node) => node.station && !node.stale));
+  }
+
   /** Double click: every own ship of the clicked ship's class that is currently on screen (StarCraft style). */
   private sameTypeOnScreen(clickedId: string): string[] {
     const clicked = this.snapshot.squads.find((squad) => squad.id === clickedId);
@@ -1248,12 +1259,12 @@ export class MainScene extends Phaser.Scene {
       if (this.selectionDrag) {
         const { start, clickedId } = this.selectionDrag;
         const end = this.pointerPosition(pointer);
-        // A drag selects own ships in its box and never a base; a ship under the cursor wins over a base under it;
-        // otherwise a click on a base selects it, and anywhere else clears the selection.
+        // A drag selects own ships and never a structure; a ship wins over a station or base under it.
         const choice = clickSelection({
           dragged: Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)) >= 6,
           clickedId,
           doubleClick: !!clickedId && this.lastClick?.id === clickedId && pointer.downTime - this.lastClick.at <= DOUBLE_CLICK_MS,
+          stationAt: () => this.stationAt(end),
           baseAt: () => this.baseAt(end),
         });
         if (choice.kind === 'box') {
@@ -1270,6 +1281,9 @@ export class MainScene extends Phaser.Scene {
         } else if (choice.kind === 'ship') {
           this.onSelectSquads([choice.shipId]);
           this.lastClick = { id: choice.shipId, at: pointer.downTime, group: false };
+        } else if (choice.kind === 'station') {
+          this.onSelectStation(choice.stationId);
+          this.lastClick = null;
         } else {
           if (choice.kind === 'base') this.onSelectBase(choice.base);
           else this.onSelectSquads([]);

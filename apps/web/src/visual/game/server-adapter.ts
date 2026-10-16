@@ -3,7 +3,7 @@ import { Client, type Room } from '@colyseus/sdk';
 import { FLEET_CAP, BASE_DEFENSE_RANGE, findTiledPath } from '@impulso/sim';
 import { type PlayerView, type UnitKind } from '@impulso/state';
 import { sectorSurface, syncTerrain, type TrainingMapId } from '../map/sector-map';
-import { formationSeats, readStoredFormation, storeFormation } from './formation';
+import { canUseFormation, formationSeats, readStoredFormation, storeFormation } from './formation';
 import type {
   CoreState, GameplayEvent, GameplayPresentationAdapter, GameplayViewModel, NodeViewModel, PresentationIntent, SquadOwner, SquadViewModel,
 } from './model';
@@ -27,6 +27,7 @@ const UNIT_LABEL: Record<UnitKind, string> = {
 export const REJECTION_TEXT: Record<string, string> = {
   insufficient_metal: 'No alcanza el Metal.',
   not_owner: 'Eso no es tuyo.',
+  mixed_formation: 'Las formaciones requieren naves del mismo tipo.',
   fleet_full: 'Flota completa.',
   production_busy: 'El hangar ya está construyendo.',
   upgrade_maxed: 'Esta mejora ya está al máximo.',
@@ -47,13 +48,14 @@ export const REJECTION_TEXT: Record<string, string> = {
   pause_unavailable: 'La pausa no está disponible en esta partida.',
 };
 
-function blankSnapshot(): GameplayViewModel {
+function blankSnapshot(movementSandbox = false): GameplayViewModel {
   return {
     tick: 0, sector: 1, elapsedSeconds: 0,
     selectedSquadId: null, selectedSquadIds: [], activeAction: null, moveOrder: null, formation: readStoredFormation(),
     resources: { metal: 0, metalRate: 0, energy: 0, energyRate: 0, fleet: 0, fleetCap: FLEET_CAP },
     squads: [], core: { state: 'locked', progress: 0, opensInSeconds: 0, radius: 1, captor: null, fractions: { own: 0, rival: 0 }, secondsLeft: null, guarded: false },
-    enemiesVisible: true, clockRunning: true, paused: false, canPause: false, selectedBase: null,
+    enemiesVisible: true, clockRunning: true, paused: false, canPause: false, selectedBase: null, selectedStationId: null,
+    canProduce: !movementSandbox, movementSandbox,
     nodes: [], production: null, productionQueue: [], result: null,
     notice: 'Conectando con el servidor…', noticeCode: 'connecting', connection: 'connecting',
     visibleCells: null,
@@ -102,7 +104,7 @@ export function rememberView(memory: FogMemory, view: Pick<PlayerView, 'width' |
   const seenNow = new Set(view.nodes.map((node) => node.id));
   for (const node of view.nodes) {
     memory.nodes.set(node.id, { id: node.id, kind: node.kind, x: node.x, y: node.y, owner: ownerOf(node.ownerId),
-      ...(node.radius !== undefined ? { radius: node.radius } : {}), stale: false });
+      ...(node.radius !== undefined ? { radius: node.radius } : {}), ...(node.station ? { station: true } : {}), stale: false });
   }
   for (const [id, node] of memory.nodes) if (!seenNow.has(id) && !node.stale) memory.nodes.set(id, { ...node, stale: true });
   return grew;
@@ -255,7 +257,7 @@ export interface MatchTransport {
   outcome?(): { result: 'victory' | 'defeat'; reward?: MatchReward } | null;
 }
 /** A training room the adapter owns: it numbers the orders and leaves the room when closed. */
-function roomTransport(room: Room): MatchTransport {
+function roomTransport(room: Room, sendReady = false): MatchTransport {
   let seq = 0;
   let open = true;
   return {
@@ -269,6 +271,7 @@ function roomTransport(room: Room): MatchTransport {
         events.connection('offline');
         events.notice('Se perdió la conexión con el servidor.', 'connection_lost');
       });
+      if (sendReady) room.send('ready');
       return () => { open = false; void room.leave(); };
     },
     command(command) { if (!open) return; seq += 1; room.send('command', { seq, ...command }); },
@@ -285,7 +288,7 @@ function roomTransport(room: Room): MatchTransport {
  */
 export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy' | 'medium' | 'hard' = 'medium',
   map: TrainingMapId = 'espiral', duration: DurationMode = 'skirmish', source?: Room | MatchTransport, carried: readonly string[] = []): GameplayPresentationAdapter {
-  let snapshot = blankSnapshot();
+  let snapshot = blankSnapshot(map === 'movement-lab');
   let latest: PlayerView | null = null;
   let link: MatchTransport | null = null;
   let close: () => void = () => {};
@@ -546,7 +549,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
     memory.explored = null; memory.nodes.clear();
     trails.clear(); shown.clear();
     pendingOrder = null; pendingSeats = new Map();
-    snapshot = { ...snapshot, selectedSquadIds: [], selectedSquadId: null, selectedBase: null, activeAction: null, moveOrder: null };
+    snapshot = { ...snapshot, selectedSquadIds: [], selectedSquadId: null, selectedBase: null, selectedStationId: null, activeAction: null, moveOrder: null };
   };
   const announceOutcome = () => {
     const final = link?.outcome?.();
@@ -649,7 +652,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       const joined = await new Client(serverUrl).create('training', { difficulty, map, duration,token, ...(carried.length?{carried:[...carried]}:{}),
         testTimeScale: Number(testing.get('testTimeScale') ?? 1), ...(testing.has('testSeed')?{testSeed:Number(testing.get('testSeed'))}:{}) });
       if (destroyed) { void joined.leave(); return; }
-      start(roomTransport(joined));
+      start(roomTransport(joined, map === 'movement-lab'));
     } catch {
       snapshot = { ...snapshot, connection: 'offline', notice: 'No se pudo conectar con el servidor.', noticeCode: 'connect_failed' };
       emit();
@@ -682,7 +685,16 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
       }
       if (intent.type === 'select-base') {
         if (intent.base === 'enemy' && latest?.enemyBase?.visible !== true) return;
-        snapshot = { ...snapshot, selectedBase: intent.base, selectedSquadIds: [], selectedSquadId: null, activeAction: null };
+        snapshot = { ...snapshot, selectedBase: intent.base, selectedStationId: null, selectedSquadIds: [], selectedSquadId: null, activeAction: null };
+        rebuild();
+        if (!latest) emit();
+        return;
+      }
+      if (intent.type === 'select-station') {
+        // `latest.nodes` is the server's currently visible set; fog-memory nodes live only in the presentation snapshot.
+        if (intent.stationId && !latest?.nodes.some((node) => node.id === intent.stationId && node.station)) return;
+        snapshot = { ...snapshot, selectedStationId: intent.stationId, selectedBase: null,
+          selectedSquadIds: [], selectedSquadId: null, activeAction: null };
         rebuild();
         if (!latest) emit();
         return;
@@ -715,7 +727,7 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         const requested = intent.type === 'select-squad' ? [intent.squadId] : intent.squadIds;
         const ids = [...new Set(requested)].filter((id) => snapshot.squads.some((squad) => squad.id === id && squad.owner === 'blue'));
         if (intent.type === 'select-squad' && !ids.length) return;
-        snapshot = { ...snapshot, selectedSquadIds: ids, selectedSquadId: ids[0] ?? null, selectedBase: null, activeAction: null };
+        snapshot = { ...snapshot, selectedSquadIds: ids, selectedSquadId: ids[0] ?? null, selectedBase: null, selectedStationId: null, activeAction: null };
         rebuild();
         if (!latest) emit();
         return;
@@ -745,10 +757,11 @@ export function createServerGameplayAdapter(serverUrl: string, difficulty: 'easy
         const movers = intent.type === 'move-squad'
           ? selectedOwn().filter((squad) => squad.id === intent.squadId) : selectedOwn();
         const servers = movers.flatMap((squad) => latest?.squads.find((candidate) => candidate.id === squad.id) ?? []);
-        // A group flies as one formation: every ship gets its own seat, facing the march.
+        // Same-type groups use formation seats; mixed groups get ordinary per-ship move orders.
         const formation = snapshot.formation ?? readStoredFormation();
-        pendingSeats = movers.length > 1 ? formationSeats(servers, { x, y }, formation) : new Map();
-        if (movers.length > 1) send({ type: 'move_formation', squadIds: movers.map((squad) => squad.id), x, y, formation });
+        const useFormation = servers.length === movers.length && canUseFormation(servers.map((squad) => squad.kind));
+        pendingSeats = useFormation ? formationSeats(servers, { x, y }, formation) : new Map();
+        if (useFormation) send({ type: 'move_formation', squadIds: movers.map((squad) => squad.id), x, y, formation });
         else for (const squad of movers) send({ type: 'move', squadId: squad.id, x, y });
         if (movers.length && snapshot.selectedSquadId) pendingOrder = { squadId: snapshot.selectedSquadId, destination: { x, y }, at: performance.now() };
         // A paused match moves nothing: no ship leads toward a cell it will not reach yet.

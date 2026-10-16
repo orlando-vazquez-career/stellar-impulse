@@ -25,9 +25,11 @@ interface PhaserBattlefieldProps {
   onCameraChange(view: CameraView): void;
   /** A click on a command base (a ship under the cursor always wins). */
   onSelectBase?(base: 'own' | 'enemy'): void;
+  /** A click on a visible station dock (a ship under the cursor always wins). */
+  onSelectStation?(stationId: string): void;
 }
 
-export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattlefieldProps>(function PhaserBattlefield({ view, onSelectSquads, onMoveSelected, onAttackSelected, onCameraChange, onSelectBase }, forwardedRef) {
+export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattlefieldProps>(function PhaserBattlefield({ view, onSelectSquads, onMoveSelected, onAttackSelected, onCameraChange, onSelectBase, onSelectStation }, forwardedRef) {
   const { t, locale } = useI18n();
   const localeRef = useRef(locale);
   localeRef.current = locale;
@@ -45,6 +47,8 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
   attackCallbackRef.current = onAttackSelected;
   const baseCallbackRef = useRef(onSelectBase);
   baseCallbackRef.current = onSelectBase;
+  const stationCallbackRef = useRef(onSelectStation);
+  stationCallbackRef.current = onSelectStation;
   const snapshotRef = useRef(view);
   snapshotRef.current = view;
 
@@ -80,6 +84,7 @@ export const PhaserBattlefield = forwardRef<PhaserBattlefieldHandle, PhaserBattl
       },
       (message) => { if (!disposed) setLoadError(message); },
       (base) => { if (!disposed) baseCallbackRef.current?.(base); },
+      (stationId) => { if (!disposed) stationCallbackRef.current?.(stationId); },
     );
     scene.setLocale(localeRef.current);
     sceneRef.current = scene;

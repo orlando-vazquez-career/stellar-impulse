@@ -77,7 +77,7 @@ dibuja solo el anillo y el progreso de captura.
 estilo del kit (`tilesets/img/base_jugador.png` y la torre de vigilancia aprobada,
 `tilesets/img/torre_vigilancia.png`), y después se ajustan al lienzo y al ancla que declara su
 tileset; no se agregan scripts procedurales nuevos para dibujarlos. Cada archivo se anota en el
-`CREDITOS.md` del kit. `packages/sim/src/tiled-maps/estructuras-arte.test.ts` comprueba que la torre de
+`CREDITOS.md` del kit. `packages/sim/tests/unit/tiled-maps/estructuras-arte.test.ts` comprueba que la torre de
 vigilancia conserve su lienzo de 80×128 RGBA, el tamaño declarado en `estructuras.tsx` y el de cada
 objeto del mapa, y que sea el mismo archivo en los tres kits jugables.
 

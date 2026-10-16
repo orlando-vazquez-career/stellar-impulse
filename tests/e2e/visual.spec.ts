@@ -80,6 +80,10 @@ test.describe('visual interface foundation', () => {
     expect(panelBox.clearsFooter).toBe(true);
 
     await page.getByRole('button', { name: /Controles/ }).click();
+    const layouts = page.getByRole('group', { name: 'Disposición predeterminada' });
+    await expect(layouts.getByRole('button', { name: 'Estándar · WASD y flechas' })).toHaveAttribute('aria-pressed', 'true');
+    await layouts.getByRole('button', { name: 'Solo flechas' }).click();
+    await expect(layouts.getByRole('button', { name: 'Solo flechas' })).toHaveAttribute('aria-pressed', 'true');
     const moveControls = page.getByRole('group', { name: 'Mover' });
     await moveControls.getByRole('button', { name: 'Cambiar tecla M de Mover' }).click();
     await page.keyboard.press('z');
@@ -122,6 +126,7 @@ test.describe('visual interface foundation', () => {
     await expect(page.getByText('Ajustes guardados localmente')).toBeVisible();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('impulso.visual-preferences') ?? '{}'));
     expect(stored.controls.move).toContain('KeyZ');
+    expect(stored.controls.panUp).toEqual(['ArrowUp']);
     expect(stored.accessibility.highContrast).toBe(true);
     expect(stored.accessibility.largeText).toBe(true);
   });

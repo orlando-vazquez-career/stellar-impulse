@@ -5,6 +5,7 @@ import { mapName } from './map-name';
 import sectorSource from '../../../../../packages/sim/src/tiled-maps/sector-01 aaaa/sector-01.tmj?raw';
 import espiralSource from '../../../../../packages/sim/src/tiled-maps/espiral-estelar/espiral-estelar.json?raw';
 import espiral2Source from '../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/espiral-estelar_2.json?raw';
+import movementLabSource from '../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/laboratorio-movimiento.json?raw';
 import trascendenciaSource from '../../../../../packages/sim/src/tiled-maps/trascendencia-estelar_2/trascendencia-estelar_2.json?raw';
 
 export type { TrainingMapId } from '@impulso/sim';
@@ -41,15 +42,20 @@ const IMAGE_URLS: Record<TrainingMapId, Record<string, string>> = {
     ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/assets-externos/sprites/*.png', { eager: true, query: '?url', import: 'default' }),
     ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/*.png', { eager: true, query: '?url', import: 'default' }),
   }),
+  'movement-lab': byFileName({
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/tilesets/img/*.png', { eager: true, query: '?url', import: 'default' }),
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/assets-externos/sprites/*.png', { eager: true, query: '?url', import: 'default' }),
+    ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/*.png', { eager: true, query: '?url', import: 'default' }),
+  }),
   trascendencia: byFileName({
     ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/trascendencia-estelar_2/tilesets/img/*.png', { eager: true, query: '?url', import: 'default' }),
     ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/trascendencia-estelar_2/assets-externos/sprites/*.png', { eager: true, query: '?url', import: 'default' }),
     ...import.meta.glob('../../../../../packages/sim/src/tiled-maps/trascendencia-estelar_2/*.png', { eager: true, query: '?url', import: 'default' }),
   }),
 };
-const SOURCES: Record<TrainingMapId, string> = { 'sector-01': sectorSource, espiral: espiralSource, 'espiral-2': espiral2Source, trascendencia: trascendenciaSource };
+const SOURCES: Record<TrainingMapId, string> = { 'sector-01': sectorSource, espiral: espiralSource, 'espiral-2': espiral2Source, trascendencia: trascendenciaSource, 'movement-lab': movementLabSource };
 /** Maps whose tilesets live in external `.tsx` files, and the kit folder each one reads them from. */
-const TSX_FOLDERS: Partial<Record<TrainingMapId, string>> = { espiral: 'espiral-estelar', 'espiral-2': 'espiral-estelar_2', trascendencia: 'trascendencia-estelar_2' };
+const TSX_FOLDERS: Partial<Record<TrainingMapId, string>> = { espiral: 'espiral-estelar', 'espiral-2': 'espiral-estelar_2', trascendencia: 'trascendencia-estelar_2', 'movement-lab': 'espiral-estelar_2' };
 const ESPIRAL_TSX = import.meta.glob(['../../../../../packages/sim/src/tiled-maps/espiral-estelar/**/*.tsx', '../../../../../packages/sim/src/tiled-maps/espiral-estelar_2/**/*.tsx', '../../../../../packages/sim/src/tiled-maps/trascendencia-estelar_2/**/*.tsx'], {
   eager: true, query: '?raw', import: 'default',
 }) as Record<string, string>;
@@ -66,6 +72,7 @@ const MAP_SOURCE_FILE: Record<TrainingMapId, string> = {
   'espiral-2': 'espiral-estelar_2.json',
   trascendencia: 'trascendencia-estelar_2.json',
   'sector-01': 'sector-01.tmj',
+  'movement-lab': 'laboratorio-movimiento.json',
 };
 
 function byFileName(files: Record<string, unknown>): Record<string, string> {

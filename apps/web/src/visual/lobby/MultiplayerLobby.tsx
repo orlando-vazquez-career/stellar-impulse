@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
-import { DEFAULT_CAMPAIGN_MAP, PLAYABLE_MAPS, type PlayableMapId } from '@impulso/input';
+import { DEFAULT_CAMPAIGN_MAP, PLAYABLE_MAPS, type MultiplayerCampaignMode, type PlayableMapId } from '@impulso/input';
 import type { MultiplayerSession } from '../../multiplayer/session';
 import { sessionToken } from '../../auth/client';
 import { useSpaceSound } from '../../login/sound';
@@ -62,6 +62,15 @@ const messages = {
     map: 'Mapa',
     format: 'Formato',
     formatValue: '1 contra 1',
+    matchLength: 'Duración',
+    modeTitle: 'Duración de la operación',
+    skirmish: 'Escaramuza · 1 sector',
+    skirmishHint: 'Una sola batalla en el mapa elegido.',
+    campaign: 'Campaña completa · 3 sectores',
+    campaignHint: 'Tres sectores consecutivos en el mapa elegido.',
+    skirmishLength: 'Escaramuza · 1 sector',
+    campaignLength: 'Campaña completa · 3 sectores',
+    hostSetsLength: 'La define quien creó la sala.',
     seats: 'Asignación de flota',
     seatsValue: 'Automática al entrar',
     objective: 'Objetivo',
@@ -126,6 +135,15 @@ const messages = {
     map: 'Map',
     format: 'Format',
     formatValue: '1 versus 1',
+    matchLength: 'Length',
+    modeTitle: 'Operation length',
+    skirmish: 'Skirmish · 1 sector',
+    skirmishHint: 'One battle on the selected map.',
+    campaign: 'Full campaign · 3 sectors',
+    campaignHint: 'Three consecutive sectors on the selected map.',
+    skirmishLength: 'Skirmish · 1 sector',
+    campaignLength: 'Full campaign · 3 sectors',
+    hostSetsLength: 'Set by the room host.',
     seats: 'Fleet assignment',
     seatsValue: 'Automatic on entry',
     objective: 'Objective',
@@ -178,6 +196,7 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const [roomName, setRoomName] = useState(alias);
   const [map, setMap] = useState<PlayableMapId>(DEFAULT_CAMPAIGN_MAP);
+  const [campaignMode, setCampaignMode] = useState<MultiplayerCampaignMode>('skirmish');
   const validRoomName = /^[\p{L}\p{N} _.-]{1,24}$/u.test(roomName.trim());
   const [joinCode, setJoinCode] = useState(initialJoinCode);
   const [pending, setPending] = useState(false);
@@ -185,6 +204,9 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const phase = snapshot.phase;
   const selectedMap = PLAYABLE_MAPS.find((option) => option.id === (phase?.renderMap ?? map)) ?? PLAYABLE_MAPS[0];
+  const roomCampaignMode = phase ? (phase.sectors === 3 ? 'campaign' : 'skirmish') : mode === 'create' ? campaignMode : null;
+  const matchLength = roomCampaignMode === 'campaign' ? copy.campaignLength
+    : roomCampaignMode === 'skirmish' ? copy.skirmishLength : copy.hostSetsLength;
   const joined = Boolean(snapshot.roomId);
   const busy = pending || leaving || snapshot.connection === 'connecting' || snapshot.connection === 'reconnecting';
   const ownSeat = phase ? phase.seats[phase.playerId] : null;
@@ -223,7 +245,7 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
     setPending(true);
     try {
       const activeToken = token || sessionToken() || '';
-      if (mode === 'create') await session.create(roomName.trim(), activeToken, map);
+      if (mode === 'create') await session.create(roomName.trim(), activeToken, map, campaignMode);
       else await session.join(joinCode.trim(), roomName.trim(), activeToken);
     } catch {
       // The session publishes the connection error for this operation.
@@ -306,6 +328,25 @@ export function MultiplayerLobby({ alias, token, mode, session, initialJoinCode 
             <dl className="vi-briefing__data">
               <div><dt>{copy.map}</dt><dd>{selectedMap.name[locale]}</dd></div>
               <div><dt>{copy.format}</dt><dd>{copy.formatValue}</dd></div>
+              <div className="vi-briefing__length">
+                <dt>{copy.matchLength}</dt>
+                <dd>
+                  {mode === 'create' && !joined ? (
+                    <fieldset className="vi-campaign-mode-select" aria-label={copy.modeTitle} disabled={busy}>
+                      <button type="button" className={campaignMode === 'skirmish' ? 'is-selected' : ''}
+                        aria-pressed={campaignMode === 'skirmish'} title={copy.skirmishHint}
+                        onClick={() => { sound.playSelect(); setCampaignMode('skirmish'); }}>
+                        {copy.skirmish}
+                      </button>
+                      <button type="button" className={campaignMode === 'campaign' ? 'is-selected' : ''}
+                        aria-pressed={campaignMode === 'campaign'} title={copy.campaignHint}
+                        onClick={() => { sound.playSelect(); setCampaignMode('campaign'); }}>
+                        {copy.campaign}
+                      </button>
+                    </fieldset>
+                  ) : matchLength}
+                </dd>
+              </div>
               <div><dt>{copy.seats}</dt><dd>{copy.seatsValue}</dd></div>
               <div><dt>{copy.objective}</dt><dd>{copy.objectiveValue}</dd></div>
             </dl>

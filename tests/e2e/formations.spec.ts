@@ -1,16 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { canvasPointFromMinimap, chooseOpening, openApp } from './helpers';
+import { canvasPointFromMinimap, chooseOpening, gamePoint, openApp } from './helpers';
 
-test('a selected group picks a formation and marches as one order', async ({ page }) => {
+test('a mixed-type group moves individually without a formation', async ({ page }) => {
   test.setTimeout(90000);
   await page.setViewportSize({ width: 1366, height: 768 });
-  // Command frames are msgpack, so the command type travels as plain text inside them.
-  const sent: string[] = [];
-  page.on('websocket', (socket) => socket.on('framesent', (frame) => {
-    const text = typeof frame.payload === 'string' ? frame.payload : frame.payload.toString('latin1');
-    if (text.includes('move_formation')) sent.push('move_formation');
-    else if (/move/.test(text)) sent.push('move');
-  }));
   await openApp(page);
   await page.getByLabel('Identificador de comandante').fill('Vega');
   await page.getByRole('button', { name: 'Continuar como invitado' }).click();
@@ -35,13 +28,7 @@ test('a selected group picks a formation and marches as one order', async ({ pag
   await page.mouse.up();
   await expect(page.getByText('3 unidades seleccionadas')).toBeVisible();
 
-  const picker = page.getByRole('radiogroup', { name: 'Formación' });
-  await expect(picker.getByRole('radio')).toHaveCount(6);
-  await picker.getByRole('radio', { name: 'Cuña' }).click();
-  await expect(picker.getByRole('radio', { name: 'Cuña' })).toHaveAttribute('aria-checked', 'true');
-  // F cycles to the next shape.
-  await page.keyboard.press('f');
-  await expect(picker.getByRole('radio', { name: 'Cuadro' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('radiogroup', { name: 'Formación' })).toHaveCount(0);
 
   // The smallest supported viewport must leave the hangar and minimap usable.
   await page.setViewportSize({ width: 1024, height: 768 });
@@ -50,18 +37,13 @@ test('a selected group picks a formation and marches as one order', async ({ pag
   const minimap = await page.locator('.vi-minimap').boundingBox();
   expect(selection!.x + selection!.width).toBeLessThanOrEqual(hangar!.x);
   expect(selection!.x).toBeGreaterThanOrEqual(minimap!.x + minimap!.width);
-  await page.screenshot({ path: 'test-results/formation-layout-1024.png' });
+  await page.screenshot({ path: 'test-results/mixed-group-layout-1024.png' });
   await page.setViewportSize({ width: 1366, height: 768 });
-  // Configured actions take precedence over the formation shortcut.
-  // One click sends one group order and every ship sets off.
+  // The mixed selection sends one ordinary move per ship, never a shared formation order.
   const starts = await allies.evaluateAll((markers) => markers.map((marker) => `${marker.getAttribute('cx')},${marker.getAttribute('cy')}`));
-  const centre = { x: xs.reduce((a, b) => a + b, 0) / xs.length, y: ys.reduce((a, b) => a + b, 0) / ys.length };
-  for (const [dx, dy] of [[160, 90], [-160, 90], [160, -60], [-160, -60], [0, 140]] as const) {
-    await page.mouse.click(centre.x + dx, centre.y + dy, { button: 'right' });
-    // A click on rock is refused before it is sent; try the next spot.
-    if (await expect.poll(() => sent.length, { timeout: 3000 }).toBeGreaterThan(0).then(() => true, () => false)) break;
-  }
-  expect(sent).toEqual(['move_formation']);
+  const destination = await gamePoint(page, 15, 11);
+  await page.mouse.click(destination.x, destination.y, { button: 'right' });
+  await expect(page.locator('.map-move-route')).toHaveCount(1, { timeout: 10000 });
   await expect.poll(async () => {
     const now = await allies.evaluateAll((markers) => markers.map((marker) => `${marker.getAttribute('cx')},${marker.getAttribute('cy')}`));
     return now.filter((position, index) => position !== starts[index]).length;

@@ -2,7 +2,7 @@ import { randomFor } from '../augments/random.js';
 import { FLEET_CAP, UNIT_COSTS } from '../economia.js';
 import type { PlayerId, Position, UnitKind, World } from '../index.js';
 import { effectiveFleetCap, effectsFor } from '../augments/effects.js';
-import { statsFor } from '../stats.js';
+import { statsFor } from '../naves/index.js';
 import { knownObjectives, explorationGoal } from './knowledge.js';
 import { baseVulnerable, moduleRefusal, rivalOf, type ModuleKind } from '../base.js';
 

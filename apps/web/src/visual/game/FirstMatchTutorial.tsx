@@ -26,7 +26,7 @@ export function FirstMatchTutorial({ view }: { view: GameplayViewModel }) {
     setStep(next);
     if (next === TUTORIAL_STEPS.length) { markTutorialSeen(); setDismissed(true); }
   }, [view, ready, dismissed]);
-  if (dismissed || !ready || view.result || !COPY[step]) return null;
+  if (dismissed || !ready || view.result || view.movementSandbox || !COPY[step]) return null;
   const finish = () => { markTutorialSeen(); setDismissed(true); };
   const skip = () => {
     const next = observer.current?.skip() ?? step + 1;

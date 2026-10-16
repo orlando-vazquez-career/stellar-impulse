@@ -1,5 +1,4 @@
-import type { UnitKind } from '../index.js';
-import type { StatKey } from '../stats.js';
+import type { UnitKind, StatKey } from '../naves/index.js';
 export type AugmentTier = 'silver' | 'gold' | 'prismatic';
 export type ChallengeId = 'double-impact' | 'elite-veteran' | 'steel-wall' | 'ace' | 'untouchable' | 'scrapper' | 'full-armada';
 export type Effect =

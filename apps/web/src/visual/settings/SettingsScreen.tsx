@@ -2,7 +2,10 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'reac
 import { useI18n } from '../i18n';
 import { useSpaceSound } from '../../login/sound';
 import { chooseReducedMotion, freshDefaultVisualPreferences, hasUnsavedChanges, type ControlAction, type VisualPreferences } from './preferences';
-import { CONTROL_SECTIONS, findBindingConflict, formatKeyBinding, keyBindingFromEvent, type ControlBindings } from './control-bindings';
+import {
+  CONTROL_SECTIONS, controlBindingsForLayout, controlLayoutForBindings, findBindingConflict, formatKeyBinding,
+  keyBindingFromEvent, type ControlBindings, type ControlLayoutId,
+} from './control-bindings';
 import { AudioControls } from './AudioControls';
 import { commitSavedAccessibility, setAccessibilityPreview } from './accessibility-store';
 import './settings.css';
@@ -144,6 +147,13 @@ export function SettingsPanel({
     setBindingError(null);
   };
 
+  const applyControlLayout = (layout: ControlLayoutId) => {
+    setDraft({ ...draft, controls: controlBindingsForLayout(layout) });
+    setRecording(null);
+    setBindingError(null);
+    setSaved(false);
+  };
+
   const beginRecording = (action: ControlAction, replacing: string | null) => {
     setBindingError(null);
     setRecording({ action, replacing });
@@ -230,6 +240,19 @@ export function SettingsPanel({
           {category === 'controls' && <>
             <header><span>02</span><div><h2 id="settings-controls">{t('controls')}</h2><p>{t('controlsDescription')}</p></div></header>
             <div className="vi-settings-panel__body vi-control-settings">
+              <div className="vi-control-layouts" role="group" aria-label={t('controlLayout')}>
+                <strong>{t('controlLayout')}</strong>
+                <div>
+                  {([
+                    ['standard', t('controlLayoutStandard')],
+                    ['wasd', t('controlLayoutWasd')],
+                    ['arrows', t('controlLayoutArrows')],
+                  ] as const).map(([layout, label]) => (
+                    <button type="button" key={layout} aria-pressed={controlLayoutForBindings(draft.controls) === layout}
+                      onClick={() => applyControlLayout(layout)}>{label}</button>
+                  ))}
+                </div>
+              </div>
               {CONTROL_SECTIONS.map((section) => {
                 const title = controlSectionTitles[section.id];
                 return <section className="vi-control-settings__section" key={section.id} aria-label={title}>

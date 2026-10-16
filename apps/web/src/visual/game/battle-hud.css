@@ -25,6 +25,19 @@
 .vi-hud .vi-sector-status .vi-core-state.has-contested small { color: var(--vi-warning); }
 .vi-hud .vi-sector-status .vi-core-state.has-guardian small { color: #f7d774; }
 
+/* The movement lab has no match clock or objective HUD; keep its practice scope clear. */
+.vi-hud .vi-movement-lab-banner {
+  position: absolute; top: 16px; left: 50%; z-index: 4; width: min(460px, calc(100vw - 32px));
+  padding: 10px 16px; display: grid; gap: 4px; transform: translateX(-50%);
+  border: 1px solid var(--vi-blue); border-top: 2px solid #77baff;
+  background: rgb(8 22 33 / 94%); box-shadow: 0 8px 24px rgb(0 0 0 / 38%); text-align: center;
+}
+.vi-hud .vi-movement-lab-banner strong {
+  color: var(--vi-blue-light); font-family: var(--vi-display); font-size: calc(15px * var(--vi-text-scale, 1));
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.vi-hud .vi-movement-lab-banner span { color: var(--vi-text); font-size: calc(12px * var(--vi-text-scale, 1)); line-height: 1.4; }
+
 /* The pause takes the clock's place, at the clock's width. */
 .vi-hud .vi-sector-status .vi-sector-paused {
   min-width: 0; padding: 0 4px; overflow: hidden; border-right: 1px solid var(--vi-border); border-left: 1px solid var(--vi-border);
@@ -42,6 +55,18 @@
 
 /* A selected own base brings the hangar panel forward. */
 .vi-hud .vi-production.is-focused { border-color: var(--vi-blue-light); box-shadow: 0 0 0 1px rgb(131 212 255 / 35%), 0 0 22px rgb(54 169 255 / 22%); }
+.vi-hud .vi-production__station.is-selected { margin-right: -5px; margin-left: -5px; padding-right: 5px; padding-left: 5px; border-top-color: var(--vi-blue-light); background: rgb(54 169 255 / 8%); }
+.vi-hud .vi-structure {
+  position: absolute; bottom: 20px; left: 50%; z-index: 3; width: min(360px, calc(100vw - 32px));
+  padding: 12px 14px; display: grid; gap: 6px; transform: translateX(-50%);
+  border-top: 2px solid var(--vi-blue-light); box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
+}
+.vi-hud .vi-structure header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.vi-hud .vi-structure header strong { color: var(--vi-blue-light); font-family: var(--vi-display); font-size: calc(15px * var(--vi-text-scale, 1)); letter-spacing: .06em; text-transform: uppercase; }
+.vi-hud .vi-structure p { margin: 0; color: var(--vi-text); font-size: calc(13px * var(--vi-text-scale, 1)); }
+.vi-hud .vi-structure small { color: var(--vi-muted); font-size: calc(12px * var(--vi-text-scale, 1)); }
+.vi-hud .vi-structure.is-stale { border-top-color: var(--vi-muted); }
+.vi-hud .vi-structure.is-stale header strong { color: var(--vi-muted); }
 /* The shield line of the Base tab is a <small>: without a size of its own it shrank under 12 px. */
 .vi-hud .vi-base-hull small { font-size: calc(12px * var(--vi-text-scale, 1)); }
 
