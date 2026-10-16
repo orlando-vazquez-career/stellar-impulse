@@ -1,6 +1,6 @@
 import { TEST_SERVER_URL } from './server-url';
 import { randomUUID } from 'node:crypto';
-import { expect, test, type Page, type APIRequestContext } from '@playwright/test';
+import { expect, test, type Page, type APIRequestContext, type TestInfo } from '@playwright/test';
 import { chooseOpening } from './helpers';
 
 async function signIn(page: Page, request: APIRequestContext, name: string) {
@@ -19,33 +19,115 @@ async function signIn(page: Page, request: APIRequestContext, name: string) {
 }
 
 
-/** A real server order on the new engine: the base builds an Explorador and the fleet grows. */
-async function produceExplorer(page: Page, fleet: string) {
-  const button = page.locator('.vi-production').getByRole('button', { name: /Explorador/ });
-  await expect(button).toBeEnabled();
-  await button.click();
-  // Two software-rendered pages share the CI runner: the ack can take several seconds to paint.
-  await expect.poll(() => page.locator('.vi-gameplay').evaluate((gameplay) => {
-    const production = [...document.querySelectorAll('.vi-production__unit button')]
-      .find((candidate) => candidate.textContent?.includes('Explorador'));
-    return {
-      sequence: gameplay.getAttribute('data-sequence'),
-      player: gameplay.getAttribute('data-player-id'),
-      connection: gameplay.getAttribute('data-connection'),
-      tick: gameplay.getAttribute('data-tick'),
-      notice: document.querySelector('.vi-notice')?.textContent?.trim() ?? null,
-      productionDisabled: production instanceof HTMLButtonElement ? production.disabled : null,
+type CapturedFrame = { at: number; direction: 'sent' | 'received'; byteLength: number; prefixHex: string; textPrefix?: string };
+type WebSocketCapture = { active: boolean; sent: number; received: number; socketUrls: string[]; errors: string[]; frames: CapturedFrame[] };
+
+/** Capture only traffic around the tested order; omit frame contents beyond a short binary prefix. */
+function captureWebSocketTraffic(page: Page): WebSocketCapture {
+  const capture: WebSocketCapture = { active: false, sent: 0, received: 0, socketUrls: [], errors: [], frames: [] };
+  page.on('websocket', (socket) => {
+    const url = new URL(socket.url());
+    capture.socketUrls.push(`${url.origin}${url.pathname}`);
+    const remember = (direction: CapturedFrame['direction'], payload: string | Buffer) => {
+      if (!capture.active) return;
+      if (direction === 'sent') capture.sent += 1; else capture.received += 1;
+      const bytes = typeof payload === 'string' ? Buffer.from(payload) : payload;
+      const frame: CapturedFrame = {
+        at: Date.now(), direction, byteLength: bytes.byteLength, prefixHex: bytes.subarray(0, 48).toString('hex'),
+        ...(typeof payload === 'string' ? { textPrefix: payload.slice(0, 80) } : {}),
+      };
+      if (capture.frames.length < 20) capture.frames.push(frame);
+      else {
+        capture.frames.push(frame);
+        if (capture.frames.length > 40) capture.frames.splice(20, 1);
+      }
     };
-  }), { timeout: 20000 }).toMatchObject({ sequence: '1' });
-  await expect(page.locator('.vi-resources')).toContainText(fleet, { timeout: 20000 });
+    socket.on('framesent', ({ payload }) => remember('sent', payload));
+    socket.on('framereceived', ({ payload }) => remember('received', payload));
+    socket.on('socketerror', (message) => { if (capture.active && capture.errors.length < 10) capture.errors.push(message); });
+  });
+  return capture;
 }
 
-test('two accounts play the campaign on Espiral and recover the same match after reload', async ({ browser, request }) => {
+async function productionState(page: Page) {
+  return page.locator('.vi-gameplay').evaluate((gameplay) => {
+    const productionButtons = [...document.querySelectorAll('.vi-production__unit button')].map((button) => ({
+      text: button.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      disabled: button instanceof HTMLButtonElement ? button.disabled : null,
+    }));
+    return {
+      at: new Date().toISOString(),
+      path: location.pathname,
+      visibility: document.visibilityState,
+      sequence: gameplay.getAttribute('data-sequence'),
+      gameplay: Object.fromEntries(Array.from(gameplay.attributes).filter((attribute) => attribute.name.startsWith('data-'))
+        .map((attribute) => [attribute.name, attribute.value])),
+      resources: document.querySelector('.vi-resources')?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
+      notice: document.querySelector('.vi-notice')?.textContent?.trim() ?? null,
+      opening: document.querySelector('.augment-opening')?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
+      phaser: {
+        ready: document.querySelector('.vi-phaser')?.getAttribute('data-ready') ?? null,
+        map: document.querySelector('.vi-phaser')?.getAttribute('data-map-source') ?? null,
+      },
+      productionButtons,
+    };
+  });
+}
+
+/** A real server order on the new engine: the base builds an Explorador and the fleet grows. */
+async function produceExplorer(page: Page, fleet: string, traffic: WebSocketCapture, testInfo: TestInfo) {
+  const button = page.locator('.vi-production').getByRole('button', { name: /Explorador/ });
+  await expect(button).toBeEnabled();
+  const before = await productionState(page);
+  const samples = [before];
+  let latest = before;
+  let sampledAt = Date.now();
+  let clickCompleted = false;
+  traffic.active = true;
+  try {
+    await button.click();
+    clickCompleted = true;
+    // Two software-rendered pages share the CI runner: the ack can take several seconds to paint.
+    await expect.poll(async () => {
+      latest = await productionState(page);
+      if (Date.now() - sampledAt >= 500) {
+        samples.push(latest);
+        if (samples.length > 25) samples.shift();
+        sampledAt = Date.now();
+      }
+      return latest;
+    }, { timeout: 20000 }).toMatchObject({ sequence: '1' });
+    await expect(page.locator('.vi-resources')).toContainText(fleet, { timeout: 20000 });
+  } catch (error) {
+    traffic.active = false;
+    latest = await productionState(page).catch(() => latest);
+    const diagnostic = {
+      expectedFleet: fleet,
+      clickCompleted,
+      before,
+      latest,
+      samples,
+      websocket: { ...traffic, active: undefined },
+    };
+    const body = JSON.stringify(diagnostic, null, 2);
+    await testInfo.attach(`production-${latest.gameplay['data-player-id'] ?? 'unknown'}-diagnostics.json`, {
+      body: Buffer.from(body), contentType: 'application/json',
+    });
+    console.error(`[e2e production diagnostics] ${body}`);
+    throw error;
+  } finally {
+    traffic.active = false;
+  }
+}
+
+test('two accounts play the campaign on Espiral and recover the same match after reload', async ({ browser, request }, testInfo) => {
   test.setTimeout(240_000);
   const hostContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const guestContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const host = await hostContext.newPage();
   const guest = await guestContext.newPage();
+  const hostTraffic = captureWebSocketTraffic(host);
+  const guestTraffic = captureWebSocketTraffic(guest);
   try {
     await signIn(host, request, 'Vega');
     await signIn(guest, request, 'Nova');
@@ -93,8 +175,8 @@ test('two accounts play the campaign on Espiral and recover the same match after
     // Sector 1 opens with a private augment offer; the clock starts when both have chosen.
     await Promise.all([chooseOpening(host), chooseOpening(guest)]);
     for (const page of [host, guest]) await expect(page.locator('.vi-resources')).toContainText('2/12');
-    await produceExplorer(host, '3/12');
-    await produceExplorer(guest, '3/12');
+    await produceExplorer(host, '3/12', hostTraffic, testInfo);
+    await produceExplorer(guest, '3/12', guestTraffic, testInfo);
     await host.screenshot({ path: 'test-results/multiplayer-match.png' });
 
     await guest.reload();

@@ -1,5 +1,99 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { chooseOpening, gamePoint, minimapPoint, openApp, readBattlefieldCamera } from './helpers';
+
+type MinimapClickEvidence = {
+  at: number;
+  client: { x: number; y: number };
+  buttonRect: { x: number; y: number; width: number; height: number };
+  svgPoint: { x: number; y: number };
+  svgRect: { x: number; y: number; width: number; height: number } | null;
+  viewBox: string | null;
+  cameraRect: Record<string, string> | null;
+};
+type WindowWithMinimapEvidence = Window & { __e2eMinimapClick?: MinimapClickEvidence };
+
+function serializableCamera(camera: Awaited<ReturnType<typeof readBattlefieldCamera>>) {
+  return {
+    isoWidth: camera.isoWidth, isoHeight: camera.isoHeight,
+    worldOriginX: camera.worldOriginX, worldOriginY: camera.worldOriginY,
+    tileOriginX: camera.tileOriginX, tileOriginY: camera.tileOriginY,
+    mapWidth: camera.mapWidth, mapHeight: camera.mapHeight, yaw: camera.yaw,
+    worldX: camera.worldX, worldY: camera.worldY, zoom: camera.zoom,
+  };
+}
+
+/** Reconstruct the click handler's isoToPoint input from the actual browser click coordinates. */
+function decodeMinimapClick(camera: Awaited<ReturnType<typeof readBattlefieldCamera>>, svgPoint: { x: number; y: number }) {
+  const scale = 172 / camera.isoWidth;
+  const offset = { x: 4 - camera.worldOriginX * scale, y: 4 + (172 - camera.isoHeight * scale) / 2 - camera.worldOriginY * scale };
+  const world = { x: (svgPoint.x - offset.x) / scale, y: (svgPoint.y - offset.y) / scale };
+  const deltaX = (world.x - camera.mapHeight * 32) / 32;
+  const deltaY = (world.y - 64) / 16;
+  const viewed = { x: (deltaX + deltaY) / 2, y: (deltaY - deltaX) / 2 };
+  const grid = yawCell(viewed.x, viewed.y, camera.mapWidth, camera.mapHeight, -camera.yaw);
+  return {
+    world, grid, roundedGrid: { x: Math.round(grid.x), y: Math.round(grid.y) },
+    insideMap: grid.x >= 0 && grid.x <= camera.mapWidth - 1 && grid.y >= 0 && grid.y <= camera.mapHeight - 1,
+  };
+}
+
+function yawCell(x: number, y: number, width: number, height: number, radians: number) {
+  const centerX = (width - 1) / 2;
+  const centerY = (height - 1) / 2;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  const deltaX = x - centerX;
+  const deltaY = y - centerY;
+  return { x: centerX + deltaX * cosine - deltaY * sine, y: centerY + deltaX * sine + deltaY * cosine };
+}
+
+async function panSample(page: Page, cameraBefore: Awaited<ReturnType<typeof readBattlefieldCamera>>) {
+  const camera = await readBattlefieldCamera(page);
+  const point = await gamePoint(page, 18, 18);
+  const canvas = await page.locator('.vi-phaser canvas').boundingBox();
+  const inside = !!canvas && point.x >= canvas.x && point.x <= canvas.x + canvas.width
+    && point.y >= canvas.y && point.y <= canvas.y + canvas.height;
+  return {
+    at: new Date().toISOString(), inside,
+    cameraChanged: camera.worldX !== cameraBefore.worldX || camera.worldY !== cameraBefore.worldY,
+    camera: { worldX: camera.worldX, worldY: camera.worldY, zoom: camera.zoom }, point, canvas,
+  };
+}
+
+async function attachMinimapFailure(page: Page, testInfo: TestInfo, cameraBefore: Awaited<ReturnType<typeof readBattlefieldCamera>>,
+  target: { x: number; y: number }, plannedClick: { x: number; y: number }, samples: Awaited<ReturnType<typeof panSample>>[], latest: unknown) {
+  const [click, cameraAfter, targetPoint, canvas, runtime] = await Promise.all([
+    page.evaluate(() => (window as WindowWithMinimapEvidence).__e2eMinimapClick ?? null),
+    readBattlefieldCamera(page),
+    gamePoint(page, 18, 18),
+    page.locator('.vi-phaser canvas').boundingBox(),
+    page.evaluate(() => ({
+      viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
+      scroll: { x: scrollX, y: scrollY }, visibility: document.visibilityState,
+      phaser: Object.fromEntries(Array.from(document.querySelector('.vi-phaser')?.attributes ?? [])
+        .filter((attribute) => attribute.name.startsWith('data-')).map((attribute) => [attribute.name, attribute.value])),
+      gameplay: Object.fromEntries(Array.from(document.querySelector('.vi-gameplay')?.attributes ?? [])
+        .filter((attribute) => attribute.name.startsWith('data-')).map((attribute) => [attribute.name, attribute.value])),
+    })),
+  ]);
+  const diagnostic = {
+    targetCell: { x: 18, y: 18 },
+    targetMinimapSvgPoint: target,
+    plannedClickPositionInButton: plannedClick,
+    cameraBefore: serializableCamera(cameraBefore),
+    click,
+    clickDecodedAs: click ? decodeMinimapClick(cameraAfter, click.svgPoint) : null,
+    cameraAfter: serializableCamera(cameraAfter),
+    targetCanvasPoint: targetPoint,
+    canvas,
+    targetInsideCanvas: !!canvas && targetPoint.x >= canvas.x && targetPoint.x <= canvas.x + canvas.width
+      && targetPoint.y >= canvas.y && targetPoint.y <= canvas.y + canvas.height,
+    runtime, latestPoll: latest, pollSamples: samples,
+  };
+  const body = JSON.stringify(diagnostic, null, 2);
+  await testInfo.attach('minimap-pan-diagnostics.json', { body: Buffer.from(body), contentType: 'application/json' });
+  console.error(`[e2e minimap pan diagnostics] ${body}`);
+}
 
 test.describe('visual lobby', () => {
   test('offers Espiral Estelar and Caos Estelar before launch', async ({ page }) => {
@@ -61,7 +155,7 @@ test.describe('visual lobby', () => {
     expect(earlyMessageWarnings).toEqual([]);
   });
 
-  test('selects a discovered station and recalls it from a control group', async ({ page }) => {
+  test('selects a discovered station and recalls it from a control group', async ({ page }, testInfo) => {
     test.setTimeout(90000);
     await page.setViewportSize({ width: 1366, height: 768 });
     await openApp(page, '/?testTimeScale=5&testSeed=42');
@@ -84,20 +178,45 @@ test.describe('visual lobby', () => {
     const minimapControl = page.locator('.vi-minimap__pan');
     const minimap = await minimapControl.boundingBox();
     if (!minimap) throw new Error('No minimap');
-    await minimapControl.click({ position: { x: minimapTarget.x / 180 * minimap.width, y: minimapTarget.y / 180 * minimap.height } });
+    const plannedClick = { x: minimapTarget.x / 180 * minimap.width, y: minimapTarget.y / 180 * minimap.height };
+    await minimapControl.evaluate((element) => {
+      const button = element as HTMLButtonElement;
+      button.addEventListener('click', (event) => {
+        const rect = button.getBoundingClientRect();
+        const svg = button.querySelector('svg');
+        const svgRect = svg?.getBoundingClientRect();
+        const cameraRect = button.querySelector('.map-camera');
+        const toBox = (box: DOMRect) => ({ x: box.x, y: box.y, width: box.width, height: box.height });
+        (window as WindowWithMinimapEvidence).__e2eMinimapClick = {
+          at: Date.now(),
+          client: { x: event.clientX, y: event.clientY },
+          buttonRect: toBox(rect),
+          svgPoint: { x: (event.clientX - rect.left) / rect.width * 180, y: (event.clientY - rect.top) / rect.height * 180 },
+          svgRect: svgRect ? toBox(svgRect) : null,
+          viewBox: svg?.getAttribute('viewBox') ?? null,
+          cameraRect: cameraRect ? Object.fromEntries(Array.from(cameraRect.attributes).map((attribute) => [attribute.name, attribute.value])) : null,
+        };
+      }, { capture: true, once: true });
+    });
+    await minimapControl.click({ position: plannedClick });
     // The camera can already show the target; only require a usable destination, not a changed camera value.
-    await expect.poll(async () => {
-      const camera = await readBattlefieldCamera(page);
-      const point = await gamePoint(page, 18, 18);
-      const canvas = await page.locator('.vi-phaser canvas').boundingBox();
-      const inside = !!canvas && point.x >= canvas.x && point.x <= canvas.x + canvas.width
-        && point.y >= canvas.y && point.y <= canvas.y + canvas.height;
-      return {
-        inside,
-        cameraChanged: camera.worldX !== cameraBeforePan.worldX || camera.worldY !== cameraBeforePan.worldY,
-        camera: { x: camera.worldX, y: camera.worldY }, point, canvas,
-      };
-    }, { timeout: 10000 }).toMatchObject({ inside: true });
+    const panSamples: Awaited<ReturnType<typeof panSample>>[] = [];
+    let latestPan: Awaited<ReturnType<typeof panSample>> | null = null;
+    let lastPanSampleAt = 0;
+    try {
+      await expect.poll(async () => {
+        latestPan = await panSample(page, cameraBeforePan);
+        if (Date.now() - lastPanSampleAt >= 500) {
+          panSamples.push(latestPan);
+          if (panSamples.length > 25) panSamples.shift();
+          lastPanSampleAt = Date.now();
+        }
+        return { inside: latestPan.inside };
+      }, { timeout: 10000 }).toMatchObject({ inside: true });
+    } catch (error) {
+      await attachMinimapFailure(page, testInfo, cameraBeforePan, minimapTarget, plannedClick, panSamples, latestPan);
+      throw error;
+    }
     const destination = await gamePoint(page, 18, 18);
     await page.mouse.click(destination.x, destination.y, { button: 'right' });
     await expect(page.locator('.map-move-route')).toHaveCount(1, { timeout: 10000 });
