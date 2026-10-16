@@ -79,24 +79,15 @@ async function produceExplorer(page: Page, fleet: string, traffic: WebSocketCapt
   const button = page.locator('.vi-production').getByRole('button', { name: /Explorador/ });
   await expect(button).toBeEnabled();
   const before = await productionState(page);
-  const samples = [before];
   let latest = before;
-  let sampledAt = Date.now();
   let clickCompleted = false;
   traffic.active = true;
   try {
     await button.click();
     clickCompleted = true;
-    // Two software-rendered pages share the CI runner: the ack can take several seconds to paint.
-    await expect.poll(async () => {
-      latest = await productionState(page);
-      if (Date.now() - sampledAt >= 500) {
-        samples.push(latest);
-        if (samples.length > 25) samples.shift();
-        sampledAt = Date.now();
-      }
-      return latest;
-    }, { timeout: 20000 }).toMatchObject({ sequence: '1' });
+    // CI accepted this order but delivered its ack ~32 s later; use a locator wait instead of
+    // repeatedly serializing the full HUD on the already CPU-bound browser runner.
+    await expect(page.locator('.vi-gameplay')).toHaveAttribute('data-sequence', '1', { timeout: 45000 });
     await expect(page.locator('.vi-resources')).toContainText(fleet, { timeout: 20000 });
   } catch (error) {
     traffic.active = false;
@@ -106,7 +97,6 @@ async function produceExplorer(page: Page, fleet: string, traffic: WebSocketCapt
       clickCompleted,
       before,
       latest,
-      samples,
       websocket: { ...traffic, active: undefined },
     };
     const body = JSON.stringify(diagnostic, null, 2);

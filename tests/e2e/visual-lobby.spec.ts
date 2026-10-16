@@ -48,16 +48,42 @@ function yawCell(x: number, y: number, width: number, height: number, radians: n
 }
 
 async function panSample(page: Page, cameraBefore: Awaited<ReturnType<typeof readBattlefieldCamera>>) {
-  const camera = await readBattlefieldCamera(page);
-  const point = await gamePoint(page, 18, 18);
-  const canvas = await page.locator('.vi-phaser canvas').boundingBox();
-  const inside = !!canvas && point.x >= canvas.x && point.x <= canvas.x + canvas.width
-    && point.y >= canvas.y && point.y <= canvas.y + canvas.height;
-  return {
-    at: new Date().toISOString(), inside,
-    cameraChanged: camera.worldX !== cameraBefore.worldX || camera.worldY !== cameraBefore.worldY,
-    camera: { worldX: camera.worldX, worldY: camera.worldY, zoom: camera.zoom }, point, canvas,
-  };
+  return page.evaluate(({ beforeX, beforeY }) => {
+    const mapCamera = document.querySelector('.map-camera');
+    const canvasElement = document.querySelector('.vi-phaser canvas');
+    const canvas = canvasElement?.getBoundingClientRect();
+    if (!mapCamera || !canvas) return {
+      at: new Date().toISOString(), inside: false, cameraChanged: false,
+      camera: null, point: null, canvas: null,
+    };
+    const number = (name: string) => Number(mapCamera.getAttribute(name));
+    const camera = {
+      worldX: number('data-world-x'), worldY: number('data-world-y'), zoom: number('data-zoom'),
+      mapWidth: number('data-map-width'), mapHeight: number('data-map-height'), yaw: number('data-view-yaw'),
+      tileOriginX: number('data-tile-origin-x'), tileOriginY: number('data-tile-origin-y'),
+    };
+    const centerX = (camera.mapWidth - 1) / 2;
+    const centerY = (camera.mapHeight - 1) / 2;
+    const deltaX = 18 - centerX;
+    const deltaY = 18 - centerY;
+    const viewed = {
+      x: centerX + deltaX * Math.cos(camera.yaw) - deltaY * Math.sin(camera.yaw),
+      y: centerY + deltaX * Math.sin(camera.yaw) + deltaY * Math.cos(camera.yaw),
+    };
+    const isoX = camera.tileOriginX + (viewed.x - viewed.y) * 32;
+    const isoY = camera.tileOriginY + (viewed.x + viewed.y) * 16;
+    const point = {
+      x: canvas.x + (isoX - camera.worldX) * camera.zoom,
+      y: canvas.y + (isoY - camera.worldY) * camera.zoom,
+    };
+    const canvasBox = { x: canvas.x, y: canvas.y, width: canvas.width, height: canvas.height };
+    return {
+      at: new Date().toISOString(),
+      inside: point.x >= canvas.x && point.x <= canvas.right && point.y >= canvas.y && point.y <= canvas.bottom,
+      cameraChanged: camera.worldX !== beforeX || camera.worldY !== beforeY,
+      camera: { worldX: camera.worldX, worldY: camera.worldY, zoom: camera.zoom }, point, canvas: canvasBox,
+    };
+  }, { beforeX: cameraBefore.worldX, beforeY: cameraBefore.worldY });
 }
 
 async function attachMinimapFailure(page: Page, testInfo: TestInfo, cameraBefore: Awaited<ReturnType<typeof readBattlefieldCamera>>,
@@ -212,7 +238,9 @@ test.describe('visual lobby', () => {
           lastPanSampleAt = Date.now();
         }
         return { inside: latestPan.inside };
-      }, { timeout: 10000 }).toMatchObject({ inside: true });
+      // CI reached the valid view just after the old 10 s deadline; this single-evaluation poll
+      // avoids dozens of separate CDP reads while Phaser is rendering.
+      }, { timeout: 20000 }).toMatchObject({ inside: true });
     } catch (error) {
       await attachMinimapFailure(page, testInfo, cameraBeforePan, minimapTarget, plannedClick, panSamples, latestPan);
       throw error;
