@@ -155,9 +155,9 @@ REMANSO = scaled(42.5, 15)  # ensanche a mitad del camino de ronda, con una ruin
 ISLAS = [(center, radius * S, deck * S) for center, radius, deck in
          [(CENTRO, 21.0, 9.0), (BASE, 12.5, 7.0), (PRONEXO, 10.5, 5.0), (ISLOTE, 5.0, 0.0), (REMANSO, 5.6, 0.0)]]
 # Puentes principales: (extremo, semiancho). Todos salen de la isla central.
-PUENTES = [(BASE, 2.8 * S), (PRONEXO, 2.6 * S)]
+PUENTES = [(BASE, 3.2 * S), (PRONEXO, 3.0 * S)]
 NEBULOSAS = [(NIEBLA, 4.4 * S)]
-RONDA_SEMIANCHO = 1.7
+RONDA_SEMIANCHO = 2.2
 RONDA_LARGO = math.dist(BASE, PRONEXO)
 # Barrera del camino de ronda: (fracción del tramo desde la isla de punta, material). El material definitivo
 # se decide después: hielo junto a las bases, chatarra junto a las estaciones.
@@ -168,6 +168,21 @@ RUINA_RADIO = 1.2
 # interrumpe y se cruza sobre el espacio abierto. Caen siempre entre dos islas, nunca bajo una barrera.
 VUELO_PUENTE = {BASE: [(19.5, 24.5), (38.8, 43.0)], PRONEXO: [(16.6, 20.6), (30.0, 33.4)]}
 VUELO_RONDA = [(25.5, 29.5)]
+
+
+def lado(a, b, t, offset):
+    """Punto en la fracción t del tramo a→b, corrido `offset` casillas hacia su izquierda (negativo: derecha)."""
+    length = math.dist(a, b)
+    nx, ny = -(b[1] - a[1]) / length, (b[0] - a[0]) / length
+    return (a[0] + (b[0] - a[0]) * t + nx * offset, a[1] + (b[1] - a[1]) * t + ny * offset)
+
+
+# Cuevitas: huecos sin salida al costado de puentes y ronda, para esconder o apartar unas naves. (centro, radio)
+CUEVAS = [
+    (lado(CENTRO, BASE, 0.48, 3.6), 1.5),       # puente de base, entre el vuelo libre y el islote
+    (lado(CENTRO, PRONEXO, 0.69, -3.4), 1.4),   # puente de pronexo, pasada la nebulosa
+    (lado(BASE, PRONEXO, 0.65, -3.9), 1.6),     # camino de ronda, por fuera
+]
 
 
 def seg_param(p, a, b):
@@ -219,6 +234,9 @@ def terrain_at(x: int, y: int):
             if abs(t - at) * RONDA_LARGO <= BARRERA_SEMIGROSOR:
                 return EMPTY, 'camino', material
         return EMPTY, 'espacio' if flown(t * RONDA_LARGO, VUELO_RONDA) else 'camino', None
+    for center, radius in CUEVAS:
+        if math.dist(p, center) <= radius + rough * 0.4:
+            return EMPTY, 'camino', None
     return ASTEROID, None, None
 
 

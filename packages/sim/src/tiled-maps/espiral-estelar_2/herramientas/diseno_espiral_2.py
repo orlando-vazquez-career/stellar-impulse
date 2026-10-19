@@ -88,10 +88,10 @@ ZT, ZB = cell(0, -18), cell(0, 18)              # bolsas de nebulosa sobre y baj
 LANES = [
     ([B, cell(-62, -12), PTL, P1, cell(-10, -32), PT], 3.2),     # carril superior
     ([B, cell(-60, 12), PBL, P3, cell(-10, 32), PB], 3.2),       # carril inferior
-    ([cell(-52, 11), MD, J, N], 3.0),                            # diagonal media al núcleo
-    ([P1, V1, J], 2.8),                                          # conector pronexo 1 → cruce
-    ([P3, V3, J], 2.8),                                          # conector pronexo 3 → cruce
-    ([N, ZT], 2.4), ([N, ZB], 2.4),                              # bolsas del núcleo
+    ([cell(-52, 11), MD, J, N], 3.3),                            # diagonal media al núcleo
+    ([P1, V1, J], 3.1),                                          # conector pronexo 1 → cruce
+    ([P3, V3, J], 3.1),                                          # conector pronexo 3 → cruce
+    ([N, ZT], 2.8), ([N, ZB], 2.8),                              # bolsas del núcleo
 ]
 # Plazas: (centro, radio en casillas, ¿plataforma?)
 PLAZAS = [
@@ -112,6 +112,24 @@ def seg_dist(p, a, b):
     return math.hypot(px - ax - t * dx, py - ay - t * dy)
 
 
+def beside(a, b, t, side, offset):
+    """Punto a `offset` casillas del eje del tramo a→b, en la fracción t del tramo (side ±1 elige la orilla)."""
+    ax, ay = a
+    bx, by = b
+    length = math.hypot(bx - ax, by - ay)
+    nx, ny = -(by - ay) / length, (bx - ax) / length
+    return (ax + (bx - ax) * t + nx * side * offset, ay + (by - ay) * t + ny * side * offset)
+
+
+# Cuevitas: huecos sin salida en la orilla exterior de los carriles, para esconder o apartar unas naves.
+# (centro, radio). Solo la mitad azul; la roja sale por espejo.
+CUEVAS = [
+    (beside(LANES[0][0][1], LANES[0][0][2], 0.25, 1, 4.6), 1.6),   # carril superior, por fuera
+    (beside(LANES[1][0][1], LANES[1][0][2], 0.25, -1, 4.6), 1.6),  # carril inferior, por fuera
+    (beside(LANES[2][0][1], LANES[2][0][2], 0.55, -1, 4.6), 1.5),  # diagonal media, pasada la nebulosa
+]
+
+
 def wobble(x, y):
     """Borde irregular, determinista: los carriles no quedan como reglas."""
     return 0.45 * math.sin(x * 0.9 + y * 0.35) + 0.35 * math.sin(y * 1.3 - x * 0.5)
@@ -130,6 +148,9 @@ def left_half(x: int, y: int):
         for a, b in zip(points, points[1:]):
             if seg_dist(p, a, b) <= half + wobble(x, y) * 0.5:
                 return EMPTY, False
+    for center, radius in CUEVAS:
+        if math.dist(p, center) <= radius + wobble(x, y) * 0.3:
+            return EMPTY, False
     return ASTEROID, False
 
 
@@ -192,15 +213,6 @@ for y in range(H):
 
 
 # ---------------------------------------------------------------- obstáculos y decorado
-def beside(a, b, t, side, offset):
-    """Punto a `offset` casillas del eje del tramo a→b, en la fracción t del tramo (side ±1 elige la orilla)."""
-    ax, ay = a
-    bx, by = b
-    length = math.hypot(bx - ax, by - ay)
-    nx, ny = -(by - ay) / length, (bx - ax) / length
-    return (ax + (bx - ax) * t + nx * side * offset, ay + (by - ay) * t + ny * side * offset)
-
-
 UPPER, LOWER, MIDDLE, CONN1, CONN3 = (points for points, _ in LANES[:5])
 EDGE = 3.2  # semiancho de los carriles principales
 # Naves destruidas (OBSTACLE_RING): las del borde exterior ya estaban; las de dentro angostan el carril
@@ -210,12 +222,12 @@ WRECKS_HALF = [
     ('estacion_rota', beside(LOWER[1], LOWER[2], 0.5, -1, EDGE + 0.3)),
     ('cristales', beside(UPPER[3], UPPER[4], 0.4, -1, EDGE + 0.3)),
     ('satelite', beside(LOWER[3], LOWER[4], 0.4, 1, EDGE + 0.3)),
-    ('nave_destruida_1', beside(UPPER[0], UPPER[1], 0.45, -1, EDGE - 0.6)),
-    ('nave_destruida_2', beside(MIDDLE[0], MIDDLE[1], 0.35, 1, 2.6)),
-    ('estacion_rota', beside(CONN1[1], CONN1[2], 0.45, 1, 2.3)),
-    ('nave_destruida_1', beside(LOWER[2], LOWER[3], 0.55, 1, EDGE - 0.6)),
-    ('nave_destruida_2', beside(UPPER[1], UPPER[2], 0.85, -1, EDGE - 0.5)),
-    ('estacion_rota', beside(UPPER[2], UPPER[3], 0.15, -1, EDGE - 0.4)),
+    ('nave_destruida_1', beside(UPPER[0], UPPER[1], 0.45, -1, EDGE - 0.1)),
+    ('nave_destruida_2', beside(MIDDLE[0], MIDDLE[1], 0.35, 1, 3.1)),
+    ('estacion_rota', beside(CONN1[1], CONN1[2], 0.45, 1, 2.8)),
+    ('nave_destruida_1', beside(LOWER[2], LOWER[3], 0.55, 1, EDGE - 0.1)),
+    ('nave_destruida_2', beside(UPPER[1], UPPER[2], 0.85, -1, EDGE)),
+    ('estacion_rota', beside(UPPER[2], UPPER[3], 0.15, -1, EDGE + 0.1)),
 ]
 WRECKS = [(model, at) for model, half in WRECKS_HALF for at in (half, mirror(half))]
 WRECK_RADIUS = {'nave_destruida_1': 2, 'estacion_rota': 1.5, 'nave_destruida_2': 1.5, 'cristales': 1, 'satelite': 0.5}
