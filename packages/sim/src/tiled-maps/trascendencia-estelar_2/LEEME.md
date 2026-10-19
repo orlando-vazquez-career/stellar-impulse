@@ -33,6 +33,10 @@ direcciones, así que las dos flotas recorren las mismas distancias.
   satélite estrellado (tramos que salen de una base) o un reactor averiado (los que salen de una estación).
 - **Tramos de vuelo libre**: en cada puente la plataforma se interrumpe unas casillas y las naves cruzan sobre el
   espacio abierto. Se vuela igual; solo cambia el suelo (`VUELO_PUENTE` y `VUELO_RONDA` en el script).
+- **Cuevas laterales**: huecos sin salida al costado de puentes y ronda (`CUEVAS` en el script), para esconder o
+  apartar unas naves.
+- **Cuevas laterales**: huecos sin salida al costado de puentes y ronda (`CUEVAS` en el script), para esconder o
+  apartar unas naves.
 - **Nebulosas** con niebla móvil a mitad de cada puente de pronexo, y ocho zonas de caída de satélites en dos
   grupos que se turnan.
 

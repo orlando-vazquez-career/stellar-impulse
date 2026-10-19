@@ -6,6 +6,7 @@ Diseño (vista de pantalla, como la imagen de referencia `ejemploespiral-estelar
 - Pronexos 1 y 2 arriba, 3 y 4 abajo, unidos por una barra superior y otra inferior con un portal cada una.
 - Cuatro recursos (P) en las curvas exteriores, uno junto a cada pronexo y dos en los cruces del centro.
 - Carriles anchos (6-7 casillas) y pocas rutas: carril superior, carril inferior y una diagonal al centro por lado.
+- Cuevas laterales: huecos sin salida en la orilla exterior, para esconder o apartar unas naves.
 - Seis nebulosas moradas (ralentizan y tapan la visión); de tres de ellas sale una niebla móvil con dos rutas.
 - Ocho zonas de caída de satélites en dos grupos de cuatro que se turnan.
 
